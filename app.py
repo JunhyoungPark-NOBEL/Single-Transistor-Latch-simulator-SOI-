@@ -649,37 +649,45 @@ def estimate_time_window(params: STLParams, dc_result: Dict) -> Tuple[float, flo
     return t_stop, period_est, out
 
 
-def solve_static_current_transient(model: Dict, params: STLParams, vd: float, seed: float) -> float:
+def solve_static_current_transient(
+    model: Dict,
+    params: STLParams,
+    vd: float,
+    seed: float,
+    target_i: Optional[float] = None,
+) -> float:
     vd = float(max(vd, 0.0))
     seed = max(float(seed), params.current_floor)
-
-    def f_scalar(x: float) -> float:
-        return float(model["f_id"](np.asarray([x], float), vd)[0])
-
-    x1 = max(seed * 1.02, seed + 1e-18)
-    try:
-        sol = root_scalar(f_scalar, x0=seed, x1=x1, method="secant", xtol=params.solver_tol, maxiter=80)
-        if sol.converged and np.isfinite(sol.root) and sol.root >= 0:
-            return float(sol.root)
-    except Exception:
-        pass
+    target = max(float(target_i), params.current_floor) if target_i is not None and np.isfinite(target_i) and target_i > 0 else seed
 
     nominal_ceiling = max(1e-6, params.current_ceiling_factor * max(vd, 1e-3) / max(model["rlrs_scalar"], 1e-30))
-    i_high = min(max(nominal_ceiling, seed * params.current_ceiling_factor), params.current_ceiling_abs)
+    i_high = min(max(nominal_ceiling, target * params.current_ceiling_factor), params.current_ceiling_abs)
     roots, minres, _ = find_roots_and_minres(
         lambda x, vd_=vd: model["f_id"](x, vd_),
-        target_i=seed,
+        target_i=target,
         i_low=params.current_floor,
         i_high=i_high,
         ngrid=params.root_grid_points,
         tol=params.solver_tol,
     )
-    chosen = choose_branch_root(roots, seed)
+    chosen = choose_branch_root(roots, target)
     if chosen is not None:
         return float(chosen)
+
+    def f_scalar(x: float) -> float:
+        return float(model["f_id"](np.asarray([x], float), vd)[0])
+
+    x1 = max(target * 1.02, target + 1e-18)
+    try:
+        sol = root_scalar(f_scalar, x0=target, x1=x1, method="secant", xtol=params.solver_tol, maxiter=80)
+        if sol.converged and np.isfinite(sol.root) and sol.root >= 0:
+            return float(sol.root)
+    except Exception:
+        pass
+
     if minres is not None and np.isfinite(minres) and minres >= 0:
         return float(minres)
-    return float(seed)
+    return float(target)
 
 
 def estimate_frequency_from_trace(t: np.ndarray, vd_t: np.ndarray) -> Tuple[float, float, np.ndarray]:
@@ -711,40 +719,161 @@ def estimate_frequency_from_trace(t: np.ndarray, vd_t: np.ndarray) -> Tuple[floa
     return 1.0 / period, period, peak_idx
 
 
+def build_branch_guidance(dc_result: Dict, params: STLParams) -> Optional[Dict]:
+    branches = build_oscillation_branches(dc_result, params.snap_decades_min)
+    if branches is None:
+        return None
+
+    low_fun = PchipInterpolator(branches["low_v"], branches["low_i"], extrapolate=False)
+    high_fun = PchipInterpolator(branches["high_v"], branches["high_i"], extrapolate=False)
+    v_up = dc_result.get("snap_up_v", np.nan)
+    v_down = dc_result.get("snap_down_v", np.nan)
+    if not np.isfinite(v_up):
+        v_up = branches["overlap_high"]
+    if not np.isfinite(v_down):
+        v_down = branches["overlap_low"]
+    return {
+        **branches,
+        "low_fun": low_fun,
+        "high_fun": high_fun,
+        "v_up": float(v_up),
+        "v_down": float(v_down),
+    }
+
+
+def branch_target_current(guidance: Optional[Dict], state: str, vd: float, fallback: float) -> float:
+    fallback = max(float(fallback), 1e-30)
+    if guidance is None:
+        return fallback
+
+    try:
+        if state == "high":
+            v = float(np.clip(vd, np.min(guidance["high_v"]), np.max(guidance["high_v"])))
+            target = float(guidance["high_fun"](v))
+        else:
+            v = float(np.clip(vd, np.min(guidance["low_v"]), np.max(guidance["low_v"])))
+            target = float(guidance["low_fun"](v))
+        if np.isfinite(target) and target > 0:
+            return target
+    except Exception:
+        pass
+    return fallback
+
+
 def simulate_oscillation(params: STLParams, dc_result: Optional[Dict] = None) -> Dict:
     if dc_result is None:
         dc_result = simulate_double_sweep(params)
 
     model = build_model(params)
+    guidance = build_branch_guidance(dc_result, params)
     t_stop, period_guess, window_diag = estimate_time_window(params, dc_result)
     startup_time = float(window_diag.get("startup_time_s", np.nan))
 
     if np.isfinite(period_guess) and period_guess > 0:
         cycles_total = params.auto_cycles + (startup_time / period_guess if np.isfinite(startup_time) and startup_time > 0 else 1.0)
-        n_eval = int(np.clip(np.ceil(180.0 * cycles_total), 1200, 2600))
+        n_nom = int(np.clip(np.ceil(420.0 * cycles_total), 2200, 7000))
     else:
-        n_eval = 1400
-    t_arr = np.linspace(0.0, t_stop, n_eval)
+        n_nom = 2600
+    dt_nom = t_stop / max(n_nom - 1, 1)
 
-    vd_arr = np.zeros(n_eval, dtype=float)
-    id_arr = np.zeros(n_eval, dtype=float)
-    vd_arr[0] = max(params.vd0, 0.0)
-
+    t = 0.0
+    vd = max(params.vd0, 0.0)
+    state = "low"
     seed = max(model["i_s_scalar"], params.current_floor)
-    for k in range(n_eval - 1):
-        dt = t_arr[k + 1] - t_arr[k]
-        id_now = solve_static_current_transient(model, params, float(vd_arr[k]), seed)
-        id_arr[k] = id_now
-        dvdt_1 = (params.iin - id_now) / max(params.cd, 1e-30)
+    id0 = solve_static_current_transient(model, params, vd, seed, branch_target_current(guidance, state, vd, seed))
+    seed = max(id0, params.current_floor)
 
-        vd_pred = max(vd_arr[k] + dt * dvdt_1, 0.0)
-        id_pred = solve_static_current_transient(model, params, float(vd_pred), max(id_now, params.current_floor))
-        dvdt_2 = (params.iin - id_pred) / max(params.cd, 1e-30)
+    t_points: List[float] = [t]
+    vd_points: List[float] = [vd]
+    id_points: List[float] = [id0]
+    state_points: List[str] = [state]
+    switch_times: List[float] = []
 
-        vd_arr[k + 1] = max(vd_arr[k] + 0.5 * dt * (dvdt_1 + dvdt_2), 0.0)
-        seed = max(id_pred, params.current_floor)
+    tiny_t = max(t_stop, 1.0) * 1e-14
 
-    id_arr[-1] = solve_static_current_transient(model, params, float(vd_arr[-1]), seed)
+    while t < t_stop - tiny_t:
+        dt_remaining = min(dt_nom, t_stop - t)
+        inner_count = 0
+
+        while dt_remaining > tiny_t and inner_count < 8:
+            inner_count += 1
+            target_now = branch_target_current(guidance, state, vd, seed)
+            id_now = solve_static_current_transient(model, params, vd, seed, target_now)
+            dvdt_now = (params.iin - id_now) / max(params.cd, 1e-30)
+
+            t_cross = np.inf
+            next_state = state
+            v_switch = None
+            if guidance is not None:
+                if state == "low" and dvdt_now > 0 and vd < guidance["v_up"] - 1e-12:
+                    t_cross = (guidance["v_up"] - vd) / dvdt_now
+                    next_state = "high"
+                    v_switch = guidance["v_up"]
+                elif state == "high" and dvdt_now < 0 and vd > guidance["v_down"] + 1e-12:
+                    t_cross = (vd - guidance["v_down"]) / (-dvdt_now)
+                    next_state = "low"
+                    v_switch = guidance["v_down"]
+
+            dv_limit = max(4.0 * params.vstep, 0.02)
+            dt_resolution = dv_limit / max(abs(dvdt_now), 1e-30)
+            dt_trial = min(dt_remaining, max(dt_resolution, tiny_t))
+
+            if np.isfinite(t_cross) and tiny_t < t_cross < dt_trial * 0.995:
+                dt_local = max(t_cross, tiny_t)
+                vd_pred = max(vd + dt_local * dvdt_now, 0.0)
+                target_pred = branch_target_current(guidance, state, vd_pred, id_now)
+                id_pred = solve_static_current_transient(model, params, vd_pred, max(id_now, params.current_floor), target_pred)
+
+                t += dt_local
+                dt_remaining -= dt_local
+                vd = float(v_switch) if v_switch is not None else float(max(vd + 0.5 * dt_local * (((params.iin - id_now) + (params.iin - id_pred)) / max(params.cd, 1e-30)), 0.0))
+                id_pre = solve_static_current_transient(model, params, vd, max(id_pred, params.current_floor), branch_target_current(guidance, state, vd, id_pred))
+                seed = max(id_pre, params.current_floor)
+                t_points.append(t)
+                vd_points.append(vd)
+                id_points.append(id_pre)
+                state_points.append(state)
+
+                state = next_state
+                id_post = solve_static_current_transient(model, params, vd, seed, branch_target_current(guidance, state, vd, seed))
+                seed = max(id_post, params.current_floor)
+                t_points.append(t)
+                vd_points.append(vd)
+                id_points.append(id_post)
+                state_points.append(state)
+                switch_times.append(t)
+                continue
+
+            dt_local = dt_trial
+            vd_pred = max(vd + dt_local * dvdt_now, 0.0)
+            target_pred = branch_target_current(guidance, state, vd_pred, id_now)
+            id_pred = solve_static_current_transient(model, params, vd_pred, max(id_now, params.current_floor), target_pred)
+            dvdt_pred = (params.iin - id_pred) / max(params.cd, 1e-30)
+
+            vd = max(vd + 0.5 * dt_local * (dvdt_now + dvdt_pred), 0.0)
+            t += dt_local
+            dt_remaining = 0.0
+            id_end = solve_static_current_transient(model, params, vd, max(id_pred, params.current_floor), branch_target_current(guidance, state, vd, id_pred))
+            seed = max(id_end, params.current_floor)
+            t_points.append(t)
+            vd_points.append(vd)
+            id_points.append(id_end)
+            state_points.append(state)
+
+        if inner_count >= 8 and dt_remaining > tiny_t:
+            t += dt_remaining
+            vd = max(vd + dt_remaining * (params.iin - id_points[-1]) / max(params.cd, 1e-30), 0.0)
+            id_end = solve_static_current_transient(model, params, vd, seed, branch_target_current(guidance, state, vd, seed))
+            seed = max(id_end, params.current_floor)
+            t_points.append(t)
+            vd_points.append(vd)
+            id_points.append(id_end)
+            state_points.append(state)
+
+    t_arr = np.asarray(t_points, float)
+    vd_arr = np.asarray(vd_points, float)
+    id_arr = np.asarray(id_points, float)
+    state_arr = np.asarray(state_points, dtype=object)
 
     iin_arr = np.full_like(t_arr, params.iin, dtype=float)
     inet_arr = iin_arr - id_arr
@@ -755,17 +884,19 @@ def simulate_oscillation(params: STLParams, dc_result: Optional[Dict] = None) ->
     period_out = measured_period if np.isfinite(measured_period) else period_guess
 
     diagnostics = {
-        "solver_method": "direct_time_step_heun",
+        "solver_method": "direct_time_step_heun_with_branch_lock",
         "solver_success": True,
         "solver_message": "Direct time stepping finished.",
         "solver_exception": "",
-        "nfev": int(2 * (n_eval - 1)),
+        "nfev": int(len(id_arr)),
         "time_window_s": float(t_stop),
-        "dt_s": float(t_arr[1] - t_arr[0]) if n_eval > 1 else np.nan,
+        "dt_nominal_s": float(dt_nom),
         "period_guess_from_dc_s": float(period_guess) if np.isfinite(period_guess) else np.nan,
         "measured_period_s": float(measured_period) if np.isfinite(measured_period) else np.nan,
         "peak_count": int(len(peak_idx)),
         "startup_from_zero": True,
+        "switch_count": int(len(switch_times)),
+        "used_dc_branch_guidance": guidance is not None,
         **window_diag,
     }
 
@@ -781,6 +912,8 @@ def simulate_oscillation(params: STLParams, dc_result: Optional[Dict] = None) ->
         "diagnostics": diagnostics,
         "body_potential_t": np.asarray(comps["body_potential_v"], float),
         "peak_idx": np.asarray(peak_idx, int),
+        "switch_times": np.asarray(switch_times, float),
+        "state_t": state_arr,
     }
 
 
@@ -1111,14 +1244,17 @@ def soi_svg(params: STLParams) -> str:
     x_gate = x0 + source_w
     x_drain = x_gate + gate_w
     gate_center = x_gate + gate_w / 2.0
+    source_center = x_source + source_w / 2.0
+    drain_center = x_drain + drain_w / 2.0
 
     svg = f"""
-    <svg width="100%" viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg">
+    <div style='width:100%; overflow:hidden;'>
+    <svg width="100%" viewBox="0 0 520 360" preserveAspectRatio="xMinYMin meet" xmlns="http://www.w3.org/2000/svg">
       <style>
-        .lbl {{ font: 14px sans-serif; fill: #2b2b2b; font-weight: 600; }}
-        .mid {{ font: 12px sans-serif; fill: #253858; }}
+        .lbl {{ font: 14px sans-serif; fill: #2b2b2b; font-weight: 600; text-anchor: middle; }}
+        .mid {{ font: 12px sans-serif; fill: #253858; text-anchor: middle; dominant-baseline: middle; }}
+        .light {{ font: 12px sans-serif; fill: #ffffff; text-anchor: middle; dominant-baseline: middle; font-weight: 600; }}
         .small {{ font: 11px sans-serif; fill: #54637a; }}
-        .edge {{ stroke: #333; stroke-width: 1.2; }}
         .tox {{ fill: #7fb3ff; stroke: #333; stroke-width: 1.0; }}
         .boxf {{ fill: #a9c8f2; stroke: #333; stroke-width: 1.0; }}
         .si {{ fill: #e7b0b0; stroke: #333; stroke-width: 1.0; }}
@@ -1140,24 +1276,24 @@ def soi_svg(params: STLParams) -> str:
 
       <rect x="{x_source}" y="{y_tsi}" width="{source_w}" height="{tsi_h}" class="sd"/>
       <rect x="{x_drain}" y="{y_tsi}" width="{drain_w}" height="{tsi_h}" class="sd"/>
-
       <rect x="{x_gate}" y="{y_gate}" width="{gate_w}" height="{gate_h}" class="gatef"/>
 
       <circle cx="{x_source+18}" cy="{y_gate-16}" r="6" fill="white" stroke="#333" stroke-width="1.2"/>
       <circle cx="{x_drain+drain_w-18}" cy="{y_gate-16}" r="6" fill="white" stroke="#333" stroke-width="1.2"/>
 
-      <text x="{x_source+10}" y="{y_gate-28}" class="lbl">Source</text>
-      <text x="{gate_center-17}" y="{y_gate-28}" class="lbl">Gate</text>
-      <text x="{x_drain+drain_w-46}" y="{y_gate-28}" class="lbl">Drain</text>
+      <text x="{source_center}" y="{y_gate-28}" class="lbl">Source</text>
+      <text x="{gate_center}" y="{y_gate-28}" class="lbl">Gate</text>
+      <text x="{drain_center}" y="{y_gate-28}" class="lbl">Drain</text>
 
-      <text x="{gate_center-18}" y="{y_gate + gate_h/2 + 4:.1f}" class="mid" fill="white">Gate</text>
-      <text x="{gate_center-30}" y="{y_tox + tox_h/2 + 4:.1f}" class="mid">Oxide</text>
-      <text x="{gate_center-36}" y="{y_tsi + tsi_h/2 + 4:.1f}" class="mid">TSi / p-body</text>
-      <text x="{gate_center-11}" y="{y_box + box_h/2 + 4:.1f}" class="mid">BOX</text>
-      <text x="{gate_center-33}" y="{y_sub + sub_h/2 + 4:.1f}" class="mid">p-substrate</text>
-
-      <text x="{x_source + source_w/2 - 10}" y="{y_tsi + tsi_h/2 + 4:.1f}" class="mid">n+</text>
-      <text x="{x_drain + drain_w/2 - 10}" y="{y_tsi + tsi_h/2 + 4:.1f}" class="mid">n+</text>
+      <text x="{gate_center}" y="{y_gate + gate_h/2:.1f}" class="light">Gate</text>
+      <text x="{gate_center}" y="{y_tox + tox_h/2:.1f}" class="mid">Oxide</text>
+      <text x="{source_center}" y="{y_tsi + tsi_h/2 - 7:.1f}" class="mid">Source</text>
+      <text x="{source_center}" y="{y_tsi + tsi_h/2 + 10:.1f}" class="mid">n+</text>
+      <text x="{gate_center}" y="{y_tsi + tsi_h/2:.1f}" class="mid">TSi / p-body</text>
+      <text x="{drain_center}" y="{y_tsi + tsi_h/2 - 7:.1f}" class="mid">Drain</text>
+      <text x="{drain_center}" y="{y_tsi + tsi_h/2 + 10:.1f}" class="mid">n+</text>
+      <text x="{gate_center}" y="{y_box + box_h/2:.1f}" class="mid">BOX</text>
+      <text x="{gate_center}" y="{y_sub + sub_h/2:.1f}" class="mid">p-substrate</text>
 
       <line x1="{x0 + device_w + 24}" y1="{y_tsi}" x2="{x0 + device_w + 24}" y2="{y_box}" class="dim"/>
       <text x="{x0 + device_w + 34}" y="{(y_tsi + y_box)/2 + 4:.1f}" class="small">TSi={tsi_nm:.1f} nm</text>
@@ -1173,6 +1309,7 @@ def soi_svg(params: STLParams) -> str:
 
       <text x="18" y="340" class="small">W={params.w * 1e6:.3f} μm, source/drain junction depth = TSi</text>
     </svg>
+    </div>
     """
     return svg
 
@@ -1396,7 +1533,7 @@ def main():
     top_left, top_right = st.columns([1.05, 1.35])
     with top_left:
         st.subheader("Live device view")
-        st.markdown(soi_svg(base_params), unsafe_allow_html=True)
+        st.components.v1.html(soi_svg(base_params), height=410, scrolling=False)
     with top_right:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("L_G", f"{base_params.lg * 1e6:.3f} μm")
