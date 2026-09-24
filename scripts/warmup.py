@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Warm the numba JIT caches and the engine's run-time caches (used at Docker build time and after install).
 
-    python scripts/warmup.py            # compile + run each deterministic kind once, FPT node, MC sweeps
+    python scripts/warmup.py            # compile + run each deterministic kind once, FPT node, MC sweeps, circuit
     python scripts/warmup.py --quick    # compile only (import + one branch)
     python scripts/warmup.py --validate # additionally run the fast validation level and print the checks
 
@@ -65,6 +65,17 @@ def main() -> int:
     step("dynamic MC, 10 sweeps", lambda: A.sweeps(n=10))
     for mod in ("server.compute.stochastic", "server.compute.circuit", "server.compute.validation"):
         step(f"import {mod}", lambda mod=mod: __import__(mod))
+
+    # The circuit kernels (server/compute/circuit/{element,mna}.py, @njit(cache=True)) compile on first use
+    # (~40 s cold): compile them here so the first circuit request of a fresh image is fast.
+    def circuit(mode: str):
+        from server.compute.circuit import run_circuit
+        out = run_circuit({"bench": "load_line", "mode": mode, "device": {"preset": "photo"},
+                           "bench_params": {"n_cycles": 1}, "stochastic": {"n_runs": 1}})
+        return out["solver_stats"]
+
+    step("circuit load_line, deterministic (numba compile)", lambda: circuit("deterministic"))
+    step("circuit load_line, stochastic (numba compile)", lambda: circuit("stochastic"))
 
     if args.validate:
         from server.compute.validation import run_validation

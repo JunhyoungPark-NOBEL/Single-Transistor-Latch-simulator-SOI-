@@ -42,7 +42,7 @@ docker build -t stl-websim .
 docker run --rm -p 8000:8000 -e STL_WORKERS=2 stl-websim     # http://localhost:8000
 ```
 다단계 빌드: `node:22-slim`에서 `web/` 빌드 → `python:3.11-slim` 런타임. 빌드 중 `scripts/warmup.py`가
-numba 커널을 컴파일하고 엔진 캐시를 채운다. 컨테이너는 uid 1000 사용자로 실행되며 `/app`은 쓰기
+numba 커널(엔진 + 회로 시뮬레이터)을 컴파일하고 엔진 캐시를 채운다. 컨테이너는 uid 1000 사용자로 실행되며 `/app`은 쓰기
 가능해야 한다(numba 캐시 `engine/**/__pycache__`, FPT 노드 `engine/photo_extension/photo_nodes/`,
 결과 캐시 `server/.cache/`). 결과 캐시를 유지하려면 `-v stl-cache:/app/server/.cache`를 붙인다.
 
@@ -56,13 +56,24 @@ numba 커널을 컴파일하고 엔진 캐시를 채운다. 컨테이너는 uid 
   맞춤). Space는 uid 1000으로 실행하므로 Dockerfile의 사용자 설정을 그대로 쓰면 된다. CPU basic
   (2 vCPU)에서는 `STL_WORKERS=1`–`2`.
 - 역방향 프록시 뒤에서는 긴 요청 대신 폴링을 쓰므로 타임아웃 문제는 없다(요청당 최대 대기 60 s).
+- 공개 배포 보호 장치: 요청 본문 256 KiB 제한(413), 대기 작업 수 제한(429, 클라이언트당 16 / 전체 64),
+  10분 동안 조회되지 않은 작업 자동 취소, 작업 프로세스가 죽으면(OOM 등) 풀을 즉시 재시작하고 해당 작업을
+  재시도, API 프로세스가 강제 종료되면 작업 프로세스도 스스로 종료. Docker `CMD`는 `--proxy-headers`를 쓰므로
+  클라이언트 구분은 `X-Forwarded-For` 기준이다(프록시 없이 직접 노출하면 이 헤더는 위조 가능 — 그때는 전체 한도만 믿을 것).
 
 ### 6. 환경변수
 | 변수 | 기본값 | 의미 |
 |---|---|---|
 | `STL_WORKERS` | CPU − 1 (affinity/cgroup 반영), 최소 1 | 계산 작업 프로세스 수 |
 | `STL_CACHE_DIR` | `server/.cache/results` | 디스크 결과 캐시 |
-| `STL_DISK_CACHE_MB` | 1024 | 디스크 캐시 한도(시작 시 오래된 것부터 삭제) |
+| `STL_DISK_CACHE_MB` | 1024 | 디스크 결과 캐시 한도(실행 중에도 유지, 가장 오래 안 쓴 것부터 삭제) |
+| `STL_MEM_CACHE_MB` | 256 | 메모리 결과 캐시(LRU) 한도 |
+| `STL_JOB_RESULTS_MB` | 64 | 끝난 작업이 메모리에 붙잡는 결과 크기 한도(나머지는 캐시에서 다시 읽음) |
+| `STL_NODE_CACHE_MB` | 1024 | 확률 노드 캐시 `server/.cache/stochastic` 한도 |
+| `STL_MAX_PENDING` | 64 | 대기+실행 중 작업 수 한도(전체, 초과 시 429) |
+| `STL_MAX_PENDING_PER_CLIENT` | 16 | 클라이언트(주소)당 대기+실행 중 작업 수 한도(초과 시 429) |
+| `STL_ABANDON_S` | 600 | 이 시간 동안 아무도 조회하지 않은 작업은 취소(0 = 끄기) |
+| `STL_MAX_BODY_KB` | 256 | 요청 본문 최대 크기(초과 시 413) |
 | `STL_PREWARM` | 1 | 시작 시 모든 작업 프로세스를 미리 띄움 |
 | `STL_MP_CONTEXT` | `spawn` | multiprocessing 시작 방식 |
 | `STL_CORS_ORIGINS` | localhost:5173, :4173 | 허용 origin(쉼표 구분) |
@@ -110,7 +121,8 @@ docker build -t stl-websim .
 docker run --rm -p 8000:8000 -e STL_WORKERS=2 stl-websim     # http://localhost:8000
 ```
 Multi-stage: `node:22-slim` builds `web/`, `python:3.11-slim` runs the API; `scripts/warmup.py` runs at build
-time so the numba kernels and the FPT node for the validation are cached in the image. The container runs as
+time so the numba kernels (engine and circuit simulator) and the FPT node for the validation are cached in the
+image. The container runs as
 uid 1000 and needs `/app` writable (numba caches in `engine/**/__pycache__`, FPT nodes in
 `engine/photo_extension/photo_nodes/`, results in `server/.cache/`). Mount `-v stl-cache:/app/server/.cache`
 to keep the result cache across restarts.
@@ -124,6 +136,11 @@ to keep the result cache across restarts.
 - **Hugging Face Spaces**: SDK Docker, `app_port: 8000` in the README front matter (or set `PORT=7860`).
   Spaces run as uid 1000, matching the Dockerfile user. CPU basic (2 vCPU): `STL_WORKERS=1`–`2`.
 - The UI polls jobs (≤ 60 s per request), so proxy time-outs are not an issue.
+- Public-deployment guards: 256 KiB request bodies (413), bounded job queue (429; 16 per client address,
+  64 in total), jobs nobody polled for 10 min are cancelled, a crashed worker (OOM, segfault) restarts the
+  pool at once and the affected jobs are retried, and workers exit by themselves if the API process is
+  killed. The Docker `CMD` runs uvicorn with `--proxy-headers`, so clients are told apart by
+  `X-Forwarded-For` (spoofable when the container is exposed without a proxy; the global limit still holds).
 
 ### 6. Environment variables
 See the table in the Korean section above (same variables) or `docs/API.md`.

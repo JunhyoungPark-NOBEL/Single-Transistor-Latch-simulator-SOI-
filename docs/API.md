@@ -11,8 +11,10 @@ HTTP surface, the backend-core result details and the data endpoints.
 * Units: voltage V, current A, charge C, time s, optical power mW, photocurrent pA (payload) / A (results),
   resistance Ω. Where a key carries a unit suffix (`_mV`, `_pA`, `_nm`, `_s`) that unit wins.
 * Responses larger than 2 kB are gzip-compressed when the client sends `Accept-Encoding: gzip`.
-* Errors: `{"detail": "message"}` with HTTP 404 (unknown kind / job / path) or 422 (invalid payload).
-  A `ValueError` raised *inside* a job gives `status: "error"` with `error: "message"` (HTTP 200).
+* Errors: always `{"detail": "message"}` (a string) with HTTP 404 (unknown kind / job / path), 413 (request body
+  larger than `STL_MAX_BODY_KB`, default 256 KiB), 422 (invalid payload, malformed JSON), 429 (too many queued
+  jobs, with a `Retry-After` header) or 500 (unexpected; no internals in the body, the traceback goes to the
+  server log). A `ValueError` raised *inside* a job gives `status: "error"` with `error: "message"` (HTTP 200).
 
 ## Endpoints
 
@@ -23,7 +25,7 @@ HTTP surface, the backend-core result details and the data endpoints.
 | POST | `/api/compute/{kind}?wait=2.0` | body = payload (JSON object). Validates/clamps, submits, waits up to `wait` s (0–60). Returns `JobStatus`. |
 | GET | `/api/jobs/{job_id}?wait=0` | `JobStatus`; optional long-poll `wait` (s, ≤ 60) |
 | DELETE | `/api/jobs/{job_id}` | cancel → `JobStatus` with `status: "cancelled"` |
-| GET | `/api/jobs` | recent jobs (`JobStatus` without `result`, oldest first; the last ~200 are kept) |
+| GET | `/api/jobs` | the caller's recent jobs (same client address; `JobStatus` without `result`, oldest first; the server keeps the last ~200 finished jobs). Other clients' job ids are not listed. |
 | GET | `/api/data/measured` | measured data, see below |
 | GET | `/api/data/design_map` | design map, see below |
 | GET/POST | `/api/branches`, `/api/folds`, `/api/hazard`, `/api/sweeps`, `/api/vg_curve` | handoff-name aliases of `/api/compute/{branches, folds, hazard, sweep_mc, vg_curve}`; POST takes the payload, GET takes query parameters (below) |
@@ -41,17 +43,32 @@ interface JobStatus { job_id: string; kind: string;
 Typical client flow: `POST /api/compute/branches?wait=1.5` → if `status` is `done` use `result`; otherwise
 poll `GET /api/jobs/{id}` (e.g. every 0.3–1 s, or long-poll with `?wait=5`) until the status is final;
 `DELETE /api/jobs/{id}` to cancel (reported immediately; the worker stops at its next progress call).
+Long-polls do not hold a server thread, so many concurrent `?wait=` requests are fine.
+
+**Admission and lifetime.** At most `STL_MAX_PENDING` (64) jobs may be queued/running in total and
+`STL_MAX_PENDING_PER_CLIENT` (16) per client address; beyond that the submit returns **429** with
+`Retry-After`. A queued/running job that nobody has polled (or long-polled) for `STL_ABANDON_S` (600 s) is
+cancelled with the message `cancelled (abandoned: nobody polled it)` — keep polling while you wait.
+If a worker process crashes (segfault, OOM kill), the pool is restarted at once and the affected jobs are
+retried; a job that crashes a worker twice ends with `status: "error"`.
 
 **Kinds:** `branches`, `charge_balance`, `vg_curve`, `hazard`, `sweep_mc`, `vg_curve_stochastic`,
 `circuit`, `validation` (contract) and `folds` (backend-core extra, folds only). Unknown kind → 404.
 
-**Deduplication and cache.** An identical payload that is still queued/running returns the same job.
-Finished results are cached in memory (LRU, 256 entries / 256 MB) and on disk (`server/.cache/results/*.json.gz`,
-pruned to `STL_DISK_CACHE_MB`, default 1024) under
+**Deduplication and cache.** An identical payload that is still queued/running is attached to the running
+computation but gets its **own** `job_id`: cancelling one client's job does not cancel the other's (the
+computation stops when its last job is cancelled). Finished results are cached in memory (LRU, 256 entries /
+`STL_MEM_CACHE_MB`, default 256) and on disk (`server/.cache/results/*.json.gz`, kept below
+`STL_DISK_CACHE_MB`, default 1024, while running: least recently used entries go first) under
 `sha256(kind, canonical JSON of the normalised payload, clamp warnings, ENGINE_VERSION)`;
-`ENGINE_VERSION` hashes `server/compute/**/*.py`, `server/params.py`, `server/engine_bridge.py`, so a code
-edit invalidates old entries. Canonical JSON sorts keys and treats `2` and `2.0` alike. A cache hit is a new
-job with `cached: true`, `elapsed_s: 0`.
+`ENGINE_VERSION` hashes `server/compute/**/*.py`, `server/params.py`, `server/engine_bridge.py`,
+`server/jsonutil.py`, `server/jobs.py` and the engine's code and data files (`engine/**`, run-time cache
+folders excluded), so a code edit invalidates old entries. Canonical JSON sorts keys and treats `2` and `2.0`
+alike (integers a float cannot hold exactly, e.g. large seeds, stay exact). A cache hit is a new job with
+`cached: true`, `elapsed_s: 0`. Finished jobs keep at most `STL_JOB_RESULTS_MB` (64) of results in memory;
+older ones are re-read from the cache (if it was evicted meanwhile, the job reports `error: "the result is no
+longer cached …"` and should be submitted again). The stochastic package's node cache
+(`server/.cache/stochastic/`) is pruned to `STL_NODE_CACHE_MB` (1024) at start-up and every 10 min.
 
 ### GET alias query parameters
 
@@ -62,6 +79,11 @@ job with `cached: true`, `elapsed_s: 0`.
 ## Payload normalisation and caps
 
 `server/payloads.py` runs in the API process before submission:
+
+* Structure (any kind): the body must be a JSON object, nested at most 12 levels, with at most 5000 values,
+  strings/keys of at most 1000 characters and finite numbers only (`NaN`/`Infinity` literals and integers
+  beyond the float range are rejected); nested blocks (`device.light/calib/ext/state/numerics`,
+  `stochastic.local_state`, circuit `bench_params/solver/stochastic/detect`) must be objects → otherwise 422.
 
 * `device` is resolved against its preset (`params.resolve_device`); every numeric field must be finite
   (`vg` within ±10 V, light values ≥ 0, `light.mode` ∈ {iph, power}, `ext.loc_carriers` ∈ {0,1,2}).
@@ -209,7 +231,14 @@ The meaning of the reference lines is inferred from the stored numbers (the npz 
 |---|---|---|
 | `STL_WORKERS` | CPUs − 1 (affinity/cgroup aware), ≥ 1 | compute worker processes |
 | `STL_CACHE_DIR` | `server/.cache/results` | disk result cache |
-| `STL_DISK_CACHE_MB` | 1024 | disk cache budget (oldest pruned at start-up) |
+| `STL_DISK_CACHE_MB` | 1024 | disk result-cache budget (enforced while running, least recently used first) |
+| `STL_MEM_CACHE_MB` | 256 | in-memory result LRU budget |
+| `STL_JOB_RESULTS_MB` | 64 | result bytes kept by finished jobs (older ones are re-read from the cache) |
+| `STL_NODE_CACHE_MB` | 1024 | budget of the stochastic node cache `server/.cache/stochastic` (`STL_STOCH_CACHE_DIR`) |
+| `STL_MAX_PENDING` | 64 | queued + running jobs, all clients (429 beyond) |
+| `STL_MAX_PENDING_PER_CLIENT` | 16 | queued + running jobs per client address (429 beyond) |
+| `STL_ABANDON_S` | 600 | cancel queued/running jobs nobody polled for this long (0 disables) |
+| `STL_MAX_BODY_KB` | 256 | maximum request body (413 beyond) |
 | `STL_PREWARM` | 1 | start all workers at start-up (numba cache load ≈ 1–2 s each) |
 | `STL_MP_CONTEXT` | `spawn` | multiprocessing start method (`spawn` or `forkserver`) |
 | `STL_CORS_ORIGINS` | localhost:5173/4173 | comma-separated allowed origins |

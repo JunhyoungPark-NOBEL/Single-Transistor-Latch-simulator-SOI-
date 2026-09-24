@@ -34,17 +34,71 @@ SWEEP_KINDS = {"branches", "hazard", "sweep_mc", "vg_curve_stochastic"}
 STOCHASTIC_KINDS = {"sweep_mc", "vg_curve_stochastic"}
 VG_RANGE_KINDS = {"vg_curve", "vg_curve_stochastic"}
 
+# Structural limits of a request body (real payloads: < 200 values, depth <= 4, strings < 40 chars).
+TREE_LIMITS = {"depth": 12, "nodes": 5000, "string": 1000}
+
+
+def check_tree(payload: Any) -> None:
+    """Reject bodies that are expensive to copy/hash/pickle or that would crash later: nesting deeper than
+    TREE_LIMITS["depth"], more than TREE_LIMITS["nodes"] values, strings/keys longer than TREE_LIMITS["string"],
+    non-finite numbers (NaN/Infinity are accepted by the stdlib JSON parser) and integers beyond float range.
+    Iterative, so it cannot hit the recursion limit itself."""
+    stack: list[tuple[Any, str, int]] = [(payload, "body", 0)]
+    nodes = 0
+    while stack:
+        obj, path, depth = stack.pop()
+        nodes += 1
+        if nodes > TREE_LIMITS["nodes"]:
+            raise ValueError(f"request body too large (more than {TREE_LIMITS['nodes']} values)")
+        if isinstance(obj, (dict, list, tuple)):
+            if depth >= TREE_LIMITS["depth"]:
+                raise ValueError(f"request body nested too deeply at {path} (max depth {TREE_LIMITS['depth']})")
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    if not isinstance(k, str) or len(k) > TREE_LIMITS["string"]:
+                        raise ValueError(f"invalid key in {path}")
+                    stack.append((v, f"{path}.{k}", depth + 1))
+            else:
+                stack.extend((v, f"{path}[{i}]", depth + 1) for i, v in enumerate(obj))
+        elif isinstance(obj, str):
+            if len(obj) > TREE_LIMITS["string"]:
+                raise ValueError(f"{path}: string longer than {TREE_LIMITS['string']} characters")
+        elif isinstance(obj, bool) or obj is None:
+            pass
+        elif isinstance(obj, (int, float)):
+            try:
+                ok = math.isfinite(float(obj))
+            except OverflowError:
+                ok = False
+            if not ok:
+                raise ValueError(f"{path} must be a finite number")
+        else:
+            raise ValueError(f"{path}: unsupported value type {type(obj).__name__}")
+
+
+def _obj(block: dict, key: str, name: str) -> None:
+    """A nested block must be a JSON object (or absent / null)."""
+    if block.get(key) is not None and not isinstance(block[key], dict):
+        raise ValueError(f"{name} must be an object")
+
 
 def _num(value: Any, name: str) -> float:
     if isinstance(value, bool):
         raise ValueError(f"{name} must be a number")
     try:
         x = float(value)
-    except (TypeError, ValueError):
-        raise ValueError(f"{name} must be a number (got {value!r})") from None
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError(f"{name} must be a finite number (got {str(value)[:40]!r})") from None
     if not math.isfinite(x):
         raise ValueError(f"{name} must be finite")
     return x
+
+
+def _int(value: Any, name: str) -> int:
+    """Integer field (e.g. a seed): exact for Python ints (no float round-trip), else via _num."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return int(_num(value, name))
 
 
 def _clamp(block: dict, key: str, lo: float | None, hi: float | None, name: str, warnings: list[str],
@@ -76,6 +130,11 @@ def _check_numeric_tree(block: Any, prefix: str) -> None:
 def normalize_device(device: Any, warnings: list[str]) -> dict:
     if device is not None and not isinstance(device, dict):
         raise ValueError("device must be an object")
+    if device:
+        if device.get("preset") is not None and not isinstance(device["preset"], str):
+            raise ValueError("device.preset must be a string")
+        for section in ("light", "calib", "ext", "state", "numerics"):
+            _obj(device, section, f"device.{section}")
     d = params.resolve_device(device)          # raises ValueError for an unknown preset
     d["vg"] = _num(d["vg"], "device.vg")
     if not -10.0 <= d["vg"] <= 10.0:
@@ -120,13 +179,15 @@ def normalize_sweep(preset: str, sweep: Any, warnings: list[str]) -> dict:
 def normalize_stochastic(preset: str, sto: Any, warnings: list[str]) -> dict:
     if sto is not None and not isinstance(sto, dict):
         raise ValueError("stochastic must be an object")
+    if sto:
+        _obj(sto, "local_state", "stochastic.local_state")
     s = params.resolve_section(preset, "stochastic", sto)
     _clamp(s, "n_cycles", 1, CAPS["n_cycles"], "stochastic.n_cycles", warnings, integer=True)
     _clamp(s, "fold_nodes", 3, CAPS["fold_nodes"], "stochastic.fold_nodes", warnings, integer=True)
     _clamp(s, "hazard_nodes", 1, CAPS["hazard_nodes"], "stochastic.hazard_nodes", warnings, integer=True)
     _clamp(s, "n_traces", 0, CAPS["n_traces"], "stochastic.n_traces", warnings, integer=True)
     if "seed" in s:
-        s["seed"] = int(_num(s["seed"], "stochastic.seed"))
+        s["seed"] = _int(s["seed"], "stochastic.seed")
     ls = s.get("local_state") or {}
     if ls.get("mode", "none") not in ("none", "frozen", "evolving"):
         raise ValueError("stochastic.local_state.mode must be none | frozen | evolving")
@@ -147,6 +208,7 @@ def normalize(kind: str, payload: Any) -> tuple[dict, list[str]]:
         payload = {}
     if not isinstance(payload, dict):
         raise ValueError("the request body must be a JSON object")
+    check_tree(payload)                        # before deepcopy/hash/pickle (depth, size, NaN, huge ints)
     p = copy.deepcopy(payload)
     warnings: list[str] = []
     if kind in DEVICE_KINDS:
@@ -181,15 +243,18 @@ def normalize(kind: str, payload: Any) -> tuple[dict, list[str]]:
             if k in p and p[k] is not None:
                 p[k] = _num(p[k], k)
     if kind == "circuit":
+        for block in ("bench_params", "solver", "stochastic", "detect"):
+            _obj(p, block, block)
+        if p.get("bench") is not None and not isinstance(p["bench"], str):
+            raise ValueError("bench must be a string")
+        if p.get("mode") is not None and not isinstance(p["mode"], str):
+            raise ValueError("mode must be a string")
         solver = p.get("solver")
         if solver is not None:
-            if not isinstance(solver, dict):
-                raise ValueError("solver must be an object")
             _clamp(solver, "max_steps", 1, CAPS["circuit_max_steps"], "solver.max_steps", warnings, integer=True)
         sto = p.get("stochastic")
         if sto is not None:
-            if not isinstance(sto, dict):
-                raise ValueError("stochastic must be an object")
+            _obj(sto, "local_state", "stochastic.local_state")
             _clamp(sto, "n_runs", 1, CAPS["circuit_n_runs"], "stochastic.n_runs", warnings, integer=True)
     if kind == "validation":
         level = p.setdefault("level", "fast")

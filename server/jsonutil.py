@@ -73,8 +73,14 @@ def _canon(obj: Any) -> Any:
         return _canon(obj.item())
     if isinstance(obj, bool) or obj is None or isinstance(obj, str):
         return obj
-    if isinstance(obj, int):
-        return float(obj)
+    if isinstance(obj, int):          # 2 and 2.0 hash alike; ints a float cannot hold exactly (seeds > 2**53) stay ints
+        try:
+            f = float(obj)
+        except OverflowError:
+            f = None
+        if f is not None and int(f) == obj:
+            return f
+        return obj if -(1 << 63) <= obj < (1 << 64) else f"int:{obj}"   # orjson serialises 64-bit ints only
     if isinstance(obj, float):
         return obj if math.isfinite(obj) else None
     return obj

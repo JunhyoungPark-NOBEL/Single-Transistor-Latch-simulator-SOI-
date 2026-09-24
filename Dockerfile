@@ -24,13 +24,15 @@ ENV PYTHONUNBUFFERED=1 \
 # (engine/**/__pycache__), the FPT node cache (engine/photo_extension/photo_nodes) and server/.cache.
 RUN useradd -m -u 1000 app
 WORKDIR /app
-COPY server/requirements.txt server/requirements.txt
-RUN pip install -r server/requirements.txt
+# requirements go outside /app: copying them to /app/server first would create /app/server as root, and a later
+# `COPY --chown` keeps an existing destination directory's owner (server/.cache could then not be created)
+COPY server/requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
 COPY --chown=app:app engine/ engine/
 COPY --chown=app:app server/ server/
 COPY --chown=app:app scripts/ scripts/
 COPY --chown=app:app --from=web /build/web/dist web/dist
-RUN chown app:app /app
+RUN mkdir -p server/.cache && chown app:app /app /app/server /app/server/.cache
 USER app
 # Compile the numba kernels and fill the engine caches at build time (first request is then fast).
 RUN python scripts/warmup.py
