@@ -295,11 +295,22 @@ class JobManager:
                 self._pool.submit(_warm)
 
     def shutdown(self) -> None:
+        """Stop promptly: cancel queued jobs and terminate the workers (a running job would otherwise keep the
+        interpreter alive until it finishes, because concurrent.futures joins its workers at exit)."""
         with self._lock:
             pool, self._pool = self._pool, None
             manager, self._manager = self._manager, None
+            pending = [j for j in self._jobs.values() if j.status in ("queued", "running")]
+        for job in pending:
+            self._finish(job, "cancelled")
         if pool is not None:
+            procs = list((getattr(pool, "_processes", None) or {}).values())
             pool.shutdown(wait=False, cancel_futures=True)
+            for proc in procs:
+                try:
+                    proc.terminate()
+                except Exception:  # noqa: BLE001
+                    pass
         if manager is not None:
             try:
                 manager.shutdown()
@@ -326,10 +337,9 @@ class JobManager:
             raise KeyError(kind)
         norm, warns = payloads.normalize(kind, payload)
         key = self.cache_key(kind, norm, warns)
-        with self._lock:
-            jid = self._inflight.get(key)
-            if jid and jid in self._jobs and self._jobs[jid].status in ("queued", "running"):
-                return self._jobs[jid]
+        running = self._running_job(key)
+        if running is not None:
+            return running
         data = self.cache.get(key)
         job = Job(id=uuid.uuid4().hex[:16], kind=kind, key=key)
         if data is not None:
@@ -338,11 +348,20 @@ class JobManager:
             job.event.set()
             self._register(job)
             return job
-        self._register(job)
-        with self._lock:
+        with self._lock:                      # check-and-register atomically (concurrent identical submits)
+            running = self._running_job(key)
+            if running is not None:
+                return running
+            self._register(job)
             self._inflight[key] = job.id
         self._dispatch(job, norm, warns)
         return job
+
+    def _running_job(self, key: str) -> Job | None:
+        with self._lock:
+            jid = self._inflight.get(key)
+            job = self._jobs.get(jid) if jid else None
+            return job if job is not None and job.status in ("queued", "running") else None
 
     def _dispatch(self, job: Job, payload: dict, warns: list[str]) -> None:
         for attempt in range(2):

@@ -15,8 +15,8 @@ const topic: PhysicsTopic = {
     {
       heading: L("소자 방정식", "Element equations"),
       body: L(
-        "단자 D, G, S (+ 선택적 광입력 $I_{\\mathrm{PH}}(t)$ → p[13]). 요소마다 미지수 $(u_k,r_k)$ 두 개와 식 두 개(E1, E2)가 추가된다. $V_{GS}$는 매 평가에서 p[11]에 들어간다. 전하 좌표는 compound-FPT 격자와 같다(상수 $-C_{ox}V_{GS}$ 차이).",
-        "Terminals D, G, S (+ optional light input $I_{\\mathrm{PH}}(t)$ → p[13]). Each element adds two unknowns $(u_k,r_k)$ and two equations (E1, E2). $V_{GS}$ is written to p[11] at every evaluation. The charge coordinate is that of the compound-FPT lattice (up to the constant $-C_{ox}V_{GS}$).",
+        "단자 D, G, S (+ 선택적 광입력 $I_{\\mathrm{PH}}(t)$ → p[13]). 요소마다 미지수 $(u_k,r_k)$ 두 개와 식 두 개(E1, E2)가 추가된다. $V_{GS}$는 매 평가에서 p[11]에 들어간다. 전하 좌표는 compound-FPT 격자와 같다(상수 $-C_{ox}V_{GS}$ 차이). $V_{GS}$가 시간에 따라 바뀌면 같은 $Q$에서 $\\psi$가 따라 움직인다(게이트–body 용량 결합).",
+        "Terminals D, G, S (+ optional light input $I_{\\mathrm{PH}}(t)$ → p[13]). Each element adds two unknowns $(u_k,r_k)$ and two equations (E1, E2). $V_{GS}$ is written to p[11] at every evaluation. The charge coordinate is that of the compound-FPT lattice (up to the constant $-C_{ox}V_{GS}$). When $V_{GS}$ changes in time, $\\psi$ follows at fixed $Q$ (gate–body capacitive coupling).",
       ),
       equations: [
         {
