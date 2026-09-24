@@ -46,7 +46,6 @@ class SolverConfig:
     h_init: float = 1e-9
     newton_tol: float = 1e-7
     ld_noise: bool = False
-    mono_tau_frac: float = 20.0
 
     def arrays(self, net: dict, t_end: float, main_wave: int, main_stl: int = 0):
         ci = np.zeros(K.N_CI, np.int64)
@@ -93,7 +92,6 @@ class SolverConfig:
         cf[K.CF_ITHDN] = self.i_threshold_down
         cf[K.CF_GTAUMIN] = self.gauss_tau_min
         cf[K.CF_GTAUFRAC] = self.gauss_tau_frac
-        cf[K.CF_MONOFRAC] = self.mono_tau_frac
         return ci, cf
 
 
@@ -112,6 +110,7 @@ class RunOutput:
     gauss_steps: int
     t_gauss: float
     t_lrs_drift: float
+    t_band_drift: float
     min_u: float
     min_r: float
     t_neg_u: float
@@ -159,11 +158,11 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
     nsamp = len(net["samp"])
     sbuf = np.full((max(nsamp, 1), 1 + 2 * ns), np.nan)
     a = net
-    win = np.empty((ns, 2))
-    win[:, 0] = -np.inf
-    win[:, 1] = np.inf
+    win = np.empty((ns, 4))
+    win[:, 0::2] = -np.inf
+    win[:, 1::2] = np.inf
     if window is not None:
-        win[:] = np.asarray(window, float).reshape(ns, 2)
+        win[:] = np.asarray(window, float).reshape(ns, 4)
     K.seed_rng(int(seed) % (2 ** 32 - 1))
     # local states enter p before the DC point
     Pdc = P.copy()
@@ -238,7 +237,7 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
                      rejected=int(si[K.SI_REJ]), newton_iters=int(si[K.SI_NEWT]), status=int(status),
                      t_reached=float(sf[K.SF_T]), unresolved_steps=int(si[K.SI_UNRES]),
                      t_unresolved=float(sf[K.SF_TUNRES]), gauss_steps=int(si[K.SI_GAUSS]),
-                     t_gauss=float(sf[K.SF_TGAUSS]), t_lrs_drift=float(sf[K.SF_TLRS]), min_u=float(sf[K.SF_MINU]), min_r=float(sf[K.SF_MINR]),
+                     t_gauss=float(sf[K.SF_TGAUSS]), t_lrs_drift=float(sf[K.SF_TLRS]), t_band_drift=float(sf[K.SF_TBAND]), min_u=float(sf[K.SF_MINU]), min_r=float(sf[K.SF_MINR]),
                      t_neg_u=float(sf[K.SF_TNEGU]), t_neg_r=float(sf[K.SF_TNEGR]), trap_be=int(si[K.SI_TRAPBE]),
                      runtime_s=time.perf_counter() - tic, warnings=warnings,
-                     diag=[int(v) for v in si[K.SI_DIAG:K.SI_DIAG + 15]])
+                     diag=[int(v) for v in si[K.SI_DIAG:K.SI_DIAG + 18]])

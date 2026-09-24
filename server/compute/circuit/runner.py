@@ -13,10 +13,11 @@ from server.engine_bridge import MODEL, m
 
 from . import benches as B
 from .sim import SolverConfig, simulate
-from .stochastic import (ACTION_UNIT, SECONDS_PER_STEP, bistable_window, branch_profile, draw_local_states,
-                         estimate_steps, parse_local_state)
+from .stochastic import (ACTION_UNIT, SECONDS_PER_STEP, branch_profile, draw_local_states, estimate_steps,
+                         noise_bands, parse_local_state)
 
 MAX_POINTS = 4000
+MAX_POINTS_OTHER = 1500        # stored runs 1..7 (keeps the JSON result a few MB at most)
 MAX_STORED_RUNS = 8
 MAX_TOTAL_STEPS = 4e7          # all runs of one request (~25 min at 40 us/step)
 MAX_EVENTS_OUT = 20000
@@ -58,7 +59,7 @@ def _solver(payload: dict, t_end: float, warnings: list[str]) -> dict:
         raise ValueError("solver.dt_min_s must be smaller than solver.dt_max_s")
     for key, lo, hi in (("tau_frac", 1e-3, 0.5), ("max_events_per_step", 1.0, 1e6), ("noise_dt_min_s", 0.0, 1e-3),
                         ("gauss_threshold", 10.0, 1e6), ("gauss_tau_min_s", 0.0, 1e-3), ("gauss_tau_frac", 0.01, 1.0),
-                        ("mono_tau_frac", 0.0, 1e3)):
+                        ("noise_z_max", 1.0, 1e3)):
         v = float(s[key])
         if not (lo <= v <= hi):
             raise ValueError(f"solver.{key} must be within [{lo}, {hi}]")
@@ -128,7 +129,8 @@ def _decimate_idx(t: np.ndarray, feats: list[np.ndarray], n_max: int = MAX_POINT
     return idx[:n_max] if len(idx) > n_max else idx
 
 
-def _signals(spec: B.BenchSpec, net_c: dict, out, ls_unit: str, stochastic_ls: bool, has_E: bool, cfg_i_floor: float):
+def _signals(spec: B.BenchSpec, net_c: dict, out, ls_unit: str, stochastic_ls: bool, has_E: bool, cfg_i_floor: float,
+             n_max: int = MAX_POINTS):
     rec = out.rec
     nn = net_c["n_nodes"]
     nv = net_c["nV"]
@@ -141,7 +143,7 @@ def _signals(spec: B.BenchSpec, net_c: dict, out, ls_unit: str, stochastic_ls: b
     for k in range(ns):
         feats.append(np.log10(np.abs(rec[:, base + 7 * k + 3]) + cfg_i_floor))
         feats.append(rec[:, 1 + nodes.index(cells[k]["drain"]) - 1])
-    idx = _decimate_idx(t, feats)
+    idx = _decimate_idx(t, feats, n_max)
     r = rec[idx]
     sig = []
     src_node = "clk" if spec.bench == "pbit" else "src"
@@ -234,9 +236,9 @@ def _pulse_bits(out, meta, cell: int, i_th: float, key="top_end"):
     return (s[idx, 1 + 2 * cell] >= i_th).astype(float)
 
 
-def _branch_deviation(traj_vd, traj_id, p, grid):
-    """Median |Δlog10 I_D| of a (deterministic) trajectory w.r.t. the quasi-static HRS / LRS branches."""
-    cl = MODEL.classify(np.asarray(p, float), m.state_grid(grid))
+def _branch_deviation(traj_vd, traj_id, cl):
+    """Median |Δlog10 I_D| of a (deterministic) trajectory w.r.t. the quasi-static HRS / LRS branches
+    (``cl`` = MODEL.classify result of the cell's device)."""
     if cl is None:
         return None, None
     b, i, j, fold = cl
@@ -352,7 +354,7 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
         B._num(bp, "R_s_ohm", positive=True, hi=1e12)
         B._num(bp, "C_d_F", 0.0, 1e-6)
         if carrier and not user_rate:
-            est = _estimate_for(B.build_load_line(bp, p1, vg1, _label(p1)), prof1, stochastic, carrier, st, payload)
+            est = _estimate_for(B.build_load_line(bp, p1, vg1, _label(p1)), prof1, stochastic, carrier, st, payload, ls_cfg)
             if est > 0.5 * _max_steps(payload):
                 warnings.append(f"event-level stochastic simulation at the preset ramp rate {bp['rate_V_per_s']:g} V/s "
                                 f"would need ~{est:.2g} steps per run; using 1200 V/s instead (set bench_params."
@@ -401,7 +403,7 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
         if bp["source"] == "ramp":
             user_rate = ramp_params(bp)
             if carrier and not user_rate:
-                est = _estimate_for(B.build_coupled(bp, p1, p2, vg1, vg2, "", ""), prof1, stochastic, carrier, st, payload)
+                est = _estimate_for(B.build_coupled(bp, p1, p2, vg1, vg2, "", ""), prof1, stochastic, carrier, st, payload, ls_cfg)
                 if est > 0.5 * _max_steps(payload):
                     warnings.append(f"event-level stochastic simulation at {bp['rate_V_per_s']:g} V/s would need ~{est:.2g} "
                                     "steps per run; using 1200 V/s instead")
@@ -425,7 +427,7 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
             if prof is None:
                 prof = branch_profile(pk, 301)
                 profiles[pk.tobytes()] = prof
-            wins.append(bistable_window(prof, ls_cfg, stochastic))
+            wins.append(noise_bands(prof, ls_cfg, stochastic, sol["noise_z_max"]))
         spec.meta["window"] = np.array(wins, float)
         prof = profiles[spec.net.STL[0]["p"].tobytes()]
         e = _estimate(spec, prof, stochastic, carrier, st, sol, window=wins[0])
@@ -454,7 +456,7 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
         i_threshold=det["i_threshold_A"],
         i_threshold_down=det["i_threshold_down_A"], ls_mode=ls_cfg.mode_code if stochastic else 0,
         ls_idx=ls_cfg.index, ls_sigma=ls_cfg.sigma, ls_tau=ls_cfg.tau_s, lsE_sigma=ls_cfg.sigma_E_V,
-        lsE_tau=ls_cfg.tau_E_s, ld_noise=st["ld_carrier_noise"] and carrier, mono_tau_frac=sol["mono_tau_frac"],
+        lsE_tau=ls_cfg.tau_E_s, ld_noise=st["ld_carrier_noise"] and carrier,
         dt_rec=t_end / 3000.0, dlni_rec=1.0 if carrier else 0.3,
         h_init=min(sol["dt_max_s"], max(10 * sol["dt_min_s"], 1e-7 * t_end)),
     )
@@ -471,7 +473,8 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
     stored_runs = []
     traj = None
     solver_stats = dict(steps=0, rejected=0, newton_iters=0, runtime_s=0.0)
-    regime_time = dict(t_total=0.0, t_drift_fast=0.0, t_gauss=0.0, t_lrs_drift=0.0, t_neg_u=0.0, t_neg_r=0.0)
+    regime_time = dict(t_total=0.0, t_drift_fast=0.0, t_gauss=0.0, t_lrs_drift=0.0, t_band_drift=0.0, t_neg_u=0.0,
+                       t_neg_r=0.0, steps_by_tier=[0] * 6, newton_by_tier=[0] * 6, rejected_by_tier=[0] * 6)
     min_u, min_r = np.inf, np.inf
     run_warn: list[str] = []
     for ci_, (key, xval, spec, nr) in enumerate(specs):
@@ -498,14 +501,19 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
             regime_time["t_drift_fast"] += out.t_unresolved
             regime_time["t_gauss"] += out.t_gauss
             regime_time["t_lrs_drift"] += out.t_lrs_drift
+            regime_time["t_band_drift"] += out.t_band_drift
             regime_time["t_neg_u"] += out.t_neg_u
             regime_time["t_neg_r"] += out.t_neg_r
+            for tier in range(6):
+                regime_time["steps_by_tier"][tier] += out.diag[3 * tier]
+                regime_time["newton_by_tier"][tier] += out.diag[3 * tier + 1]
+                regime_time["rejected_by_tier"][tier] += out.diag[3 * tier + 2]
             min_u, min_r = min(min_u, out.min_u), min(min_r, out.min_r)
             for w in out.warnings:
                 run_warn.append(f"run {run}" + (f" ({key} = {xval:g})" if key != "nominal" else "") + f": {w}")
             if ci_ == 0 and run < (MAX_STORED_RUNS if stochastic else 1):
                 sigs, tr = _signals(spec, net_c, out, ACTION_UNIT[ls_cfg.action], stochastic and ls_cfg.mode != "none",
-                                    ls_cfg.sigma_E_V > 0, cfg.i_floor)
+                                    ls_cfg.sigma_E_V > 0, cfg.i_floor, MAX_POINTS if run == 0 else MAX_POINTS_OTHER)
                 stored_runs.append(dict(run=run, **sigs))
                 if run == 0:
                     traj = tr
@@ -592,7 +600,7 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
         if folds["V_LD"] is not None and m_ld is not None:
             summary.append(_item("lag_LD", "V_LD − 폴드", "V_LD − fold", m_ld - folds["V_LD"], "V"))
         if not stochastic and traj is not None and bench == "load_line":
-            dh, dl = _branch_deviation(np.asarray(traj["vd"]), np.asarray(traj["id"]), p1, grid)
+            dh, dl = _branch_deviation(np.asarray(traj["vd"]), np.asarray(traj["id"]), cl)
             summary.append(_item("hrs_branch_dev", "HRS 가지 대비 |Δlog10 I_D| 중앙값", "HRS branch deviation, median |Δlog10 I_D|", dh, "dec"))
             summary.append(_item("lrs_branch_dev", "LRS 가지 대비 |Δlog10 I_D| 중앙값", "LRS branch deviation, median |Δlog10 I_D|", dl, "dec"))
     elif bench == "pulse" or (bench == "coupled" and bp["source"] == "pulse"):
@@ -692,7 +700,8 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
         tt = max(regime_time["t_total"], 1e-300)
         summary.append(_item("t_noise_resolved_frac", "잡음 분해 시간 비율 (사건 수준+가우스)",
                              "Fraction of time with resolved carrier noise",
-                             1.0 - (regime_time["t_drift_fast"] + regime_time["t_lrs_drift"]) / tt, "1"))
+                             1.0 - (regime_time["t_drift_fast"] + regime_time["t_lrs_drift"] + regime_time["t_band_drift"]) / tt,
+                             "1"))
     summary.append(_item("runs", "실행 수", "Runs", int(sum(nr for *_, nr in specs))))
     summary.append(_item("steps_per_run", "실행당 시간 스텝", "Time steps per run",
                          float(solver_stats["steps"] / max(total_runs, 1))))
@@ -729,7 +738,7 @@ def _max_steps(payload: dict) -> float:
 
 
 def _estimate(spec: B.BenchSpec, prof: dict, stochastic: bool, carrier: bool, st: dict, sol: dict,
-              window=(-np.inf, np.inf)) -> float:
+              window=(-np.inf, np.inf, -np.inf, np.inf)) -> float:
     tw, vw = spec.net.waves[spec.main_wave]
     sc = sol["reltol"] / 1e-3
     return estimate_steps(tw, vw, spec.net.t_end, prof, stochastic, carrier, sol["dt_max_s"],
@@ -737,14 +746,16 @@ def _estimate(spec: B.BenchSpec, prof: dict, stochastic: bool, carrier: bool, st
                           sol["noise_dt_min_s"], len(spec.net.breakpoints()),
                           ld_noise=bool(st.get("ld_carrier_noise")) and carrier,
                           gauss_tau_min=float(sol.get("gauss_tau_min_s", 2e-9)), gauss_tau_frac=float(sol.get("gauss_tau_frac", 0.5)),
-                          mono_tau_frac=float(sol.get("mono_tau_frac", 20.0)), window=window)
+                          window=window)
 
 
-def _estimate_for(spec: B.BenchSpec, prof: dict, stochastic: bool, carrier: bool, st: dict, payload: dict) -> float:
+def _estimate_for(spec: B.BenchSpec, prof: dict, stochastic: bool, carrier: bool, st: dict, payload: dict,
+                  ls_cfg=None) -> float:
     sol = B.merged(B.SOLVER_DEFAULTS, payload.get("solver"))
     t_end = spec.net.t_end
     sol["dt_max_s"] = float(sol["dt_max_s"]) if sol.get("dt_max_s") else t_end / 2000.0
     sol["reltol"] = float(sol["reltol"])
-    for k in ("tau_frac", "max_events_per_step", "noise_dt_min_s", "gauss_tau_min_s", "gauss_tau_frac", "mono_tau_frac"):
+    for k in ("tau_frac", "max_events_per_step", "noise_dt_min_s", "gauss_tau_min_s", "gauss_tau_frac", "noise_z_max"):
         sol[k] = float(sol[k])
-    return _estimate(spec, prof, stochastic, carrier, st, sol)
+    return _estimate(spec, prof, stochastic, carrier, st, sol,
+                     window=noise_bands(prof, ls_cfg, stochastic, sol["noise_z_max"]))

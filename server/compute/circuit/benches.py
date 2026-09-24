@@ -108,8 +108,10 @@ SOLVER_DEFAULTS = dict(
     gauss_tau_min_s=2e-9,       # stochastic: Gaussian (drift-implicit) noise tier for gauss_tau_min <= tau_rel;
                                 #             drift only below (and in a latched cell unless ld_carrier_noise)
     gauss_tau_frac=0.5,         # stochastic: h <= gauss_tau_frac * tau_rel in the Gaussian tier
-    mono_tau_frac=20.0,         # stochastic: outside the bistable window [V_LD - 0.25 V, V_LU + 0.25 V] (monostable,
-                                #             no escape possible) Gaussian tier with h <= mono_tau_frac * tau_rel; 0 disables
+    noise_z_max=12.0,           # stochastic: carrier noise only inside the noise bands, where the barrier to the saddle is
+                                #             < noise_z_max stationary SDs (calibrated: z = 12 <-> hazard <~ 1e-3 /s; HRS:
+                                #             [V(z = z_max), V_LU + 0.25 V], LRS:
+                                #             [V_LD - 0.25 V, V(z = z_max)]); drift only outside (no escape possible)
     gauss_threshold=100,        # stochastic: Poisson counts with mean > this use the Gaussian limit
 )
 

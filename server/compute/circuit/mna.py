@@ -43,20 +43,21 @@ N_CI = 16
 # ---- float config (cf) -------------------------------------------------------------------
 CF_TEND, CF_DTMIN, CF_DTMAX, CF_DUMAX, CF_DLNIMAX, CF_DVMAX, CF_LTEU, CF_TAUFRAC, CF_NEVMAX, \
     CF_HNOISEMIN, CF_GAUSS, CF_ITH, CF_IFLOOR, CF_DTREC, CF_DVREC, CF_DLNIREC, CF_LSSIG, CF_LSTAU, \
-    CF_LSESIG, CF_LSETAU, CF_HINIT, CF_NEWTOL, CF_ITHDN, CF_GTAUMIN, CF_GTAUFRAC, CF_MONOFRAC = range(26)
-N_CF = 26
+    CF_LSESIG, CF_LSETAU, CF_HINIT, CF_NEWTOL, CF_ITHDN, CF_GTAUMIN, CF_GTAUFRAC = range(25)
+N_CF = 25
 # ---- float state (sf) --------------------------------------------------------------------
 SF_T, SF_HNEXT, SF_HPREV, SF_TREC, SF_TUNRES, SF_MINU, SF_MINR, SF_TNEGU, SF_TNEGR, SF_TSTOP, SF_TGAUSS, \
-    SF_TLRS = range(12)
-N_SF = 12
+    SF_TLRS, SF_TBAND = range(13)
+N_SF = 13
 # ---- int state (si) ----------------------------------------------------------------------
 SI_STEPS, SI_REJ, SI_NEWT, SI_BP, SI_NEV, SI_NREC, SI_NSAMP, SI_STATUS, SI_UNRES, SI_TRAPBE, \
     SI_REFRESH, SI_HAVEPREV, SI_FAILNEWTON, SI_CHUNKSTEPS, SI_GAUSS = range(15)
-SI_DIAG = 15          # 15 + 3*regime + (0 steps, 1 newton iterations, 2 rejections), regime 0..4
-N_SI = 30
+SI_DIAG = 15          # 15 + 3*regime + (0 steps, 1 newton iterations, 2 rejections), regime 0..5
+N_SI = 33
 # per-step regime of the charge update (stochastic mode): 1 event-level explicit tau-leap,
 # 2 Gaussian drift-implicit (variance-corrected), 3 drift only (noise-active but relaxation too fast),
-# 4 drift only (latched cell, ld_carrier_noise off); 0 = deterministic
+# 4 drift only (latched cell, ld_carrier_noise off), 5 drift only (outside the noise band: barrier to
+# the saddle > noise_z_max stationary SDs, no escape possible); 0 = deterministic
 # status codes
 ST_DONE, ST_CHUNK, ST_FAIL, ST_MAXSTEPS, ST_BUFFER = 0, 1, 2, 3, 4
 # per-STL state columns (ss)
@@ -251,14 +252,14 @@ def assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
 @njit(cache=True)
 def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
            sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, emode, qc, tha, h,
-           refresh, maxit, J, f, xt, evt):
+           refresh, maxit, J, f, xt, evt, tolmul=1.0):
     """Solve the nonlinear system at one time point in place (x, ev, part).
     Returns (converged, iterations)."""
     nn = ci[CI_NN]
     nv = ci[CI_NV]
     ns = ci[CI_NS]
     n = x.shape[0]
-    tol = cf[CF_NEWTOL]
+    tol = cf[CF_NEWTOL] * tolmul
     if not eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev):
         return False, 0
     last_norm = 1e300
@@ -613,18 +614,24 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
         h = min(sf[SF_HNEXT], dt_max)
         sreg = 0
         if carrier:
-            sreg = 4
+            sreg = 5
             for k in range(ns):
                 reg[k] = 4
                 if not (ldnoise or ss[k, SS_LAT] < 0.5):
                     continue
                 tk = ss[k, SS_TAU]
                 vdsk = _nv(x, sD[k]) - _nv(x, sS[k])
-                if cf[CF_MONOFRAC] > 0.0 and (vdsk < win[k, 0] or vdsk > win[k, 1]):
-                    # outside the bistable window: monostable, no escape possible -> Gaussian tier
-                    # with h <= mono_tau_frac * tau (stationary variance still exact)
-                    reg[k] = 2
-                    h = min(h, cf[CF_MONOFRAC] * tk)
+                if ss[k, SS_LAT] > 0.5:
+                    blo = win[k, 2]
+                    bhi = win[k, 3]
+                else:
+                    blo = win[k, 0]
+                    bhi = win[k, 1]
+                if vdsk < blo or vdsk > bhi:
+                    # outside the noise band (barrier > noise_z_max SDs or monostable): drift only
+                    reg[k] = 5
+                elif tk < cf[CF_GTAUMIN] and tau_frac * tk < h_noise_min:
+                    reg[k] = 3
                 elif tau_frac * tk >= h_noise_min:
                     reg[k] = 1
                     h = min(h, tau_frac * tk)
@@ -739,9 +746,10 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                 elif du < -0.02:
                     x0[ku] = x[ku] - 0.02
             refresh = si[SI_REFRESH] == 1 or att > 0
+            tolmul = 20.0 if (carrier and sreg <= 2) else 1.0
             ok, iters = newton(x0, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
                                sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 0, qc, tha, h,
-                               refresh, 14, J, f, xt, evt)
+                               refresh, 14, J, f, xt, evt, tolmul)
             si[SI_NEWT] += iters
             si[SI_DIAG + 3 * sreg + 1] += iters
             if not ok:
@@ -795,6 +803,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             f3 = False
             f2 = False
             f4 = False
+            f5 = False
             for k in range(ns):
                 if reg[k] == 3:
                     f3 = True
@@ -802,6 +811,8 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                     f2 = True
                 elif reg[k] == 4:
                     f4 = True
+                elif reg[k] == 5:
+                    f5 = True
             if f3:
                 si[SI_UNRES] += 1
                 sf[SF_TUNRES] += h
@@ -810,6 +821,8 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                 sf[SF_TGAUSS] += h
             if f4:
                 sf[SF_TLRS] += h
+            if f5:
+                sf[SF_TBAND] += h
         # capacitor state
         for e in range(nc):
             vnew = _nv(x0, cA[e]) - _nv(x0, cB[e])
@@ -830,7 +843,9 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
         # per-element state
         for k in range(ns):
             ku = nn - 1 + nv + 2 * k
-            ss[k, SS_QN] = ev[k, 3]
+            # charge state = value of the integration formula (exact event bookkeeping in the
+            # explicit tier; Newton residual <= ~1e-4 q is not accumulated)
+            ss[k, SS_QN] = qc[k] + tha[k] * h * ev[k, 2]
             ss[k, SS_FN] = ev[k, 2]
             ss[k, SS_UNIT] = ev[k, 4]
             ss[k, SS_G] = ev[k, 5]
