@@ -58,3 +58,33 @@ test("live: stochastic run (paper preset) shows V_LU mean ± σ", async ({ page,
   await page.waitForTimeout(800);
   await page.screenshot({ path: "e2e/screenshots/live-stochastic.png" });
 });
+
+test("live: circuit load-line bench reproduces the folds", async ({ page, request }) => {
+  let ok = false;
+  try {
+    const r = await request.get("http://127.0.0.1:8000/api/health", { timeout: 3000 });
+    ok = r.ok() && (await r.json()).ok === true;
+  } catch {
+    ok = false;
+  }
+  test.skip(!ok, "backend not running on :8000");
+  test.setTimeout(300_000);
+  await page.addInitScript(() => {
+    try {
+      localStorage.clear();
+    } catch {
+      /* ignore */
+    }
+  });
+  await page.goto("/#tab=circuit&mode=deterministic");
+  await expect(page.getByTestId("backend-status")).toContainText("API", { timeout: 15_000 });
+  await page.getByTestId("bench-load_line").click();
+  await page.getByTestId("run-button").click();
+  const summary = page.getByTestId("circuit-summary");
+  await expect(summary).toBeVisible({ timeout: 240_000 });
+  // the circuit result must pass the §4 shape guard (no error box) and show the latch-up voltage
+  await expect(page.getByTestId("kpi-c-V_LU-value")).toContainText("3.70");
+  await expect(page.getByTestId("panel-waves").locator(".js-plotly-plot")).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: "e2e/screenshots/live-circuit.png", fullPage: true });
+});

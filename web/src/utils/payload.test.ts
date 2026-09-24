@@ -106,3 +106,24 @@ describe("object helpers", () => {
     expect(canonical({ b: 1, a: [2, { d: 1, c: 2 }] })).toBe('{"a":[2,{"c":2,"d":1}],"b":1}');
   });
 });
+
+describe("circuit defaults mirror server/compute/circuit/benches.py", () => {
+  it("auto values are sent as null; lists as arrays", () => {
+    const p = paper();
+    const ll = circuitPayload(p, "deterministic");
+    expect(ll.bench_params).toMatchObject({ v_min_V: 0, v_max_V: null, rate_V_per_s: null, n_cycles: 1, R_s_ohm: 1e3, C_d_F: 2e-15, vg_V: null });
+    expect((ll.solver as { dt_min_s: unknown }).dt_min_s).toBeNull();
+    const pulse = circuitPayload({ ...p, circuit: { ...p.circuit, bench: "pulse" } }, "stochastic");
+    expect(pulse.bench_params).toMatchObject({ v_amp_V: null, amplitudes_V: [], n_pulses: 10 });
+    expect((pulse.stochastic as { seed: number }).seed).toBe(2026092920);
+  });
+  it("persisted auto fields survive mergeDefaults (null ↔ number, arrays)", () => {
+    const base = paper().circuit.bench_params.pulse;
+    const m = mergeDefaults(base, { v_amp_V: 3.9, amplitudes_V: [3.6, 3.8], R_s_ohm: "x", old_key: 1 });
+    expect(m.v_amp_V).toBe(3.9);
+    expect(m.amplitudes_V).toEqual([3.6, 3.8]);
+    expect(m.R_s_ohm).toBe(1e3);
+    expect("old_key" in m).toBe(false);
+    expect(mergeDefaults(base, { v_amp_V: null }).v_amp_V).toBeNull();
+  });
+});

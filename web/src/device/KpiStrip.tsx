@@ -39,9 +39,9 @@ export function KpiStrip() {
   if (mode === "deterministic") {
     return (
       <div className="kpis" data-testid="kpis">
-        <Kpi id="vlu" label={t("kpi.vlu")} sym="V_{\mathrm{LU}}" value={noLatch ? t("kpi.nolatch") : v3(f?.V_LU)} unit={noLatch ? undefined : "V"} color="var(--hrs)" loading={bLoading} sub={f?.u_LU != null ? `u = ${v3(f.u_LU)} V` : undefined} />
-        <Kpi id="vld" label={t("kpi.vld")} sym="V_{\mathrm{LD}}" value={noLatch ? t("kpi.nolatch") : v3(f?.V_LD)} unit={noLatch ? undefined : "V"} color="var(--lrs)" loading={bLoading} sub={f?.u_LD != null ? `u = ${v3(f.u_LD)} V` : undefined} />
-        <Kpi id="window" label={t("kpi.window")} sym="\Delta V" value={mV(f?.window_V ?? (isNum(f?.V_LU) && isNum(f?.V_LD) ? f!.V_LU! - f!.V_LD! : null))} unit="mV" color="var(--det)" loading={bLoading} sub="V_LU − V_LD" />
+        <Kpi id="vlu" label={t("kpi.vlu")} sym="V_{\mathrm{LU}}" value={noLatch ? t("kpi.nolatch") : v3(f?.V_LU)} unit={noLatch || !br ? undefined : "V"} color="var(--hrs)" loading={bLoading} sub={f?.u_LU != null ? `u = ${v3(f.u_LU)} V` : undefined} />
+        <Kpi id="vld" label={t("kpi.vld")} sym="V_{\mathrm{LD}}" value={noLatch ? t("kpi.nolatch") : v3(f?.V_LD)} unit={noLatch || !br ? undefined : "V"} color="var(--lrs)" loading={bLoading} sub={f?.u_LD != null ? `u = ${v3(f.u_LD)} V` : undefined} />
+        <Kpi id="window" label={t("kpi.window")} sym="\Delta V" value={mV(f?.window_V ?? (isNum(f?.V_LU) && isNum(f?.V_LD) ? f!.V_LU! - f!.V_LD! : null))} unit={br ? "mV" : undefined} color="var(--det)" loading={bLoading} sub="V_LU − V_LD" />
         <Kpi id="ifold" label={t("kpi.ifold")} sym="I_{\mathrm{LU}}" value={fmtSI(f?.I_LU, "A", 3)} color="var(--unstable)" loading={bLoading} sub={isNum(f?.I_LD) ? `I_LD = ${fmtSI(f?.I_LD, "A", 3)}` : undefined} />
         <Kpi id="runtime" label={t("kpi.runtime")} value={fmtDuration(br?.runtime_s)} color="var(--border-strong)" loading={bLoading} sub={be?.cached ? t("cached") : be?.mock ? t("demo") : isNum(br?.iph_A) ? `I_PH = ${fmtSI(br!.iph_A, "A", 3)}` : undefined} />
       </div>
@@ -52,9 +52,9 @@ export function KpiStrip() {
   const ld = mc?.stats.LD;
   return (
     <div className="kpis" data-testid="kpis">
-      <Kpi id="vlu" label={`${t.lang === "ko" ? "래치업" : t("kpi.vlu")} · ${t("kpi.mean")}`} sym="V_{\mathrm{LU}}" value={<>{v3(lu?.mean)}<span className="u">± {mV(lu?.sd)} mV</span></>} color="var(--sto)" loading={mLoading} sub={`${t("kpi.fold")}: ${v3(mc?.centre.V_LU ?? f?.V_LU)} V`} />
-      <Kpi id="vld" label={`${t.lang === "ko" ? "래치다운" : t("kpi.vld")} · ${t("kpi.mean")}`} sym="V_{\mathrm{LD}}" value={<>{v3(ld?.mean)}<span className="u">± {mV(ld?.sd)} mV</span></>} color="var(--lrs)" loading={mLoading} sub={`${t("kpi.fold")}: ${v3(mc?.centre.V_LD ?? f?.V_LD)} V`} />
-      <Kpi id="window" label={t("kpi.window")} sym="\Delta V" value={mV(isNum(lu?.mean) && isNum(ld?.mean) ? lu!.mean! - ld!.mean! : null)} unit="mV" color="var(--det)" loading={mLoading} sub="⟨V_LU⟩ − ⟨V_LD⟩" />
+      <Kpi id="vlu" label={`${t.lang === "ko" ? "래치업" : t("kpi.vlu")} · ${t("kpi.mean")}`} sym="V_{\mathrm{LU}}" value={mc ? <>{v3(lu?.mean)}<span className="u">± {mV(lu?.sd)} mV</span></> : "—"} color="var(--sto)" loading={mLoading} sub={mc || f ? `${t("kpi.fold")}: ${v3(mc?.centre.V_LU ?? f?.V_LU)} V` : undefined} />
+      <Kpi id="vld" label={`${t.lang === "ko" ? "래치다운" : t("kpi.vld")} · ${t("kpi.mean")}`} sym="V_{\mathrm{LD}}" value={mc ? <>{v3(ld?.mean)}<span className="u">± {mV(ld?.sd)} mV</span></> : "—"} color="var(--lrs)" loading={mLoading} sub={mc || f ? `${t("kpi.fold")}: ${v3(mc?.centre.V_LD ?? f?.V_LD)} V` : undefined} />
+      <Kpi id="window" label={t("kpi.window")} sym="\Delta V" value={mV(isNum(lu?.mean) && isNum(ld?.mean) ? lu!.mean! - ld!.mean! : null)} unit={mc ? "mV" : undefined} color="var(--det)" loading={mLoading} sub="⟨V_LU⟩ − ⟨V_LD⟩" />
       <Kpi id="cycles" label={t("kpi.cycles")} value={mc ? String(mc.V_LU.length) : "—"} color="var(--border-strong)" loading={mLoading} sub={mc ? `${t("kpi.censored")}: ${lu?.censored ?? 0}` : undefined} />
       <Kpi id="runtime" label={t("kpi.runtime")} value={fmtDuration(mc?.runtime_s)} color="var(--border-strong)" loading={mLoading} sub={mc ? `${t("kpi.engine")}: ${mc.engine}${me?.cached ? " · " + t("cached") : ""}` : undefined} />
     </div>

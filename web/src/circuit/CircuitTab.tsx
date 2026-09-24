@@ -71,11 +71,12 @@ export function splitUnit(v: number | string | null | undefined, unit?: string, 
   if (typeof v === "string") return { value: v, unit: unit && unit !== "1" ? unit : "" };
   if (!isNum(v)) return { value: "—", unit: "" };
   if (force === "mV") return { value: (v * 1e3).toFixed(1), unit: "mV" };
-  if (unit === "V") return { value: v.toFixed(3), unit: "V" };
+  if (unit === "V") return Math.abs(v) < 0.1 && v !== 0 ? { value: fmtSig(v * 1e3, 3), unit: "mV" } : { value: v.toFixed(3), unit: "V" };
   if (unit === "A" || unit === "C" || unit === "s" || unit === "F" || unit === "Ω") {
     const [f, p] = siPrefix(v);
     return { value: (v / f).toPrecision(3), unit: `${p}${unit}` };
   }
+  if (Number.isInteger(v)) return { value: v.toLocaleString("en-US"), unit: unit && unit !== "1" ? unit : "" };
   return { value: fmtSig(v, 3), unit: unit && unit !== "1" ? unit : "" };
 }
 
@@ -215,7 +216,7 @@ function DistributionsPanel({ res }: { res: CircuitResult }) {
   const t = useT();
   const c = usePalette();
   const [k, setK] = useState(0);
-  const dists = res.distributions ?? [];
+  const dists = (res.distributions ?? []).filter((d) => finite(d.values).length >= 3);
   const d = dists[Math.min(k, dists.length - 1)];
   const plot = useMemo(() => {
     if (!d) return undefined;
@@ -327,7 +328,7 @@ export function CircuitTab() {
     <>
       <BenchPicker />
       {res && res.bench === bench && res.summary.length > 0 && (
-        <div className="kpis" data-testid="circuit-summary">
+        <div className="kpis wrap" data-testid="circuit-summary">
           {res.summary.map((s, i) => {
             const v = splitUnit(s.value, s.unit);
             const sp = isNum(s.spread) ? splitUnit(s.spread, s.unit, s.unit === "V" ? "mV" : undefined) : null;
@@ -343,6 +344,19 @@ export function CircuitTab() {
           <div className="panel-foot schematic">
             <Schematic nodes={sch.nodes} elements={sch.elements} title={t(BENCHES[bench].title)} />
           </div>
+          {res && res.bench === bench && res.bench_params && (
+            <div className="panel-foot">
+              <div className="chips" data-testid="resolved-params" aria-label="resolved bench parameters">
+                {Object.entries(res.bench_params)
+                  .filter(([, v]) => typeof v === "number" || typeof v === "string")
+                  .map(([k, v]) => (
+                    <span key={k} className="chip" title={k}>
+                      {k} = {typeof v === "number" ? (Number.isInteger(v) ? String(v) : fmtSig(v, 4)) : String(v)}
+                    </span>
+                  ))}
+              </div>
+            </div>
+          )}
         </Panel>
         <WaveformPanel res={res} entry={entry} currentKey={key} />
         <TrajectoryPanel res={res} entry={entry} currentKey={key} />

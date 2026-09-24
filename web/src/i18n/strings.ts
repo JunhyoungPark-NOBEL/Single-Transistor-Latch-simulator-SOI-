@@ -223,7 +223,7 @@ export const STRINGS = {
   "stats.sd": { ko: "SD", en: "SD" },
   "stats.median": { ko: "중앙값", en: "median" },
   "stats.lag1": { ko: "lag-1", en: "lag-1" },
-  "stats.censored": { ko: "censored", en: "censored" },
+  "stats.censored": { ko: "cens.", en: "cens." },
   "hz.h": { ko: "hazard h", en: "hazard h" },
   "hz.S": { ko: "생존 S", en: "survival S" },
   "hz.fold": { ko: "fold", en: "fold" },

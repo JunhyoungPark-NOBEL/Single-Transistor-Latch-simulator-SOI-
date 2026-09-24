@@ -141,7 +141,7 @@ function StatsTable({ rows }: { rows: { label: string; st: Stats | null | undefi
             <th className="num">{t("stats.median")}</th>
             <th className="num">p05 – p95</th>
             <th className="num">{t("stats.lag1")}</th>
-            <th className="num">{t("stats.censored")}</th>
+            <th className="num" title="censored (no latch within the sweep)">{t("stats.censored")}</th>
           </tr>
         </thead>
         <tbody>

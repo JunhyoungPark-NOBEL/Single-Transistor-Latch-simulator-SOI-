@@ -190,6 +190,8 @@ export interface CircuitResult extends Common {
   trajectory?: XY;
   schematic: { nodes: string[]; elements: SchematicElement[] };
   solver_stats: { steps: number; rejected: number; newton_iters: number; runtime_s: number };
+  /** Optional (circuit package): bench parameters with the "auto" values resolved. */
+  bench_params?: Record<string, unknown>;
 }
 export interface SolverBlock {
   method: "BE" | "TRAP"; dt_min_s: number | null; dt_max_s: number | null; reltol: number; max_steps: number;

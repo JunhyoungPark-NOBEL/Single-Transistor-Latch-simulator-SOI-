@@ -412,7 +412,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .eq { margin: 10px 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); overflow: hidden; }
 .eq-label { display: flex; align-items: center; gap: 8px; padding: 6px 10px 0; font-size: 12px; font-weight: 650; color: var(--text-2); }
 .eq-label .spacer { flex: 1; }
-.eq-copy { opacity: 0; transition: opacity .15s; }
+.eq-copy { opacity: .5; transition: opacity .15s; }
 .eq:hover .eq-copy, .eq-copy:focus-visible { opacity: 1; }
 .eq-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 2px 10px 4px 12px; }
 .eq-tex { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
@@ -428,7 +428,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .var-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .var-table td.v { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .var-table td.c code { font-size: 11px; }
-.notes { margin: 8px 0; padding: 8px 12px; border-radius: 10px; background: var(--warn-soft); border-left: 3px solid var(--warn); font-size: 12.5px; }
+.notes { margin: 8px 0; padding: 8px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid color-mix(in srgb, var(--warn) 70%, transparent); font-size: 12.5px; color: var(--text-2); }
 .notes .notes-title { font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .05em; color: var(--warn); margin-bottom: 4px; }
 .notes ul { margin: 0; padding-left: 16px; }
 .notes li p { margin: 0; }
@@ -513,7 +513,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .panel-actions { display: flex; align-items: center; gap: 4px; flex: none; }
 .icon-btn.xs { width: 26px; height: 26px; border-radius: 7px; border-color: transparent; background: transparent; color: var(--muted); }
 .icon-btn.xs:hover { border-color: var(--border); background: var(--surface-2); color: var(--text); }
-.table.compact th, .table.compact td { padding: 5px 6px; font-size: 12px; }
+.table.compact th, .table.compact td { padding: 5px 5px; font-size: 11.5px; }
 .table.compact td.num { white-space: nowrap; }
 
 .pw .eq-tex .katex { font-size: 1em; }
@@ -530,3 +530,5 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .auto-row { display: flex; align-items: center; gap: 8px; margin-top: -2px; }
 .auto-row .chip { font-family: var(--font); font-size: 11px; padding: 0 8px; }
 .input::placeholder { color: var(--faint); font-family: var(--font); }
+.kpis.wrap { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.kpis.wrap .kpi-label { white-space: normal; line-height: 1.3; min-height: 2.6em; align-items: flex-start; }
