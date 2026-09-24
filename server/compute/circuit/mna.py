@@ -43,15 +43,15 @@ N_CI = 15
 # ---- float config (cf) -------------------------------------------------------------------
 CF_TEND, CF_DTMIN, CF_DTMAX, CF_DUMAX, CF_DLNIMAX, CF_DVMAX, CF_LTEU, CF_TAUFRAC, CF_NEVMAX, \
     CF_HNOISEMIN, CF_GAUSS, CF_ITH, CF_IFLOOR, CF_DTREC, CF_DVREC, CF_DLNIREC, CF_LSSIG, CF_LSTAU, \
-    CF_LSESIG, CF_LSETAU, CF_HINIT, CF_NEWTOL = range(22)
-N_CF = 22
+    CF_LSESIG, CF_LSETAU, CF_HINIT, CF_NEWTOL, CF_ITHDN, CF_GTAUMIN, CF_GTAUFRAC = range(25)
+N_CF = 25
 # ---- float state (sf) --------------------------------------------------------------------
-SF_T, SF_HNEXT, SF_HPREV, SF_TREC, SF_TUNRES, SF_MINU, SF_MINR, SF_TNEGU, SF_TNEGR, SF_TSTOP = range(10)
-N_SF = 10
+SF_T, SF_HNEXT, SF_HPREV, SF_TREC, SF_TUNRES, SF_MINU, SF_MINR, SF_TNEGU, SF_TNEGR, SF_TSTOP, SF_TGAUSS = range(11)
+N_SF = 11
 # ---- int state (si) ----------------------------------------------------------------------
 SI_STEPS, SI_REJ, SI_NEWT, SI_BP, SI_NEV, SI_NREC, SI_NSAMP, SI_STATUS, SI_UNRES, SI_TRAPBE, \
-    SI_REFRESH, SI_HAVEPREV, SI_FAILNEWTON, SI_CHUNKSTEPS = range(14)
-N_SI = 14
+    SI_REFRESH, SI_HAVEPREV, SI_FAILNEWTON, SI_CHUNKSTEPS, SI_GAUSS = range(15)
+N_SI = 15
 # status codes
 ST_DONE, ST_CHUNK, ST_FAIL, ST_MAXSTEPS, ST_BUFFER = 0, 1, 2, 3, 4
 # per-STL state columns (ss)
@@ -422,6 +422,21 @@ def draw_dq(h, unit, gq, lq, r, rv, pmf, pk, gth):
 
 
 @njit(cache=True)
+def noise_var_rate(unit, gq, lq, r, rv, pmf, pk):
+    """Diffusion coefficient of the body charge, q^2 (N_up + N_down + II rate * M2/M1)  (C^2/s)."""
+    ii = gq - unit
+    up1 = (max(unit, 0.0) + max(-lq, 0.0)) / QE
+    dn1 = (max(lq, 0.0) + max(-unit, 0.0) + max(-ii, 0.0)) / QE
+    iic = max(ii, 0.0) / QE
+    m2m1 = 1.0
+    if iic > 0.0:
+        p1, m1, m2 = pmf_at(r, rv, pmf, pk)
+        if m1 > 0.0 and p1 > 0.0:
+            m2m1 = m2 / m1
+    return QE * QE * (up1 + dn1 + iic * m2m1)
+
+
+@njit(cache=True)
 def total_event_rate(unit, gq, lq, r, rv, pmf, pk):
     ii = gq - unit
     up1 = (max(unit, 0.0) + max(-lq, 0.0)) / QE
@@ -534,6 +549,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
     h_noise_min = cf[CF_HNOISEMIN]
     gth = cf[CF_GAUSS]
     i_th = cf[CF_ITH]
+    i_dn = cf[CF_ITHDN]
     i_floor = cf[CF_IFLOOR]
     rec_w = rec.shape[1]
     nb = bp.shape[0]
@@ -585,6 +601,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             si[SI_BP] += 1
         h = min(sf[SF_HNEXT], dt_max)
         resolved = False
+        regime = 0
         if carrier:
             taumin = 1e300
             rate_max = 0.0
@@ -598,9 +615,16 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                     hdrift = min(hdrift, du_max * abs(part[k, P_QU]) / fk)
             if tau_frac * taumin >= h_noise_min:
                 resolved = True
+                regime = 1
                 h = min(h, tau_frac * taumin, hdrift)
                 if rate_max > 0.0:
                     h = min(h, nev_max / rate_max)
+            elif taumin >= cf[CF_GTAUMIN]:
+                resolved = True
+                regime = 2
+                h = min(h, cf[CF_GTAUFRAC] * taumin, hdrift)
+            else:
+                regime = 3
         hit = False
         if si[SI_BP] < nb:
             tb = bp[si[SI_BP]]
@@ -642,10 +666,19 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             # charge-equation mode for this step
             use_trap = False
             if carrier:
-                if resolved:
+                if regime == 1:
                     th = 0.0
                     for k in range(ns):
                         dq[k] = draw_dq(h, ss[k, SS_UNIT], ss[k, SS_G], ss[k, SS_L], ss[k, SS_R], rv, pmf, pk, gth)
+                        qc[k] = ss[k, SS_QN] + dq[k]
+                elif regime == 2:
+                    # Gaussian limit, drift-implicit, variance-corrected (exact stationary variance
+                    # of the linearised OU process for any h/tau): eta ~ N(0, D h (1 + h/(2 tau)))
+                    th = 1.0
+                    for k in range(ns):
+                        dvar = noise_var_rate(ss[k, SS_UNIT], ss[k, SS_G], ss[k, SS_L], ss[k, SS_R], rv, pmf, pk)
+                        tk = ss[k, SS_TAU]
+                        dq[k] = np.sqrt(dvar * h * (1.0 + 0.5 * h / tk)) * np.random.normal()
                         qc[k] = ss[k, SS_QN] + dq[k]
                 else:
                     # fast-relaxing state (tau_frac*tau_rel < noise_dt_min): drift only (implicit BE)
@@ -739,9 +772,12 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
         si[SI_CHUNKSTEPS] += 1
         if method == 1 and not carrier and not use_trap:
             si[SI_TRAPBE] += 1
-        if carrier and not resolved:
+        if carrier and regime == 3:
             si[SI_UNRES] += 1
             sf[SF_TUNRES] += h
+        if carrier and regime == 2:
+            si[SI_GAUSS] += 1
+            sf[SF_TGAUSS] += h
         # capacitor state
         for e in range(nc):
             vnew = _nv(x0, cA[e]) - _nv(x0, cB[e])
@@ -788,13 +824,14 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             kind = 0
             if lat < 0.5 and i0 < i_th and i1 >= i_th:
                 kind = 1
-            elif lat > 0.5 and i0 >= i_th and i1 < i_th:
+            elif lat > 0.5 and i0 >= i_dn and i1 < i_dn:
                 kind = 2
             if kind > 0:
+                ith = i_th if kind == 1 else i_dn
                 if i0 > 0 and i1 > 0:
-                    a = (np.log(i_th) - np.log(i0)) / (np.log(i1) - np.log(i0))
+                    a = (np.log(ith) - np.log(i0)) / (np.log(i1) - np.log(i0))
                 else:
-                    a = (i_th - i0) / (i1 - i0)
+                    a = (ith - i0) / (i1 - i0)
                 a = min(max(a, 0.0), 1.0)
                 te = t_old + a * h
                 ne = si[SI_NEV]
@@ -805,7 +842,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                 evb[ne, EV_T] = te
                 evb[ne, EV_VDS] = vds0 + a * (vds1 - vds0)
                 evb[ne, EV_VSRC] = wave_value(mainw, te, wt, wv, woff) if mainw >= 0 else np.nan
-                evb[ne, EV_I] = i_th
+                evb[ne, EV_I] = ith
                 si[SI_NEV] = ne + 1
                 ss[k, SS_LAT] = 1.0 if kind == 1 else 0.0
                 evflag = True

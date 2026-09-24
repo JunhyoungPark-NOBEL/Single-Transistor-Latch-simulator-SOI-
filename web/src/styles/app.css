@@ -527,3 +527,6 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .field-stack .select { width: 100%; }
 .exp { font-size: 9.5px; padding: 0 4px; line-height: 15px; }
 .runbar-status .mono { white-space: nowrap; flex: none; }
+.auto-row { display: flex; align-items: center; gap: 8px; margin-top: -2px; }
+.auto-row .chip { font-family: var(--font); font-size: 11px; padding: 0 8px; }
+.input::placeholder { color: var(--faint); font-family: var(--font); }

@@ -19,6 +19,8 @@ export interface FieldProps {
 const optLabel = (t: T, o: Option) => (typeof o.label === "string" ? t(o.label as StrKey) : t.l(o.label));
 
 function fmtDefault(t: T, f: FieldDef, ctx: Ctx, def: unknown): string {
+  if (def === null) return t("auto");
+  if (Array.isArray(def)) return def.length ? def.join(", ") : "[ ]";
   if (typeof def === "boolean") return def ? t("on") : t("off");
   if (typeof def === "number") {
     if (f.options) {
@@ -86,9 +88,10 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
   const id = useId();
   const scale = scaleOf(f, ctx);
   const unit = unitOf(f, ctx);
+  const isAuto = value === null && !!f.auto;
   const num = typeof value === "number" ? value : Number(value);
-  const disp = num * scale;
-  const show = (v: number) => (f.int && Number.isFinite(v) ? String(Math.round(v)) : toInputString(v));
+  const disp = isAuto ? NaN : num * scale;
+  const show = (v: number) => (!Number.isFinite(v) ? "" : f.int ? String(Math.round(v)) : toInputString(v));
   const [text, setText] = useState(show(disp));
   const [editing, setEditing] = useState(false);
   useEffect(() => {
@@ -97,15 +100,16 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
   }, [disp, editing]);
   const parsed = parseNumber(text);
   const outOfRange = parsed !== null && ((f.min !== undefined && parsed < f.min - 1e-12) || (f.max !== undefined && parsed > f.max + 1e-12));
-  const error = parsed === null ? t("invalid") : outOfRange ? t("range", { min: toInputString(f.min, 4), max: toInputString(f.max, 4) }) : null;
-  const changed = typeof def === "number" && !nearlyEqual(num, def);
+  const emptyAuto = f.auto && text.trim() === "";
+  const error = emptyAuto ? null : parsed === null ? t("invalid") : outOfRange ? t("range", { min: toInputString(f.min, 4), max: toInputString(f.max, 4) }) : null;
+  const changed = def === null ? value !== null : typeof def === "number" && !nearlyEqual(num, def);
 
   const commit = (v: number) => {
     let x = f.int ? Math.round(v) : v;
     if (f.min !== undefined) x = Math.max(f.min, x);
     if (f.max !== undefined) x = Math.min(f.max, x);
     const stored = x / scale;
-    if (!nearlyEqual(stored, num, 1e-12)) onChange(stored);
+    if (isAuto || !nearlyEqual(stored, num, 1e-12)) onChange(stored);
   };
   const stepBy = (dir: number, big: boolean) => {
     const base = parsed ?? disp;
@@ -136,8 +140,13 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
             aria-invalid={!!error}
             aria-describedby={error ? `${id}-err` : undefined}
             onFocus={() => setEditing(true)}
+            placeholder={f.auto ? t("auto") : undefined}
             onChange={(e) => {
               setText(e.target.value);
+              if (f.auto && e.target.value.trim() === "") {
+                if (value !== null) onChange(null);
+                return;
+              }
               const v = parseNumber(e.target.value);
               if (v !== null && !((f.min !== undefined && v < f.min) || (f.max !== undefined && v > f.max))) commit(v);
             }}
@@ -160,12 +169,20 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
           {unit && <span className="unit">{unit}</span>}
         </div>
       </div>
+      {f.auto && (
+        <div className="auto-row">
+          <button type="button" className="chip" aria-pressed={isAuto} onClick={() => { setText(""); onChange(null); }} title={t("auto.hint")} data-testid={`auto-${f.key}`}>
+            {t("auto")}
+          </button>
+          {isAuto && <span className="small muted">{t("auto.hint")}</span>}
+        </div>
+      )}
       {error && editing && (
         <div className="field-err" id={`${id}-err`} role="alert">
           {error}
         </div>
       )}
-      {f.slider && (
+      {f.slider && !isAuto && (
         <div className="field-slider">
           <input
             type="range"
@@ -242,8 +259,59 @@ function SegmentedField({ f, ctx, value, def, onChange }: FieldProps) {
   );
 }
 
+function ListField({ f, ctx, value, def, onChange }: FieldProps) {
+  const t = useT();
+  const id = useId();
+  const scale = scaleOf(f, ctx);
+  const unit = unitOf(f, ctx);
+  const arr = Array.isArray(value) ? (value as number[]) : [];
+  const toText = (a: number[]) => a.map((v) => toInputString(v * scale)).join(", ");
+  const [text, setText] = useState(toText(arr));
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) setText(toText(arr));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(arr), editing, scale]);
+  const parts = text.split(/[,;\s]+/).filter(Boolean);
+  const nums = parts.map(parseNumber);
+  const bad = nums.some((v) => v === null || (f.min !== undefined && v < f.min) || (f.max !== undefined && v > f.max));
+  const changed = JSON.stringify(arr) !== JSON.stringify(def ?? []);
+  const commit = () => {
+    if (bad) return;
+    onChange((nums as number[]).map((v) => v / scale));
+  };
+  return (
+    <div className="field" data-testid={`field-${f.key}`}>
+      <div className="field-stack">
+        <Label f={f} ctx={ctx} def={def} changed={changed} htmlFor={id} />
+        <div className="input-wrap">
+          <input
+            id={id}
+            className={`input${bad ? " invalid" : ""}`}
+            style={{ textAlign: "left", paddingRight: 40 }}
+            value={text}
+            placeholder={t("list.placeholder")}
+            spellCheck={false}
+            aria-invalid={bad}
+            onFocus={() => setEditing(true)}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={() => {
+              setEditing(false);
+              commit();
+            }}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          />
+          {unit && <span className="unit">{unit}</span>}
+        </div>
+        {bad && <div className="field-err">{t("invalid")}{f.min !== undefined ? ` · ${t("range", { min: toInputString(f.min, 4), max: toInputString(f.max, 4) })}` : ""}</div>}
+      </div>
+    </div>
+  );
+}
+
 export function Field(props: FieldProps) {
   switch (props.f.type) {
+    case "list": return <ListField {...props} />;
     case "toggle": return <ToggleField {...props} />;
     case "select": return <SelectField {...props} />;
     case "segmented": return <SegmentedField {...props} />;

@@ -24,29 +24,46 @@ type AxisKind = (typeof AXES)[number];
 const axisOf = (s: Signal): AxisKind =>
   (s.axis as AxisKind) ?? (s.unit === "V" ? "voltage" : s.unit === "A" ? "current" : s.unit === "C" ? "charge" : s.unit === "1" ? "logic" : "state");
 
-/** Default netlists shown before the first run (same element naming as the mock/back end). */
+/** Default netlists shown before the first run (element names as server/compute/circuit/benches.py). */
 function defaultSchematic(bench: BenchId, vg: number): CircuitResult["schematic"] {
-  const base = [
-    { kind: "V", name: "V1", nodes: ["src", "0"], value: bench === "pulse" ? "pulse" : bench === "pbit" ? "DC" : "ramp" },
-    { kind: "R", name: "R1", nodes: ["src", "d"] },
-    { kind: "STL", name: "M1", nodes: ["d", "g", "0"] },
-    { kind: "V", name: "VG", nodes: ["g", "0"], value: `${vg} V` },
+  const cell = (k: number, d: string, g: string) => [
+    { kind: "STL", name: `X${k}`, nodes: [d, g, "0"] },
+    { kind: "V", name: `VG${k}`, nodes: [g, "0"], value: `${vg} V (DC)` },
   ];
-  if (bench === "pbit") return { nodes: ["src", "d", "out", "g", "0"], elements: [...base, { kind: "CMP", name: "X1", nodes: ["d", "out"] }] };
-  if (bench === "coupled")
+  if (bench === "pbit")
     return {
-      nodes: ["src", "d1", "d2", "g", "0"],
+      nodes: ["clk", "d", "g", "0"],
       elements: [
-        { kind: "V", name: "V1", nodes: ["src", "0"], value: "ramp" },
-        { kind: "R", name: "R1", nodes: ["src", "d1"] },
-        { kind: "R", name: "R2", nodes: ["src", "d2"] },
-        { kind: "R", name: "Rc", nodes: ["d1", "d2"] },
-        { kind: "STL", name: "M1", nodes: ["d1", "g", "0"] },
-        { kind: "STL", name: "M2", nodes: ["d2", "g", "0"] },
-        { kind: "V", name: "VG", nodes: ["g", "0"], value: `${vg} V` },
+        { kind: "V", name: "Vclk", nodes: ["clk", "0"], value: "clock" },
+        { kind: "R", name: "RL", nodes: ["clk", "d"], value: "100 kΩ" },
+        { kind: "C", name: "Cd", nodes: ["d", "0"], value: "2 fF" },
+        ...cell(1, "d", "g"),
+        { kind: "CMP", name: "CMP", nodes: ["d"], value: "bit = [v_D < v_th]" },
       ],
     };
-  return { nodes: ["src", "d", "g", "0"], elements: base };
+  if (bench === "coupled")
+    return {
+      nodes: ["src", "d1", "d2", "g1", "g2", "0"],
+      elements: [
+        { kind: "V", name: "Vsrc", nodes: ["src", "0"], value: "ramp / pulses" },
+        { kind: "R", name: "Rs1", nodes: ["src", "d1"], value: "100 kΩ" },
+        { kind: "R", name: "Rs2", nodes: ["src", "d2"], value: "100 kΩ" },
+        { kind: "R", name: "Rc", nodes: ["d1", "d2"], value: "1 MΩ" },
+        { kind: "C", name: "Cd1", nodes: ["d1", "0"], value: "2 fF" },
+        { kind: "C", name: "Cd2", nodes: ["d2", "0"], value: "2 fF" },
+        ...cell(1, "d1", "g1"),
+        ...cell(2, "d2", "g2"),
+      ],
+    };
+  return {
+    nodes: ["src", "d", "g", "0"],
+    elements: [
+      { kind: "V", name: "Vsrc", nodes: ["src", "0"], value: bench === "pulse" ? "pulses" : "triangle" },
+      { kind: "R", name: "Rs", nodes: ["src", "d"], value: "1 kΩ" },
+      { kind: "C", name: "Cd", nodes: ["d", "0"], value: "2 fF" },
+      ...cell(1, "d", "g"),
+    ],
+  };
 }
 
 /** Summary value → display value + unit (V with 3 decimals, A/C/s with SI prefixes, dimensionless plain). */
@@ -86,7 +103,7 @@ function timeScale(t: (number | null)[]): [number, string] {
   return [1 / f, `${p}s`];
 }
 
-function WaveformPanel({ res, entry }: { res: CircuitResult | undefined; entry: ReturnType<typeof useEntry>["entry"] }) {
+function WaveformPanel({ res, entry, currentKey }: { res: CircuitResult | undefined; entry: ReturnType<typeof useEntry>["entry"]; currentKey: string }) {
   const t = useT();
   const c = usePalette();
   const [run, setRun] = useState<string>("0");
@@ -145,6 +162,7 @@ function WaveformPanel({ res, entry }: { res: CircuitResult | undefined; entry: 
     <Panel
       id="waves"
       wide
+      currentKey={currentKey}
       title={t("c.waves")}
       desc={t("c.waves.desc")}
       topic="circuit-element"
@@ -173,7 +191,7 @@ function WaveformPanel({ res, entry }: { res: CircuitResult | undefined; entry: 
   );
 }
 
-function TrajectoryPanel({ res, entry }: { res: CircuitResult | undefined; entry: ReturnType<typeof useEntry>["entry"] }) {
+function TrajectoryPanel({ res, entry, currentKey }: { res: CircuitResult | undefined; entry: ReturnType<typeof useEntry>["entry"]; currentKey: string }) {
   const t = useT();
   const c = usePalette();
   const { data: br } = useEntry<BranchesResult>("circuit_branches");
@@ -190,7 +208,7 @@ function TrajectoryPanel({ res, entry }: { res: CircuitResult | undefined; entry
     traces.push({ x: nums(res.trajectory.vd), y: pos(res.trajectory.id), type: "scatter", mode: "lines", name: "run 0", line: { color: c.categorical[6], width: 1.6 }, hovertemplate: `${HOVER_IV}<extra>trajectory</extra>` });
     return { data: traces, layout: { xaxis: { title: { text: "V<sub>D</sub> (V)" } }, yaxis: { ...currentAxis(true), range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) } } as Partial<Layout> };
   }, [res, br, c, t]);
-  return <Panel id="trajectory" title={t("c.traj")} desc={t("c.traj.desc")} topic="circuit-element" entry={entry} hasData={!!plot} csvName="trajectory" plot={plot ?? { data: [], layout: {} }} />;
+  return <Panel id="trajectory" title={t("c.traj")} desc={t("c.traj.desc")} topic="circuit-element" entry={entry} hasData={!!plot} currentKey={currentKey} csvName="trajectory" plot={plot ?? { data: [], layout: {} }} />;
 }
 
 function DistributionsPanel({ res }: { res: CircuitResult }) {
@@ -308,7 +326,7 @@ export function CircuitTab() {
   return (
     <>
       <BenchPicker />
-      {res && res.summary.length > 0 && (
+      {res && res.bench === bench && res.summary.length > 0 && (
         <div className="kpis" data-testid="circuit-summary">
           {res.summary.map((s, i) => {
             const v = splitUnit(s.value, s.unit);
@@ -320,14 +338,14 @@ export function CircuitTab() {
         </div>
       )}
       <div className="grid">
-        <Panel id="schematic" title={t("c.schematic")} desc={t("c.schematic.desc")} topic="circuit-element" hasData entry={running ? entry : undefined} currentKey={key}
+        <Panel id="schematic" wide title={t("c.schematic")} desc={t("c.schematic.desc")} topic="circuit-element" hasData entry={running ? entry : undefined} currentKey={key}
           badges={res && res.bench === bench ? <span className="badge">{res.mode}</span> : <span className="badge">{t(BENCHES[bench].title)}</span>}>
           <div className="panel-foot schematic">
             <Schematic nodes={sch.nodes} elements={sch.elements} title={t(BENCHES[bench].title)} />
           </div>
         </Panel>
-        <TrajectoryPanel res={res} entry={entry} />
-        <WaveformPanel res={res} entry={entry} />
+        <WaveformPanel res={res} entry={entry} currentKey={key} />
+        <TrajectoryPanel res={res} entry={entry} currentKey={key} />
         {res && <DistributionsPanel res={res} />}
         {res && <SweepsPanel res={res} />}
         {res && <EventsPanel res={res} />}

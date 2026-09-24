@@ -380,7 +380,7 @@ export function mockCircuit(payload: {
     const vld = VLD + (mode === "stochastic" ? 0.1 + 0.02 * gauss(rand) : 0);
     vluRuns.push(vlu);
     if (bench === "load_line" || bench === "coupled") {
-      const vmax = Number(bp.v_max_V ?? bp.vd_max_V ?? 4.5);
+      const vmax = Number(bp.v_max_V ?? 4.5);
       const rate = Number(bp.rate_V_per_s ?? 0.4);
       const T = (2 * vmax) / rate;
       const t = linspace(0, T, nT);
@@ -389,7 +389,7 @@ export function mockCircuit(payload: {
       const vd: number[] = [];
       const id: number[] = [];
       const qb: number[] = [];
-      const rs = Number(bp.r_series_ohm ?? 1e4);
+      const rs = Number(bp.R_s_ohm ?? bp.R_s1_ohm ?? 1e3);
       t.forEach((x, i) => {
         const vs = vsrc[i];
         if (!on && vs >= vlu && x < T / 2) {
@@ -418,10 +418,10 @@ export function mockCircuit(payload: {
       runs.push({ run: k, t, signals });
       if (k === 0) traj = { vd, id };
     } else if (bench === "pulse") {
-      const amp = Number(bp.amplitude_V ?? 4.2);
-      const width = Number(bp.width_s ?? 1e-3);
-      const period = Number(bp.period_s ?? bp.interval_s ?? 5e-3);
-      const np = Number(bp.n_pulses ?? 5);
+      const amp = Number(bp.v_amp_V ?? VLU + 0.1);
+      const width = Number(bp.width_s ?? 200e-6);
+      const period = Number(bp.period_s ?? 1e-3);
+      const np = Math.min(20, Number(bp.n_pulses ?? 10));
       const T = period * np;
       const t = linspace(0, T, nT);
       let on = false;
@@ -458,7 +458,7 @@ export function mockCircuit(payload: {
       if (k === 0) traj = { vd, id };
     } else {
       // pbit
-      const T = Number(bp.duration_s ?? 0.2);
+      const T = Number(bp.clock_period_s ?? 1e-3) * Number(bp.n_clocks ?? 50);
       const t = linspace(0, T, nT);
       let state = 0;
       const bits: number[] = [];
@@ -489,31 +489,45 @@ export function mockCircuit(payload: {
       if (k === 0) traj = { vd, id };
     }
   }
+  const cell = (k: number, d: string, g: string) => [
+    { kind: "STL", name: `X${k}`, nodes: [d, g, "0"], value: "paper model" },
+    { kind: "V", name: `VG${k}`, nodes: [g, "0"], value: `${dev.vg} V (DC)` },
+  ];
   const schematic: CircuitResult["schematic"] =
     bench === "coupled"
       ? {
-          nodes: ["src", "d1", "d2", "g", "0"],
+          nodes: ["src", "d1", "d2", "g1", "g2", "0"],
           elements: [
-            { kind: "V", name: "V1", nodes: ["src", "0"], value: "ramp" },
-            { kind: "R", name: "R1", nodes: ["src", "d1"], value: "10 kΩ" },
-            { kind: "R", name: "R2", nodes: ["src", "d2"], value: "10 kΩ" },
+            { kind: "V", name: "Vsrc", nodes: ["src", "0"], value: "triangle 0→4.5 V, 0.4 V/s" },
+            { kind: "R", name: "Rs1", nodes: ["src", "d1"], value: "100 kΩ" },
+            { kind: "R", name: "Rs2", nodes: ["src", "d2"], value: "100 kΩ" },
             { kind: "R", name: "Rc", nodes: ["d1", "d2"], value: "1 MΩ" },
-            { kind: "STL", name: "M1", nodes: ["d1", "g", "0"] },
-            { kind: "STL", name: "M2", nodes: ["d2", "g", "0"] },
-            { kind: "V", name: "VG", nodes: ["g", "0"], value: `${dev.vg} V` },
+            { kind: "C", name: "Cd1", nodes: ["d1", "0"], value: "2 fF" },
+            { kind: "C", name: "Cd2", nodes: ["d2", "0"], value: "2 fF" },
+            ...cell(1, "d1", "g1"),
+            ...cell(2, "d2", "g2"),
           ],
         }
-      : {
-          nodes: bench === "pbit" ? ["src", "d", "g", "out", "0"] : ["src", "d", "g", "0"],
-          elements: [
-            { kind: "V", name: "V1", nodes: ["src", "0"], value: bench === "pulse" ? "pulse" : bench === "pbit" ? "DC" : "ramp" },
-            { kind: "R", name: "R1", nodes: ["src", "d"], value: "10 kΩ" },
-            { kind: "C", name: "C1", nodes: ["d", "0"], value: "100 fF" },
-            { kind: "STL", name: "M1", nodes: ["d", "g", "0"] },
-            { kind: "V", name: "VG", nodes: ["g", "0"], value: `${dev.vg} V` },
-            ...(bench === "pbit" ? [{ kind: "CMP", name: "X1", nodes: ["d", "out"], value: "V_th" }] : []),
-          ],
-        };
+      : bench === "pbit"
+        ? {
+            nodes: ["clk", "d", "g", "0"],
+            elements: [
+              { kind: "V", name: "Vclk", nodes: ["clk", "0"], value: "clock 0/3.68 V, 0.001 s" },
+              { kind: "R", name: "RL", nodes: ["clk", "d"], value: "100 kΩ" },
+              { kind: "C", name: "Cd", nodes: ["d", "0"], value: "2 fF" },
+              ...cell(1, "d", "g"),
+              { kind: "CMP", name: "CMP", nodes: ["d"], value: "bit = [v_D < 3.67 V]" },
+            ],
+          }
+        : {
+            nodes: ["src", "d", "g", "0"],
+            elements: [
+              { kind: "V", name: "Vsrc", nodes: ["src", "0"], value: bench === "pulse" ? "pulses 0→3.8 V" : "triangle 0→4.5 V, 0.4 V/s" },
+              { kind: "R", name: "Rs", nodes: ["src", "d"], value: "1 kΩ" },
+              { kind: "C", name: "Cd", nodes: ["d", "0"], value: "2 fF" },
+              ...cell(1, "d", "g"),
+            ],
+          };
   const st = statsOf(vluRuns);
   const summary: CircuitResult["summary"] =
     bench === "pbit"

@@ -30,6 +30,9 @@ class SolverConfig:
     noise_dt_min: float = 2e-9
     gauss_threshold: float = 100.0
     i_threshold: float = 1e-8
+    i_threshold_down: float = 1e-9
+    gauss_tau_min: float = 2e-9
+    gauss_tau_frac: float = 0.5
     i_floor: float = 1e-15
     dt_rec: float = 1e-3
     dv_rec: float = 0.02
@@ -84,6 +87,9 @@ class SolverConfig:
         cf[K.CF_LSETAU] = self.lsE_tau
         cf[K.CF_HINIT] = self.h_init
         cf[K.CF_NEWTOL] = self.newton_tol
+        cf[K.CF_ITHDN] = self.i_threshold_down
+        cf[K.CF_GTAUMIN] = self.gauss_tau_min
+        cf[K.CF_GTAUFRAC] = self.gauss_tau_frac
         return ci, cf
 
 
@@ -99,6 +105,8 @@ class RunOutput:
     t_reached: float
     unresolved_steps: int
     t_unresolved: float
+    gauss_steps: int
+    t_gauss: float
     min_u: float
     min_r: float
     t_neg_u: float
@@ -218,6 +226,7 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
     return RunOutput(rec=rec_all, events=ev_all, samples=sbuf[:nsamp].copy(), steps=int(si[K.SI_STEPS]),
                      rejected=int(si[K.SI_REJ]), newton_iters=int(si[K.SI_NEWT]), status=int(status),
                      t_reached=float(sf[K.SF_T]), unresolved_steps=int(si[K.SI_UNRES]),
-                     t_unresolved=float(sf[K.SF_TUNRES]), min_u=float(sf[K.SF_MINU]), min_r=float(sf[K.SF_MINR]),
+                     t_unresolved=float(sf[K.SF_TUNRES]), gauss_steps=int(si[K.SI_GAUSS]),
+                     t_gauss=float(sf[K.SF_TGAUSS]), min_u=float(sf[K.SF_MINU]), min_r=float(sf[K.SF_MINR]),
                      t_neg_u=float(sf[K.SF_TNEGU]), t_neg_r=float(sf[K.SF_TNEGR]), trap_be=int(si[K.SI_TRAPBE]),
                      runtime_s=time.perf_counter() - tic, warnings=warnings)

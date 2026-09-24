@@ -75,11 +75,14 @@ function Stl({ x, y, name, gate }: { x: number; y: number; name: string; gate: s
   );
 }
 
+const short = (s: string | undefined, n = 16) => (!s ? "" : s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
 function Label({ x, y, name, value, anchor = "start" }: { x: number; y: number; name: string; value?: string; anchor?: "start" | "middle" | "end" }) {
   return (
     <g>
+      {value && <title>{`${name}: ${value}`}</title>}
       <text x={x} y={y} fontSize={12} fontWeight={700} fill="currentColor" textAnchor={anchor}>{name}</text>
-      {value && <text x={x} y={y + 13} fontSize={10.5} fill="var(--muted)" textAnchor={anchor} fontFamily="var(--mono)">{value}</text>}
+      {value && <text x={x} y={y + 13} fontSize={10.5} fill="var(--muted)" textAnchor={anchor} fontFamily="var(--mono)">{short(value)}</text>}
     </g>
   );
 }
@@ -115,6 +118,11 @@ export function Schematic({ nodes, elements, title }: { nodes: string[]; element
       const k = slots.get(col) ?? 0;
       slots.set(col, k + 1);
       vertical.push({ el, col, slot: k });
+    } else if (ns.length === 1) {
+      const col = ns[0];
+      const k = slots.get(col) ?? 0;
+      slots.set(col, k + 1);
+      vertical.push({ el, col, slot: k });
     } else if (ns.length >= 2 && (isGnd(ns[0]) || isGnd(ns[1]))) {
       const col = isGnd(ns[0]) ? ns[1] : ns[0];
       const k = slots.get(col) ?? 0;
@@ -125,7 +133,7 @@ export function Schematic({ nodes, elements, title }: { nodes: string[]; element
     }
   }
   const SLOT = 78;
-  const GAP = 120;
+  const GAP = 180;
   const xs = new Map<string, number>();
   let x = 46;
   cols.forEach((n, i) => {
@@ -158,9 +166,9 @@ export function Schematic({ nodes, elements, title }: { nodes: string[]; element
 
   const parts: ReactNode[] = [];
   // ground rail
-  const gndUsed = vertical.some((v) => v.el.kind === "STL" ? isGnd(v.el.nodes[2] ?? "0") : true);
-  if (gndUsed) {
-    const vx = vertical.map((v) => (xs.get(v.col) ?? 0) + v.slot * SLOT);
+  const grounded = vertical.filter((v) => (v.el.kind === "STL" ? isGnd(v.el.nodes[2] ?? "0") : v.el.nodes.length >= 2));
+  if (grounded.length) {
+    const vx = grounded.map((v) => (xs.get(v.col) ?? 0) + v.slot * SLOT);
     const gx1 = Math.min(...vx);
     const gx2 = Math.max(...vx);
     parts.push(<line key="gnd" x1={gx1} y1={BOT} x2={gx2} y2={BOT} stroke="currentColor" strokeWidth={1.6} />);
@@ -187,6 +195,18 @@ export function Schematic({ nodes, elements, title }: { nodes: string[]; element
       parts.push(<line key={`${el.name}-s`} x1={vx} y1={MID + 30} x2={vx} y2={sGnd ? BOT : MID + 52} stroke="currentColor" strokeWidth={1.6} />);
       if (!sGnd) parts.push(<text key={`${el.name}-sn`} x={vx} y={MID + 64} textAnchor="middle" fontSize={11} fill="var(--muted)">{el.nodes[2]}</text>);
       parts.push(<Stl key={el.name} x={vx} y={MID} name={el.name} gate={el.nodes[1] ?? "g"} />);
+    } else if (el.nodes.length === 1) {
+      // probe-like element (comparator on a node): lead down, triangle, output "bit"
+      parts.push(<line key={`${el.name}-w`} x1={vx} y1={TOP} x2={vx} y2={MID} stroke="currentColor" strokeWidth={1.6} />);
+      parts.push(<line key={`${el.name}-w2`} x1={vx} y1={MID} x2={vx + 8} y2={MID} stroke="currentColor" strokeWidth={1.6} />);
+      parts.push(
+        <g key={el.name}>
+          <Comparator x={vx + 26} y={MID} />
+          <line x1={vx + 44} y1={MID} x2={vx + 60} y2={MID} stroke="currentColor" strokeWidth={1.6} />
+          <text x={vx + 63} y={MID + 4} fontSize={11} fill="var(--accent-strong)" fontFamily="var(--mono)" fontWeight={700}>bit</text>
+          <Label x={vx + 10} y={MID + 34} name={el.name} value={el.value} />
+        </g>,
+      );
     } else {
       parts.push(<line key={`${el.name}-w`} x1={vx} y1={TOP} x2={vx} y2={BOT} stroke="currentColor" strokeWidth={1.6} />);
       const sym =
@@ -218,12 +238,12 @@ export function Schematic({ nodes, elements, title }: { nodes: string[]; element
         <rect x={mid - 26} y={y - 16} width={52} height={32} fill="var(--surface)" />
         {sym}
         <Label x={mid} y={y - 22} name={h.el.name} value={undefined} anchor="middle" />
-        {h.el.value && <text x={mid} y={y + 30} fontSize={10.5} fill="var(--muted)" textAnchor="middle" fontFamily="var(--mono)">{h.el.value}</text>}
+        {h.el.value && <text x={mid} y={y + 30} fontSize={10.5} fill="var(--muted)" textAnchor="middle" fontFamily="var(--mono)">{short(h.el.value)}<title>{h.el.value}</title></text>}
       </g>,
     );
   });
   return (
-    <svg viewBox={`0 ${-yOff} ${width} ${height}`} role="img" aria-label={title ?? "schematic"} data-testid="schematic" style={{ color: "var(--text)" }}>
+    <svg viewBox={`0 ${-yOff} ${width} ${height}`} role="img" aria-label={title ?? "schematic"} data-testid="schematic" style={{ color: "var(--text)", maxWidth: width * 1.15, display: "block", margin: "0 auto" }}>
       {parts}
     </svg>
   );
