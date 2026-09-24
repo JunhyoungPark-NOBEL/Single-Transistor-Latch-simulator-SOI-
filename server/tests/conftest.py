@@ -20,12 +20,21 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 os.environ.setdefault("STL_WORKERS", "2")
-os.environ.setdefault("STL_CACHE_DIR", tempfile.mkdtemp(prefix="stl-test-cache-"))
+_TMP_CACHE = None
+if not os.environ.get("STL_CACHE_DIR"):
+    _TMP_CACHE = tempfile.mkdtemp(prefix="stl-test-cache-")
+    os.environ["STL_CACHE_DIR"] = _TMP_CACHE
 os.environ.setdefault("STL_PREWARM", "1")
 
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "slow: long-running test (deselect with -m 'not slow')")
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    if _TMP_CACHE:
+        import shutil
+        shutil.rmtree(_TMP_CACHE, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")
