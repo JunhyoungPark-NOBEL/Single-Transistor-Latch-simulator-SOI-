@@ -12,8 +12,8 @@ import { loadDesignMap, loadMeasured, runVgStochastic } from "../state/runner";
 import { useStore } from "../state/store";
 import { DASH, fmtInt, isNum } from "../utils/format";
 import { hazardPayload, powerMW, sweepMcPayload, vgStochPayload } from "../utils/payload";
-import { isPaperReference, nums, pos, useCurrentKey, useEntry, usePalette } from "./common";
-import { Check, measuredIvTraces, RangeInputs, Seg } from "./DetPanels";
+import { isPaperReference, logRange, nums, pos, useCurrentKey, useEntry, usePalette } from "./common";
+import { Check, insideLegend, measuredIvTraces, RangeInputs, Seg } from "./DetPanels";
 
 // ---------------------------------------------------------------- (a) I–V + MC sweeps
 export function McIvPanel() {
@@ -29,8 +29,8 @@ export function McIvPanel() {
   const [showMeas, setShowMeas] = useState(false);
   const measKind = isPaperReference(params.device) ? "paper" : preset === "photo" ? "photo" : null;
   useEffect(() => {
-    if (showMeas && measKind) void loadMeasured();
-  }, [showMeas, measKind]);
+    if (showMeas && measKind && measured.status === "idle") void loadMeasured();
+  }, [showMeas, measKind, measured.status]);
 
   const plot = useMemo(() => {
     if (!data) return undefined;
@@ -63,10 +63,11 @@ export function McIvPanel() {
       if (isNum(v)) shapes.push({ type: "line", xref: "x", yref: "paper", x0: v, x1: v, y0: 0, y1: 1, line: { color: col, width: 1, dash: "dot" } });
     const layout: Partial<Layout> = {
       xaxis: { title: { text: "V<sub>D</sub> (V)" }, range: [0, params.sweep.vd_max_V + 0.15], anchor: "y2" },
-      yaxis: { ...currentAxis(log), domain: [0.16, 1] },
+      yaxis: { ...currentAxis(log), domain: [0.16, 1], ...(log ? { range: logRange(traces.filter((tr) => (tr as { yaxis?: string }).yaxis !== "y2").map((tr) => (tr as { y?: (number | null)[] }).y)) } : {}) },
       yaxis2: { domain: [0, 0.1], range: [-0.8, 1.8], showticklabels: false, showgrid: false, zeroline: false, ticks: "", showline: false, fixedrange: true },
       shapes,
-      margin: { l: 64, r: 16, t: 40, b: 46 },
+      margin: { l: 64, r: 16, t: 16, b: 46 },
+      legend: insideLegend(c, "tl"),
     };
     return { data: traces, layout, className: "plot tall" };
   }, [data, br, log, showMeas, measured.data, measKind, params.sweep.vd_max_V, params.device, c, t]);
@@ -130,7 +131,7 @@ function StatsTable({ rows }: { rows: { label: string; st: Stats | null | undefi
   const v = (x: number | null | undefined, d = 3) => (isNum(x) ? x.toFixed(d) : DASH);
   return (
     <div className="table-wrap" style={{ margin: "0 14px 12px" }}>
-      <table className="table" data-testid="stats-table">
+      <table className="table compact" data-testid="stats-table">
         <thead>
           <tr>
             <th />
@@ -138,8 +139,7 @@ function StatsTable({ rows }: { rows: { label: string; st: Stats | null | undefi
             <th className="num">{t("stats.mean")} (V)</th>
             <th className="num">{t("stats.sd")} (mV)</th>
             <th className="num">{t("stats.median")}</th>
-            <th className="num">p05</th>
-            <th className="num">p95</th>
+            <th className="num">p05 – p95</th>
             <th className="num">{t("stats.lag1")}</th>
             <th className="num">{t("stats.censored")}</th>
           </tr>
@@ -155,8 +155,7 @@ function StatsTable({ rows }: { rows: { label: string; st: Stats | null | undefi
               <td className="num">{v(r.st!.mean, 4)}</td>
               <td className="num">{isNum(r.st!.sd) ? (r.st!.sd * 1e3).toFixed(1) : DASH}</td>
               <td className="num">{v(r.st!.median)}</td>
-              <td className="num">{v(r.st!.p05)}</td>
-              <td className="num">{v(r.st!.p95)}</td>
+              <td className="num">{v(r.st!.p05)}–{v(r.st!.p95)}</td>
               <td className="num">{v(r.st!.lag1, 2)}</td>
               <td className="num">{fmtInt(r.st!.censored)}</td>
             </tr>
@@ -235,10 +234,10 @@ export function DistPanel() {
         <>
           <StatsTable
             rows={[
-              { label: `V_LU · ${t("model")}`, st: data.stats.LU, color: c.sto },
-              { label: `V_LD · ${t("model")}`, st: data.stats.LD, color: c.down },
-              { label: `V_LU · ${t("measured")}`, st: m?.stats.LU, color: c.meas },
-              { label: `V_LD · ${t("measured")}`, st: m?.stats.LD, color: c.meas },
+              { label: `LU · ${t("model")}`, st: data.stats.LU, color: c.sto },
+              { label: `LD · ${t("model")}`, st: data.stats.LD, color: c.down },
+              { label: `LU · ${t("measured")}`, st: m?.stats.LU, color: c.meas },
+              { label: `LD · ${t("measured")}`, st: m?.stats.LD, color: c.meas },
             ]}
           />
           {m && <div className="panel-foot small muted">{t("measured")}: {m.label}</div>}
@@ -275,7 +274,7 @@ export function HazardPanel() {
     }
     const layout: Partial<Layout> = {
       xaxis: { title: { text: `V<sub>D</sub> (V) — ${data.rate_V_per_s} V/s` }, anchor: "y2" },
-      yaxis: { type: "log", title: { text: "h (1/s)" }, domain: [0.46, 1], exponentformat: "power" },
+      yaxis: { type: "log", title: { text: "h (1/s)" }, domain: [0.46, 1], exponentformat: "power", range: logRange([pos(data.hazard)], 0, 10) },
       yaxis2: { domain: [0, 0.38], title: { text: "S" }, range: [-0.03, 1.05] },
       shapes,
       annotations: ann,
@@ -406,8 +405,8 @@ export function DesignMapPanel() {
   const [logc, setLogc] = useState(true);
   const [lines, setLines] = useState(true);
   useEffect(() => {
-    void loadDesignMap();
-  }, []);
+    if (dm.status === "idle") void loadDesignMap();
+  }, [dm.status]);
   const d = dm.data;
   const plot = useMemo(() => {
     if (!d || !d.fields[field]) return undefined;
@@ -477,7 +476,9 @@ export function DesignMapPanel() {
     >
       {d?.lines && lines && (
         <div className="panel-foot small muted">
-          <span style={{ color: "var(--lrs)" }}>- - -</span> L₀ (σ_φ = device {isNum(d.scalars.device_sigma_phi_mV) ? d.scalars.device_sigma_phi_mV.toFixed(0) : "?"} mV) · <span>· · ·</span> L₀ ({isNum(d.scalars.phi_50mV) ? d.scalars.phi_50mV.toFixed(1) : "?"} mV reference) for each N_t
+          <span>
+            <span style={{ color: "var(--lrs)", fontWeight: 700 }}>╌╌</span> L₀ (σ_φ = device {isNum(d.scalars.device_sigma_phi_mV) ? d.scalars.device_sigma_phi_mV.toFixed(0) : "?"} mV) · <span style={{ fontWeight: 700 }}>┈┈</span> L₀ ({isNum(d.scalars.phi_50mV) ? d.scalars.phi_50mV.toFixed(1) : "?"} mV) — N<sub>t</sub> {t("dmap.lines")}
+          </span>
         </div>
       )}
     </Panel>

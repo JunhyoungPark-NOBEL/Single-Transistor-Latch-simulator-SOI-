@@ -62,7 +62,7 @@ function Label({ f, ctx, def, changed, htmlFor }: { f: FieldDef; ctx: Ctx; def: 
       <label htmlFor={htmlFor} className="lbl" title={t.l(f.label)}>
         {t.l(f.label)}
       </label>
-      {f.experimental && <span className="exp">{t("experimental")}</span>}
+      {f.experimental && <span className="exp" title={t("experimental")}>{t("experimental.short")}</span>}
       <InfoTip label={`${t.l(f.label)} — ${t.l(f.help)}`} content={<TipContent f={f} ctx={ctx} def={def} />} testId={`tip-${f.key}`} />
     </div>
   );
@@ -88,10 +88,12 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
   const unit = unitOf(f, ctx);
   const num = typeof value === "number" ? value : Number(value);
   const disp = num * scale;
-  const [text, setText] = useState(toInputString(disp));
+  const show = (v: number) => (f.int && Number.isFinite(v) ? String(Math.round(v)) : toInputString(v));
+  const [text, setText] = useState(show(disp));
   const [editing, setEditing] = useState(false);
   useEffect(() => {
-    if (!editing) setText(toInputString(disp));
+    if (!editing) setText(show(disp));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disp, editing]);
   const parsed = parseNumber(text);
   const outOfRange = parsed !== null && ((f.min !== undefined && parsed < f.min - 1e-12) || (f.max !== undefined && parsed > f.max + 1e-12));
@@ -141,12 +143,12 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
             }}
             onBlur={() => {
               setEditing(false);
-              if (error) setText(toInputString(disp));
+              if (error) setText(show(disp));
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
               else if (e.key === "Escape") {
-                setText(toInputString(disp));
+                setText(show(disp));
                 (e.target as HTMLInputElement).blur();
               } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                 e.preventDefault();
@@ -199,7 +201,7 @@ function SelectField({ f, ctx, value, def, onChange }: FieldProps) {
   const opts = f.options ?? [];
   return (
     <div className="field" data-testid={`field-${f.key}`}>
-      <div className="field-row" style={{ gridTemplateColumns: "minmax(0,1fr) 170px" }}>
+      <div className="field-stack">
         <Label f={f} ctx={ctx} def={def} changed={def !== undefined && def !== value} htmlFor={id} />
         <select
           id={id}

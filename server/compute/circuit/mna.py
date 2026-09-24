@@ -12,7 +12,7 @@ Residuals:
   STL, E2:   [Q(u,r;V_GS) - Qc - th*h*F(u,r)] / C_ox = 0               (V)
       deterministic BE: Qc = Q_n, th = 1;  TRAP: Qc = Q_n + h/2 F_n, th = 1/2
       stochastic (explicit tau-leap, noise resolved): Qc = Q_n + dQ_events, th = 0
-      stochastic (drift-implicit, fast relaxation):   Qc = Q_n + dQ_events - h F_n, th = 1
+      stochastic, fast-relaxing state (tau_frac*tau_rel < noise_dt_min): drift only, as BE
   (DC initialisation: E2 replaced by u - u_fix = 0, then pseudo-transient BE.)
 
 Newton: the STL block of the Jacobian is a forward finite difference (d/du, d/dr) of
@@ -642,16 +642,16 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             # charge-equation mode for this step
             use_trap = False
             if carrier:
-                for k in range(ns):
-                    dq[k] = draw_dq(h, ss[k, SS_UNIT], ss[k, SS_G], ss[k, SS_L], ss[k, SS_R], rv, pmf, pk, gth)
                 if resolved:
                     th = 0.0
                     for k in range(ns):
+                        dq[k] = draw_dq(h, ss[k, SS_UNIT], ss[k, SS_G], ss[k, SS_L], ss[k, SS_R], rv, pmf, pk, gth)
                         qc[k] = ss[k, SS_QN] + dq[k]
                 else:
+                    # fast-relaxing state (tau_frac*tau_rel < noise_dt_min): drift only (implicit BE)
                     th = 1.0
                     for k in range(ns):
-                        qc[k] = ss[k, SS_QN] + dq[k] - h * ss[k, SS_FN]
+                        qc[k] = ss[k, SS_QN]
                 cap_companion(ci, 0, h, cA, cB, cC, cv, cI, cGeq, cIeq)
             else:
                 taumin = 1e300
@@ -720,9 +720,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                 if hard:
                     err = 10.0
             else:
-                err = max(du / du_max, dl / dlni_max, dvm / dv_max)
-                if not carrier or not resolved:
-                    err = max(err, lte / lte_u)
+                err = max(du / du_max, dl / dlni_max, dvm / dv_max, lte / lte_u)
             if err > 1.5 and h > dt_min * 1.01:
                 si[SI_REJ] += 1
                 h = max(h * max(0.1, 0.7 / err), dt_min)

@@ -48,3 +48,38 @@ export function arrowIndices(x: Arr, y: Arr, every: number): number[] {
 export function pick<T>(a: T[] | undefined, idx: number[]): T[] {
   return idx.map((i) => (a ?? [])[i]);
 }
+
+/**
+ * Explicit log-axis range for currents: the engine returns exponentially small values (e.g. 1e-58 A at
+ * V_D → 0) that would stretch an autoranged log axis over 50 decades. The data stay untouched (hover/CSV);
+ * only the initial view is limited to [max(floor, hi·10^-maxDecades), hi].
+ */
+export function logRange(arrays: ((number | null)[] | undefined)[], floor = 1e-17, maxDecades = 14): [number, number] | undefined {
+  let hi = 0;
+  let lo = Infinity;
+  for (const a of arrays)
+    for (const v of a ?? [])
+      if (typeof v === "number" && v > 0 && Number.isFinite(v)) {
+        if (v > hi) hi = v;
+        if (v < lo) lo = v;
+      }
+  if (!(hi > 0)) return undefined;
+  const bottom = Math.max(lo, floor, hi * 10 ** -maxDecades);
+  return [Math.log10(bottom) - 0.15, Math.log10(hi) + 0.25];
+}
+
+/** Linear y-range from the values whose x lies in [x0, x1] (padding 8 %). */
+export function rangeWithin(x: (number | null)[], y: (number | null)[], x0: number, x1: number): [number, number] | undefined {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < x.length; i++) {
+    const xv = x[i];
+    const yv = y[i];
+    if (xv == null || yv == null || xv < x0 || xv > x1) continue;
+    lo = Math.min(lo, yv);
+    hi = Math.max(hi, yv);
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return undefined;
+  const pad = (hi - lo || Math.abs(hi) || 1) * 0.08;
+  return [lo - pad, hi + pad];
+}

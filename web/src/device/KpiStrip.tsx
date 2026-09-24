@@ -52,8 +52,8 @@ export function KpiStrip() {
   const ld = mc?.stats.LD;
   return (
     <div className="kpis" data-testid="kpis">
-      <Kpi id="vlu" label={`${t("kpi.vlu")} · ${t("kpi.mean")}`} sym="V_{\mathrm{LU}}" value={<>{v3(lu?.mean)}<span className="u">± {mV(lu?.sd)} mV</span></>} color="var(--sto)" loading={mLoading} sub={`${t("kpi.fold")}: ${v3(mc?.centre.V_LU ?? f?.V_LU)} V`} />
-      <Kpi id="vld" label={`${t("kpi.vld")} · ${t("kpi.mean")}`} sym="V_{\mathrm{LD}}" value={<>{v3(ld?.mean)}<span className="u">± {mV(ld?.sd)} mV</span></>} color="var(--lrs)" loading={mLoading} sub={`${t("kpi.fold")}: ${v3(mc?.centre.V_LD ?? f?.V_LD)} V`} />
+      <Kpi id="vlu" label={`${t.lang === "ko" ? "래치업" : t("kpi.vlu")} · ${t("kpi.mean")}`} sym="V_{\mathrm{LU}}" value={<>{v3(lu?.mean)}<span className="u">± {mV(lu?.sd)} mV</span></>} color="var(--sto)" loading={mLoading} sub={`${t("kpi.fold")}: ${v3(mc?.centre.V_LU ?? f?.V_LU)} V`} />
+      <Kpi id="vld" label={`${t.lang === "ko" ? "래치다운" : t("kpi.vld")} · ${t("kpi.mean")}`} sym="V_{\mathrm{LD}}" value={<>{v3(ld?.mean)}<span className="u">± {mV(ld?.sd)} mV</span></>} color="var(--lrs)" loading={mLoading} sub={`${t("kpi.fold")}: ${v3(mc?.centre.V_LD ?? f?.V_LD)} V`} />
       <Kpi id="window" label={t("kpi.window")} sym="\Delta V" value={mV(isNum(lu?.mean) && isNum(ld?.mean) ? lu!.mean! - ld!.mean! : null)} unit="mV" color="var(--det)" loading={mLoading} sub="⟨V_LU⟩ − ⟨V_LD⟩" />
       <Kpi id="cycles" label={t("kpi.cycles")} value={mc ? String(mc.V_LU.length) : "—"} color="var(--border-strong)" loading={mLoading} sub={mc ? `${t("kpi.censored")}: ${lu?.censored ?? 0}` : undefined} />
       <Kpi id="runtime" label={t("kpi.runtime")} value={fmtDuration(mc?.runtime_s)} color="var(--border-strong)" loading={mLoading} sub={mc ? `${t("kpi.engine")}: ${mc.engine}${me?.cached ? " · " + t("cached") : ""}` : undefined} />

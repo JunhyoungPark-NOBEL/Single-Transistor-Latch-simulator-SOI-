@@ -141,16 +141,23 @@ function LocalWarning({ action }: { action: LocalStateAction }) {
 
 function BenchFields({ ctx }: { ctx: Ctx }) {
   const bench = useStore((s) => s.params.circuit.bench);
+  const bp = useStore((s) => s.params.circuit.bench_params[s.params.circuit.bench]) ?? {};
   const def = BENCHES[bench];
   return (
     <>
-      {def.fields.map((bf) => (
-        <FieldBound
-          key={`${bench}-${bf.key}`}
-          ctx={ctx}
-          f={{ key: `bench_${bf.key}`, path: ["circuit", "bench_params", bench, bf.key], sym: bf.sym, label: bf.label, help: bf.help, unit: bf.unit, scale: bf.scale, min: bf.min, max: bf.max, step: bf.step, slider: bf.slider, int: bf.int }}
-        />
-      ))}
+      {def.fields
+        .filter((bf) => !bf.when || bf.when(bp))
+        .map((bf) => (
+          <FieldBound
+            key={`${bench}-${bf.key}`}
+            ctx={ctx}
+            f={{
+              key: `bench_${bf.key}`, path: ["circuit", "bench_params", bench, bf.key], sym: bf.sym, label: bf.label, help: bf.help, unit: bf.unit,
+              scale: bf.scale, min: bf.min, max: bf.max, step: bf.step, slider: bf.slider, int: bf.int, auto: bf.auto, type: bf.type,
+              options: bf.options,
+            }}
+          />
+        ))}
     </>
   );
 }

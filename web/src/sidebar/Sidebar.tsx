@@ -106,7 +106,7 @@ export function RunBar() {
         <div className="autorun">
           <button type="button" role="switch" aria-checked={autoRun} className="switch" onClick={() => setAutoRun(!autoRun)} aria-label={t("run.auto")} data-testid="autorun" />
           <span title={t("run.auto.hint")}>{t("run.auto")}</span>
-          <span className="small muted" style={{ marginLeft: "auto" }}>{t("run.auto.hint").length > 30 ? "" : t("run.auto.hint")}</span>
+          <span className="small muted" style={{ marginLeft: "auto" }}>Ctrl/⌘ + Enter</span>
         </div>
       )}
     </div>
@@ -121,7 +121,9 @@ export function Sidebar() {
   const open = useStore((s) => s.sidebarOpen);
   const setOpen = useStore((s) => s.setSidebar);
   const ctx: Ctx = { root: params, mode, tab };
-  const groups = GROUPS.filter((g) => groupVisible(g, ctx));
+  // groups specific to the current tab (e.g. bench/solver on the circuit tab) come first
+  const circuitFirst = (g: (typeof GROUPS)[number]) => Number(tab === "circuit" && g.tabs.length === 1 && g.tabs[0] === "circuit");
+  const groups = GROUPS.filter((g) => groupVisible(g, ctx)).sort((a, b) => circuitFirst(b) - circuitFirst(a));
   return (
     <>
       {open && <div className="scrim" onClick={() => setOpen(false)} aria-hidden />}

@@ -49,6 +49,8 @@ export function mergeDefaults<T>(base: T, over: unknown): T {
     if (!(k in out)) continue; // drop unknown keys from stale storage
     const bv = out[k];
     if (bv && typeof bv === "object" && !Array.isArray(bv)) out[k] = mergeDefaults(bv, v);
+    else if (bv === null) out[k] = v === null || typeof v === "number" ? v : null; // "auto" fields: number | null
+    else if (Array.isArray(bv)) out[k] = Array.isArray(v) ? v : bv;
     else if (v !== null && v !== undefined && typeof v === typeof bv) out[k] = v;
   }
   return out as T;

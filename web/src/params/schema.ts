@@ -5,12 +5,13 @@ import type { L10n, TopicId } from "../content/physics/types";
 import type { BenchId, CircuitStochBlock, DeviceBlock, Mode, SolverBlock, StochasticBlock, SweepBlock } from "../api/types";
 import type { StrKey } from "../i18n/strings";
 import type { Path } from "../utils/object";
+import type { BenchValue } from "./benches";
 
 export type Tab = "device" | "circuit" | "validation" | "physics";
 
 export interface CircuitParams {
   bench: BenchId;
-  bench_params: Record<BenchId, Record<string, number | string | boolean>>;
+  bench_params: Record<BenchId, Record<string, BenchValue>>;
   solver: SolverBlock;
   stochastic: CircuitStochBlock;
   detect: { i_threshold_A: number };
@@ -49,7 +50,9 @@ export interface FieldDef {
   step?: number;
   slider?: boolean | "log";
   int?: boolean;
-  type?: "number" | "toggle" | "select" | "segmented";
+  /** Value may be null = "auto" (resolved server-side). */
+  auto?: boolean;
+  type?: "number" | "toggle" | "select" | "segmented" | "list";
   options?: Option[];
   show?: (c: Ctx) => boolean;
   experimental?: boolean;
@@ -252,10 +255,14 @@ export const GROUPS: GroupDef[] = [
     tabs: ["circuit"],
     fields: [
       { key: "method", path: ["circuit", "solver", "method"], type: "segmented", label: L("적분법", "Integrator"), help: L("후진 오일러(BE) 또는 사다리꼴(TRAP)", "Backward Euler (BE) or trapezoidal (TRAP)"), options: [{ value: "BE", label: L("BE", "BE") }, { value: "TRAP", label: L("TRAP", "TRAP") }] },
-      { key: "dt_min", path: ["circuit", "solver", "dt_min_s"], sym: "\\Delta t_{\\min}", label: L("최소 Δt", "Minimum Δt"), help: L("적응 스텝 하한", "Adaptive step lower bound"), unit: "s", min: 1e-18, max: 1, slider: "log" },
-      { key: "dt_max", path: ["circuit", "solver", "dt_max_s"], sym: "\\Delta t_{\\max}", label: L("최대 Δt", "Maximum Δt"), help: L("적응 스텝 상한 (스윕: ≤ 1 ms)", "Adaptive step upper bound (sweeps: ≤ 1 ms)"), unit: "s", min: 1e-15, max: 10, slider: "log" },
-      { key: "reltol", path: ["circuit", "solver", "reltol"], sym: "\\epsilon_{\\mathrm{rel}}", label: L("상대 허용오차", "Relative tolerance"), help: L("Newton / 스텝 제어 허용오차", "Newton / step-control tolerance"), unit: "", min: 1e-10, max: 0.1, slider: "log" },
+      { key: "dt_min", path: ["circuit", "solver", "dt_min_s"], sym: "\\Delta t_{\\min}", label: L("최소 Δt", "Minimum Δt"), help: L("적응 스텝 하한 (자동: max(1e-15, 1e-13·t_end))", "Adaptive step lower bound (auto: max(1e-15, 1e-13·t_end))"), unit: "s", min: 1e-18, max: 1, auto: true },
+      { key: "dt_max", path: ["circuit", "solver", "dt_max_s"], sym: "\\Delta t_{\\max}", label: L("최대 Δt", "Maximum Δt"), help: L("적응 스텝 상한 (자동: t_end/2000)", "Adaptive step upper bound (auto: t_end/2000)"), unit: "s", min: 1e-15, max: 1e4, auto: true },
+      { key: "reltol", path: ["circuit", "solver", "reltol"], sym: "\\epsilon_{\\mathrm{rel}}", label: L("상대 허용오차", "Relative tolerance"), help: L("스텝당 한계 배율: reltol = 1e-3에서 |Δu| ≤ 10 mV, |Δln I| ≤ 0.2, |Δv| ≤ 20 mV", "Scales the per-step limits: at reltol = 1e-3, |Δu| ≤ 10 mV, |Δln I| ≤ 0.2, |Δv| ≤ 20 mV"), unit: "", min: 1e-6, max: 0.5, slider: "log" },
       { key: "max_steps", path: ["circuit", "solver", "max_steps"], sym: "N_{\\max}", label: L("최대 스텝", "Max steps"), help: L("시간 스텝 상한 (서버 상한 2·10⁶)", "Time-step cap (server cap 2·10⁶)"), unit: "", min: 100, max: 2e6, step: 1, int: true, slider: "log" },
+      { key: "tau_frac", path: ["circuit", "solver", "tau_frac"], sym: "f_\\tau", label: L("확률 스텝 비율", "Stochastic step fraction"), help: L("h ≤ tau_frac · τ_rel", "h ≤ tau_frac · τ_rel"), unit: "", min: 1e-4, max: 1, slider: "log", show: (c) => c.mode === "stochastic" },
+      { key: "max_ev", path: ["circuit", "solver", "max_events_per_step"], sym: "N_{\\mathrm{ev}}", label: L("스텝당 최대 사건", "Max events per step"), help: L("스텝당 기대 사건 수 상한", "Expected events per step"), unit: "", min: 1, max: 1e6, step: 1, int: true, show: (c) => c.mode === "stochastic" },
+      { key: "noise_dt_min", path: ["circuit", "solver", "noise_dt_min_s"], sym: "\\Delta t_{\\mathrm{noise}}", label: L("잡음 해상 최소 Δt", "Noise Δt floor"), help: L("tau_frac·τ_rel ≥ 이 값인 곳에서만 carrier 잡음 해상, 그 외는 drift만", "Carrier noise resolved where tau_frac·τ_rel ≥ this; drift only elsewhere"), unit: "s", min: 1e-15, max: 1, slider: "log", show: (c) => c.mode === "stochastic" },
+      { key: "gauss_th", path: ["circuit", "solver", "gauss_threshold"], sym: "\\bar N_{G}", label: L("Gauss 극한 문턱", "Gaussian-limit threshold"), help: L("평균 사건 수가 이보다 크면 Poisson → Gauss", "Poisson counts with mean above this use the Gaussian limit"), unit: "", min: 1, max: 1e6, show: (c) => c.mode === "stochastic" },
     ],
   },
   {

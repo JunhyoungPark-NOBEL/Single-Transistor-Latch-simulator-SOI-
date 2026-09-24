@@ -3,7 +3,10 @@ import Plotly from "plotly.js-dist-min";
 import createPlotlyComponent from "react-plotly.js/factory";
 import type { PlotImplProps } from "./Plot";
 
-const PlotlyComponent = createPlotlyComponent(Plotly);
+// react-plotly.js/factory is CommonJS: depending on the bundler interop the default export may be wrapped.
+type Factory = typeof createPlotlyComponent;
+const factory: Factory = ((createPlotlyComponent as unknown as { default?: Factory }).default ?? createPlotlyComponent) as Factory;
+const PlotlyComponent = factory(Plotly);
 
 export default function PlotImpl({ data, layout, config, onGraph, className }: PlotImplProps) {
   return (

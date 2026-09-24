@@ -1,13 +1,15 @@
-// Circuit test benches (docs/WEB_CONTRACT.md §4, engine/docs/CIRCUIT_ELEMENT_DESIGN.md "Test benches").
-// Bench-parameter keys follow server/compute/circuit/benches.py; unknown keys are ignored server-side
-// and missing ones take the server defaults, so the UI only needs a sensible subset.
+// Circuit test benches (docs/WEB_CONTRACT.md §4). Keys and defaults mirror
+// server/compute/circuit/benches.py (BENCH_DEFAULTS, SOLVER_DEFAULTS, STOCHASTIC_DEFAULTS).
+// `null` = "auto" (resolved server-side from the device, e.g. v_max from the preset sweep, v_amp from V_LU).
 import type { L10n } from "../content/physics/types";
 import type { BenchId, CircuitStochBlock, SolverBlock } from "../api/types";
 import type { StrKey } from "../i18n/strings";
 
+export type BenchValue = number | string | boolean | null | number[];
+
 export interface BenchField {
   key: string;
-  sym: string;
+  sym?: string;
   label: L10n;
   help: L10n;
   unit: string;
@@ -17,25 +19,39 @@ export interface BenchField {
   step?: number;
   slider?: boolean | "log";
   int?: boolean;
+  /** null allowed = automatic value chosen by the server. */
+  auto?: boolean;
+  type?: "number" | "list" | "select";
   options?: { value: string; label: L10n }[];
+  /** Only shown when this predicate on the bench params holds. */
+  when?: (bp: Record<string, BenchValue>) => boolean;
 }
 export interface BenchDef {
   id: BenchId;
   title: StrKey;
   desc: StrKey;
-  defaults: Record<string, number | string | boolean>;
+  defaults: Record<string, BenchValue>;
   fields: BenchField[];
 }
 
 const L = (ko: string, en: string): L10n => ({ ko, en });
 
-const R_SERIES: BenchField = {
-  key: "r_series_ohm", sym: "R_S", label: L("직렬 저항", "Series resistor"), help: L("전원과 드레인 사이 부하 저항", "Load resistor between source and drain"),
-  unit: "kΩ", scale: 1e-3, min: 0.001, max: 1e5, slider: "log",
-};
-const C_NODE: BenchField = {
-  key: "c_node_F", sym: "C_D", label: L("드레인 노드 용량", "Drain-node capacitance"), help: L("드레인 노드의 기생/부하 용량", "Parasitic/load capacitance at the drain node"),
-  unit: "fF", scale: 1e15, min: 0, max: 1e6, slider: "log",
+const f = {
+  vMin: { key: "v_min_V", sym: "V_{\\min}", label: L("램프 시작/끝 전압", "Ramp start/end"), help: L("삼각파 최저 전압", "Triangle low level"), unit: "V", min: -8, max: 8, step: 0.05 },
+  vMax: { key: "v_max_V", sym: "V_{\\max}", label: L("램프 최대 전압", "Ramp peak"), help: L("자동: 프리셋 스윕 V_D,max (논문 4 V, 광조사 5 V)", "auto: preset sweep V_D,max (paper 4 V, photo 5 V)"), unit: "V", min: -8, max: 8, step: 0.05, auto: true },
+  rate: { key: "rate_V_per_s", sym: "\\dot V", label: L("램프 속도", "Ramp rate"), help: L("자동: 프리셋 스윕 속도 (확률 run은 너무 느리면 1200 V/s)", "auto: preset sweep rate (stochastic runs fall back to 1200 V/s when too slow)"), unit: "V/s", min: 1e-4, max: 1e8, slider: "log" as const, auto: true },
+  nCycles: { key: "n_cycles", sym: "N_{\\mathrm{cyc}}", label: L("삼각파 사이클", "Triangle cycles"), help: L("≤ 50", "≤ 50"), unit: "", min: 1, max: 50, step: 1, int: true },
+  Rs: { key: "R_s_ohm", sym: "R_s", label: L("직렬 저항", "Series resistor"), help: L("전원과 드레인 사이 저항", "Resistor between source and drain"), unit: "kΩ", scale: 1e-3, min: 1e-6, max: 1e9, slider: "log" as const },
+  Cd: { key: "C_d_F", sym: "C_d", label: L("드레인 노드 용량", "Drain-node capacitance"), help: L("드레인 노드의 접지 용량", "Drain-node capacitance to ground"), unit: "fF", scale: 1e15, min: 0, max: 1e9, slider: "log" as const },
+  vg: { key: "vg_V", sym: "V_G", label: L("게이트 전압", "Gate voltage"), help: L("자동: 소자 V_G", "auto: device V_G"), unit: "V", min: -6, max: 1, step: 0.01, auto: true },
+  vBase: { key: "v_base_V", sym: "V_{\\mathrm{base}}", label: L("기저 전압", "Base level"), help: L("펄스 사이 전압", "Voltage between pulses"), unit: "V", min: -8, max: 8, step: 0.05 },
+  vAmp: { key: "v_amp_V", sym: "V_{\\mathrm{amp}}", label: L("펄스 진폭", "Pulse amplitude"), help: L("자동: 결정론 V_LU + 0.10 V", "auto: deterministic V_LU + 0.10 V"), unit: "V", min: -8, max: 8, step: 0.01, auto: true },
+  width: { key: "width_s", sym: "t_w", label: L("펄스 폭 (평탄부)", "Pulse width (flat top)"), help: L("high 구간", "High-level duration"), unit: "µs", scale: 1e6, min: 1e-6, max: 1e12, slider: "log" as const },
+  period: { key: "period_s", sym: "T", label: L("펄스 주기", "Pulse period"), help: L("펄스 반복 주기", "Repetition period"), unit: "µs", scale: 1e6, min: 1e-6, max: 1e12, slider: "log" as const },
+  rise: { key: "rise_s", sym: "t_r", label: L("상승 시간", "Rise time"), help: L("에지 상승 시간", "Edge rise time"), unit: "µs", scale: 1e6, min: 0, max: 1e9, slider: "log" as const },
+  fall: { key: "fall_s", sym: "t_f", label: L("하강 시간", "Fall time"), help: L("에지 하강 시간", "Edge fall time"), unit: "µs", scale: 1e6, min: 0, max: 1e9, slider: "log" as const },
+  nPulses: { key: "n_pulses", sym: "N_p", label: L("펄스 수", "Pulses"), help: L("≤ 2000", "≤ 2000"), unit: "", min: 1, max: 2000, step: 1, int: true },
+  delay: { key: "delay_s", sym: "t_0", label: L("첫 펄스 지연", "First-pulse delay"), help: L("첫 펄스 시작 시각", "Start of the first pulse"), unit: "µs", scale: 1e6, min: 0, max: 1e12 },
 };
 
 export const BENCHES: Record<BenchId, BenchDef> = {
@@ -43,66 +59,79 @@ export const BENCHES: Record<BenchId, BenchDef> = {
     id: "load_line",
     title: "c.bench.load_line",
     desc: "c.bench.load_line.desc",
-    defaults: { v_max_V: 4.5, rate_V_per_s: 0.4, r_series_ohm: 1e4, c_node_F: 1e-13 },
-    fields: [
-      { key: "v_max_V", sym: "V_{\\mathrm{src,max}}", label: L("전원 최대 전압", "Source peak voltage"), help: L("삼각 램프 0 → V_max → 0", "Triangular ramp 0 → V_max → 0"), unit: "V", min: 0.5, max: 8, step: 0.1, slider: true },
-      { key: "rate_V_per_s", sym: "\\dot V", label: L("램프 속도", "Ramp rate"), help: L("전원 전압 변화율", "Source slew rate"), unit: "V/s", min: 1e-3, max: 1e6, slider: "log" },
-      R_SERIES,
-      C_NODE,
-    ],
+    defaults: { v_min_V: 0, v_max_V: null, rate_V_per_s: null, n_cycles: 1, R_s_ohm: 1e3, C_d_F: 2e-15, vg_V: null },
+    fields: [f.vMin, f.vMax, f.rate, f.nCycles, f.Rs, f.Cd, f.vg],
   },
   pulse: {
     id: "pulse",
     title: "c.bench.pulse",
     desc: "c.bench.pulse.desc",
-    defaults: { amplitude_V: 4.2, base_V: 0, width_s: 1e-3, period_s: 5e-3, n_pulses: 5, rise_s: 1e-6, r_series_ohm: 1e4, c_node_F: 1e-13 },
+    defaults: { v_base_V: 0, v_amp_V: null, width_s: 200e-6, period_s: 1e-3, rise_s: 1e-6, fall_s: 1e-6, n_pulses: 10, delay_s: 0, R_s_ohm: 1e3, C_d_F: 2e-15, vg_V: null, amplitudes_V: [] },
     fields: [
-      { key: "amplitude_V", sym: "V_{\\mathrm{pulse}}", label: L("펄스 진폭", "Pulse amplitude"), help: L("펄스 high 전압", "Pulse high level"), unit: "V", min: 0, max: 8, step: 0.05, slider: true },
-      { key: "base_V", sym: "V_{\\mathrm{base}}", label: L("기저 전압", "Base level"), help: L("펄스 사이 전압", "Voltage between pulses"), unit: "V", min: 0, max: 8, step: 0.05 },
-      { key: "width_s", sym: "t_w", label: L("펄스 폭", "Pulse width"), help: L("high 구간 길이", "High-level duration"), unit: "ms", scale: 1e3, min: 1e-6, max: 1e4, slider: "log" },
-      { key: "period_s", sym: "T", label: L("펄스 주기", "Pulse period"), help: L("펄스 간격 (주기)", "Pulse repetition period"), unit: "ms", scale: 1e3, min: 1e-6, max: 1e5, slider: "log" },
-      { key: "n_pulses", sym: "N_p", label: L("펄스 수", "Number of pulses"), help: L("펄스 열 길이", "Pulse train length"), unit: "", min: 1, max: 1000, step: 1, int: true },
-      { key: "rise_s", sym: "t_r", label: L("상승 시간", "Rise time"), help: L("에지 상승/하강 시간", "Edge rise/fall time"), unit: "µs", scale: 1e6, min: 1e-6, max: 1e6, slider: "log" },
-      R_SERIES,
-      C_NODE,
+      f.vBase, f.vAmp, f.width, f.period, f.rise, f.fall, f.nPulses, f.delay, f.Rs, f.Cd, f.vg,
+      { key: "amplitudes_V", sym: "\\{V_{\\mathrm{amp}}\\}", label: L("진폭 스윕 (선택)", "Amplitude sweep (optional)"), help: L("쉼표로 구분한 진폭 목록 → P_sw vs 진폭 (≤ 25개)", "Comma-separated amplitudes → P_sw vs amplitude (≤ 25)"), unit: "V", type: "list", min: -8, max: 8 },
     ],
   },
   pbit: {
     id: "pbit",
     title: "c.bench.pbit",
     desc: "c.bench.pbit.desc",
-    defaults: { v_bias_V: 3.3, r_load_ohm: 1e5, v_threshold_V: 3.0, duration_s: 0.2, c_node_F: 1e-13 },
+    defaults: { v_low_V: 0, v_high_V: null, clock_period_s: 1e-3, clock_width_s: 200e-6, rise_s: 1e-6, fall_s: 1e-6, n_clocks: 50, R_L_ohm: 100e3, C_d_F: 2e-15, cmp_threshold_V: null, vg_V: null, vg_list_V: [], light_list_pA: [] },
     fields: [
-      { key: "v_bias_V", sym: "V_{\\mathrm{bias}}", label: L("바이어스 전압", "Bias voltage"), help: L("부하 저항 위 DC 전원 (래치 창 안)", "DC supply above the load resistor (inside the latch window)"), unit: "V", min: 0, max: 8, step: 0.01, slider: true },
-      { key: "r_load_ohm", sym: "R_L", label: L("부하 저항", "Load resistor"), help: L("부하선 기울기", "Sets the load-line slope"), unit: "kΩ", scale: 1e-3, min: 0.001, max: 1e6, slider: "log" },
-      { key: "v_threshold_V", sym: "V_{\\mathrm{th}}", label: L("비교기 문턱", "Comparator threshold"), help: L("드레인 전압 → 비트 판정 기준", "Drain-voltage threshold for the output bit"), unit: "V", min: 0, max: 8, step: 0.01 },
-      { key: "duration_s", sym: "t_{\\mathrm{sim}}", label: L("시뮬레이션 시간", "Duration"), help: L("과도해석 총 시간", "Total transient time"), unit: "s", min: 1e-6, max: 1e3, slider: "log" },
-      C_NODE,
+      { key: "v_low_V", sym: "V_{\\mathrm{low}}", label: L("클럭 low", "Clock low"), help: L("클럭 low 전압", "Clock low level"), unit: "V", min: -8, max: 8, step: 0.05 },
+      { key: "v_high_V", sym: "V_{\\mathrm{high}}", label: L("클럭 high", "Clock high"), help: L("자동: V_LU − 0.02 V (확률 스위칭 영역)", "auto: V_LU − 0.02 V (stochastic switching regime)"), unit: "V", min: -8, max: 8, step: 0.01, auto: true },
+      { key: "clock_period_s", sym: "T_{\\mathrm{clk}}", label: L("클럭 주기", "Clock period"), help: L("비트 한 개당 시간", "Time per bit"), unit: "µs", scale: 1e6, min: 1e-6, max: 1e12, slider: "log" },
+      { key: "clock_width_s", sym: "t_{\\mathrm{clk}}", label: L("클럭 폭", "Clock width"), help: L("high 평탄부", "Flat top of the clock"), unit: "µs", scale: 1e6, min: 1e-6, max: 1e12, slider: "log" },
+      f.rise, f.fall,
+      { key: "n_clocks", sym: "N_{\\mathrm{clk}}", label: L("비트 수", "Clocks (bits)"), help: L("≤ 5000", "≤ 5000"), unit: "", min: 1, max: 5000, step: 1, int: true, slider: "log" },
+      { key: "R_L_ohm", sym: "R_L", label: L("부하 저항", "Load resistor"), help: L("클럭 전원과 드레인 사이", "Between the clocked supply and the drain"), unit: "kΩ", scale: 1e-3, min: 1e-6, max: 1e9, slider: "log" },
+      f.Cd,
+      { key: "cmp_threshold_V", sym: "V_{\\mathrm{th}}", label: L("비교기 문턱", "Comparator threshold"), help: L("자동: V_high − R_L·100 nA. 비트 = [v_D < V_th]", "auto: V_high − R_L·100 nA. bit = [v_D < V_th]"), unit: "V", min: -8, max: 8, step: 0.01, auto: true },
+      f.vg,
+      { key: "vg_list_V", sym: "\\{V_G\\}", label: L("V_G 스윕 (선택)", "V_G sweep (optional)"), help: L("쉼표로 구분 → P(1) vs V_G", "Comma-separated → P(1) vs V_G"), unit: "V", type: "list", min: -6, max: 1 },
+      { key: "light_list_pA", sym: "\\{I_{PH}\\}", label: L("광전류 스윕 (선택)", "Light sweep (optional)"), help: L("V_G 목록이 비었을 때 사용 → P(1) vs I_PH", "Used when the V_G list is empty → P(1) vs I_PH"), unit: "pA", type: "list", min: 0, max: 1e6 },
     ],
   },
   coupled: {
     id: "coupled",
     title: "c.bench.coupled",
     desc: "c.bench.coupled.desc",
-    defaults: { v_max_V: 4.5, rate_V_per_s: 0.4, r_series_ohm: 1e4, r_couple_ohm: 1e6, vg2_V: -2.0, c_node_F: 1e-13 },
+    defaults: {
+      source: "ramp", v_min_V: 0, v_max_V: null, rate_V_per_s: null, n_cycles: 1, v_base_V: 0, v_amp_V: null, width_s: 200e-6, period_s: 1e-3, rise_s: 1e-6, fall_s: 1e-6,
+      n_pulses: 10, delay_s: 0, R_s1_ohm: 100e3, R_s2_ohm: 100e3, R_c_ohm: 1e6, C_d_F: 2e-15, vg_V: null, vg2_V: null, iph2_pA: null,
+    },
     fields: [
-      { key: "v_max_V", sym: "V_{\\mathrm{src,max}}", label: L("전원 최대 전압", "Source peak voltage"), help: L("공통 삼각 램프", "Shared triangular ramp"), unit: "V", min: 0.5, max: 8, step: 0.1, slider: true },
-      { key: "rate_V_per_s", sym: "\\dot V", label: L("램프 속도", "Ramp rate"), help: L("전원 전압 변화율", "Source slew rate"), unit: "V/s", min: 1e-3, max: 1e6, slider: "log" },
-      R_SERIES,
-      { key: "r_couple_ohm", sym: "R_c", label: L("결합 저항", "Coupling resistor"), help: L("두 드레인 사이 저항", "Resistor between the two drains"), unit: "kΩ", scale: 1e-3, min: 0.001, max: 1e7, slider: "log" },
-      { key: "vg2_V", sym: "V_{G,2}", label: L("소자 2 게이트", "Device 2 gate"), help: L("두 번째 STL의 V_G", "V_G of the second STL"), unit: "V", min: -4.5, max: 0, step: 0.01, slider: true },
-      C_NODE,
+      { key: "source", label: L("공통 전원", "Common source"), help: L("삼각 램프 또는 펄스 열", "Triangular ramp or pulse train"), unit: "", type: "select", options: [{ value: "ramp", label: L("램프", "ramp") }, { value: "pulse", label: L("펄스", "pulse") }] },
+      ...[f.vMin, f.vMax, f.rate, f.nCycles].map((x) => ({ ...x, when: (bp: Record<string, BenchValue>) => bp.source !== "pulse" })),
+      ...[f.vBase, f.vAmp, f.width, f.period, f.rise, f.fall, f.nPulses, f.delay].map((x) => ({ ...x, when: (bp: Record<string, BenchValue>) => bp.source === "pulse" })),
+      { ...f.Rs, key: "R_s1_ohm", sym: "R_{s1}", label: L("직렬 저항 (셀 1)", "Series resistor (cell 1)") },
+      { ...f.Rs, key: "R_s2_ohm", sym: "R_{s2}", label: L("직렬 저항 (셀 2)", "Series resistor (cell 2)") },
+      { key: "R_c_ohm", sym: "R_c", label: L("결합 저항", "Coupling resistor"), help: L("두 드레인 사이 저항", "Resistor between the drains"), unit: "kΩ", scale: 1e-3, min: 1e-6, max: 1e12, slider: "log" },
+      f.Cd,
+      { ...f.vg, key: "vg_V", sym: "V_{G,1}", label: L("셀 1 게이트", "Cell 1 gate") },
+      { ...f.vg, key: "vg2_V", sym: "V_{G,2}", label: L("셀 2 게이트", "Cell 2 gate"), help: L("자동: 셀 1과 동일", "auto: same as cell 1") },
+      { key: "iph2_pA", sym: "I_{PH,2}", label: L("셀 2 광전류", "Cell 2 photocurrent"), help: L("자동: 소자 광 설정", "auto: device light"), unit: "pA", min: 0, max: 1e6, step: 0.01, auto: true },
     ],
   },
 };
 
 export const BENCH_ORDER: BenchId[] = ["load_line", "pulse", "pbit", "coupled"];
 
-export const DEFAULT_SOLVER: SolverBlock = { method: "BE", dt_min_s: 1e-12, dt_max_s: 1e-3, reltol: 1e-4, max_steps: 200000 };
+export const DEFAULT_SOLVER: SolverBlock = {
+  method: "BE",
+  dt_min_s: null,
+  dt_max_s: null,
+  reltol: 1e-3,
+  max_steps: 1_000_000,
+  tau_frac: 0.05,
+  max_events_per_step: 200,
+  noise_dt_min_s: 2e-9,
+  gauss_threshold: 100,
+};
 
 export const DEFAULT_CIRCUIT_STOCH: CircuitStochBlock = {
-  seed: 1,
+  seed: 2026092920,
   n_runs: 20,
   carrier_noise: true,
-  local_state: { mode: "frozen", action: "gidl", sigma: 0.15339035678526572, tau_s: 5, sigma_E_V: 0.00043696121025623943, tau_E_s: 1.6205564347468981, acquisition_trend: false },
+  local_state: { mode: "none", action: "gidl", sigma: 0.15339035678526572, tau_s: 5, sigma_E_V: 0.00043696121025623943, tau_E_s: 1.6205564347468981, acquisition_trend: false },
 };

@@ -106,7 +106,9 @@ export function Schematic({ nodes, elements, title }: { nodes: string[]; element
   const vertical: Placed[] = [];
   const horizontal: { el: SchematicElement; a: string; b: string }[] = [];
   const slots = new Map<string, number>();
-  for (const el of elements) {
+  // STL elements first at their column (their gate lead needs the free space left of the column)
+  const ordered = [...elements].sort((a, b) => Number(b.kind === "STL") - Number(a.kind === "STL"));
+  for (const el of ordered) {
     const ns = el.nodes;
     if (el.kind === "STL") {
       const col = ns[0];
@@ -138,7 +140,6 @@ export function Schematic({ nodes, elements, title }: { nodes: string[]; element
   const hPlaced = horizontal.map((h) => {
     const xa = xs.get(h.a) ?? 0;
     const xb = xs.get(h.b) ?? 0;
-    const [x1, x2] = xa < xb ? [xa + (slots.get(xa < xb ? h.a : h.b) ? (Math.max(1, slots.get(xa < xb ? h.a : h.b) ?? 1) - 1) * SLOT : 0), xb] : [xb, xa];
     const ia = cols.indexOf(h.a);
     const ib = cols.indexOf(h.b);
     const adjacent = Math.abs(ia - ib) === 1;
@@ -148,12 +149,12 @@ export function Schematic({ nodes, elements, title }: { nodes: string[]; element
       while (hLevels.includes(level)) level++;
       hLevels.push(level);
     }
-    return { ...h, x1, x2, xa, xb, level };
+    return { ...h, xa, xb, level };
   });
   const maxLevel = Math.max(0, ...hPlaced.map((h) => h.level));
-  const yOff = maxLevel * 44;
+  const yOff = maxLevel * 56;
   const height = BOT + 34 + yOff;
-  const railY = (lvl: number) => TOP - lvl * 44;
+  const railY = (lvl: number) => TOP - lvl * 56;
 
   const parts: ReactNode[] = [];
   // ground rail
@@ -204,7 +205,6 @@ export function Schematic({ nodes, elements, title }: { nodes: string[]; element
     const y = railY(h.level);
     const x1 = Math.min(h.xa, h.xb);
     const x2 = Math.max(h.xa, h.xb);
-    const cx = (x1 + x2) / 2;
     if (h.level > 0) {
       parts.push(<line key={`${h.el.name}-u1`} x1={x1} y1={TOP} x2={x1} y2={y} stroke="currentColor" strokeWidth={1.6} />);
       parts.push(<line key={`${h.el.name}-u2`} x1={x2} y1={TOP} x2={x2} y2={y} stroke="currentColor" strokeWidth={1.6} />);
@@ -221,7 +221,6 @@ export function Schematic({ nodes, elements, title }: { nodes: string[]; element
         {h.el.value && <text x={mid} y={y + 30} fontSize={10.5} fill="var(--muted)" textAnchor="middle" fontFamily="var(--mono)">{h.el.value}</text>}
       </g>,
     );
-    void cx;
   });
   return (
     <svg viewBox={`0 ${-yOff} ${width} ${height}`} role="img" aria-label={title ?? "schematic"} data-testid="schematic" style={{ color: "var(--text)" }}>

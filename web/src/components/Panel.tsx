@@ -9,6 +9,7 @@ import { useStore, type ResultEntry } from "../state/store";
 import { downloadText, tracesToCsv } from "../utils/csv";
 import { fmtDuration } from "../utils/format";
 import { DetailsButton } from "./DetailsButton";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { IconChart, IconDownload, IconImage } from "./icons";
 import { exportPlotPng, Plot } from "./Plot";
 
@@ -83,31 +84,28 @@ export function Panel(p: PanelProps) {
       <header className="panel-head">
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3 className="panel-title" id={`panel-${p.id}-title`} style={{ margin: 0 }}>
-            {p.title}
+            <span className="pt-text">{p.title}</span>
             {p.badges}
             {e?.mock && p.hasData && <span className="badge demo">{t("demo")}</span>}
             {stale && <span className="badge stale" title={t("stale")}>{t("stale").split("—")[0].trim()}</span>}
           </h3>
           {p.desc && <div className="panel-desc">{p.desc}</div>}
         </div>
-        {p.topic && <DetailsButton topic={p.topic} testId={`details-panel-${p.id}`} />}
-      </header>
-      {(p.toolbar || (p.plot && p.hasData)) && (
-        <div className="panel-toolbar">
-          {p.toolbar}
-          <span className="spacer" />
+        <div className="panel-actions">
           {p.plot && p.hasData && (
             <>
-              <button type="button" className="btn sm ghost" onClick={csv} aria-label={t("csv.aria")} title={t("csv.aria")}>
-                <IconDownload size={13} /> {t("csv")}
+              <button type="button" className="icon-btn xs" onClick={csv} aria-label={t("csv.aria")} title={t("csv.aria")} data-testid={`csv-${p.id}`}>
+                <IconDownload size={14} />
               </button>
-              <button type="button" className="btn sm ghost" onClick={png} aria-label={t("png.aria")} title={t("png.aria")}>
-                <IconImage size={13} /> {t("png")}
+              <button type="button" className="icon-btn xs" onClick={png} aria-label={t("png.aria")} title={t("png.aria")} data-testid={`png-${p.id}`}>
+                <IconImage size={14} />
               </button>
             </>
           )}
+          {p.topic && <DetailsButton topic={p.topic} testId={`details-panel-${p.id}`} />}
         </div>
-      )}
+      </header>
+      {p.toolbar && <div className="panel-toolbar">{p.toolbar}</div>}
       {err && (
         <div className="panel-foot">
           <div className="err-box" role="alert">
@@ -115,12 +113,15 @@ export function Panel(p: PanelProps) {
           </div>
         </div>
       )}
+      {(p.plot || !p.hasData || running) && (
       <div className="panel-body">
         {p.plot && p.hasData ? (
           <div className={running ? "dim" : undefined}>
-            <Plot data={p.plot.data} layout={p.plot.layout} className={p.plot.className ?? "plot"} onGraph={(gd) => (gdRef.current = gd)} />
+            <ErrorBoundary label={p.title} resetKey={p.plot}>
+              <Plot data={p.plot.data} layout={p.plot.layout} className={p.plot.className ?? "plot"} onGraph={(gd) => (gdRef.current = gd)} />
+            </ErrorBoundary>
           </div>
-        ) : p.plot ? (
+        ) : !p.hasData ? (
           running ? (
             <div className="skeleton-plot" />
           ) : (
@@ -145,6 +146,7 @@ export function Panel(p: PanelProps) {
           </div>
         )}
       </div>
+      )}
       {p.children}
       {p.warnings && p.warnings.length > 0 && <Notices items={p.warnings} />}
     </section>

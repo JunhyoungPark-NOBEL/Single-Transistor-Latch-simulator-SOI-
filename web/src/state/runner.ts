@@ -14,6 +14,9 @@ import { useStore } from "./store";
 
 let backend: Backend = httpBackend;
 let mockBackend: Backend | null = null;
+let markReady: () => void = () => undefined;
+/** Resolves once the first backend probe finished (HTTP or mock chosen). */
+export const backendReady: Promise<void> = new Promise((r) => (markReady = r));
 const tokens = new Map<string, number>();
 let tokenSeq = 0;
 
@@ -37,7 +40,11 @@ function forcedMockFromUrl(): boolean {
 }
 
 /** Probe /api/health; switch to the HTTP backend when it answers, otherwise to the mock backend. */
-export async function initBackend(): Promise<void> {
+export function initBackend(): Promise<void> {
+  return probeBackend().finally(() => markReady());
+}
+
+async function probeBackend(): Promise<void> {
   if (forcedMockFromUrl()) {
     useMock(true);
     return;
@@ -46,8 +53,9 @@ export async function initBackend(): Promise<void> {
   try {
     const h = await httpBackend.health();
     if (!h || !h.ok) throw new Error("unhealthy");
+    const wasMock = backend.isMock;
     backend = httpBackend;
-    useStore.setState({ backend: "online", health: h });
+    useStore.setState({ backend: "online", health: h, ...(wasMock ? { measured: { status: "idle" as const }, designMap: { status: "idle" as const } } : {}) });
     try {
       const meta = (await httpBackend.meta()) as Meta;
       if (meta && meta.presets) useStore.getState().setMeta(meta);
@@ -68,7 +76,7 @@ export function startHealthPolling(intervalMs = 20000): () => void {
       const h = await httpBackend.health();
       if (s.backend !== "online") {
         backend = httpBackend;
-        useStore.setState({ backend: "online", health: h });
+        useStore.setState({ backend: "online", health: h, measured: { status: "idle" }, designMap: { status: "idle" } });
         httpBackend.meta().then((m) => m?.presets && useStore.getState().setMeta(m)).catch(() => undefined);
       } else useStore.setState({ health: h });
     } catch {
@@ -86,6 +94,7 @@ export interface RunResult<T> {
 
 /** Run one compute job into result slot `key`. A newer run of the same key supersedes (and cancels) the older one. */
 export async function runKey<T = unknown>(key: string, kind: Kind, payload: unknown): Promise<RunResult<T>> {
+  await backendReady;
   const st = useStore.getState();
   const token = ++tokenSeq;
   tokens.set(key, token);
@@ -230,12 +239,10 @@ export async function runValidationPhoto() {
   const conds = meta.measured_photo_conditions ?? [];
   const keys = conds.map((_, k) => `val_photo_${k}`);
   beginGroup(keys, "photo conditions");
-  const token = tokenSeq;
   for (let k = 0; k < conds.length; k++) {
     const c = conds[k];
     const r = await runKey(keys[k], "sweep_mc", photoConditionPayload(meta.presets.photo, c.vg, c.power_mW));
     if (!r.ok && useStore.getState().results[keys[k]]?.status === "cancelled") break;
-    void token;
   }
   endGroup(keys);
 }
@@ -259,6 +266,7 @@ export async function loadMeasured(force = false) {
   const s = useStore.getState();
   if (!force && (s.measured.status === "loading" || s.measured.status === "done")) return;
   useStore.setState({ measured: { status: "loading" } });
+  await backendReady;
   try {
     const raw = await backend.measured();
     useStore.setState({ measured: { status: "done", data: normalizeMeasured(raw) } });
@@ -271,6 +279,7 @@ export async function loadDesignMap(force = false) {
   const s = useStore.getState();
   if (!force && (s.designMap.status === "loading" || s.designMap.status === "done")) return;
   useStore.setState({ designMap: { status: "loading" } });
+  await backendReady;
   try {
     const raw = await backend.designMap();
     useStore.setState({ designMap: { status: "done", data: normalizeDesignMap(raw) } });

@@ -125,13 +125,11 @@ export function Header() {
 export function ModeBar() {
   const t = useT();
   const mode = useStore((s) => s.mode);
-  const tab = useStore((s) => s.tab);
   return (
-    <div className="modebar" data-testid="modebar">
-      <span className="modebar-tag">{t(mode === "deterministic" ? "mode.deterministic" : "mode.stochastic")}</span>
+    <div className="modestrip" data-testid="modebar">
+      <span className="modestrip-tag">{t(mode === "deterministic" ? "mode.deterministic" : "mode.stochastic")}</span>
       <span className="sep" aria-hidden />
       <span className="hint" data-testid="mode-hint">{t(mode === "deterministic" ? "mode.deterministic.hint" : "mode.stochastic.hint")}</span>
-      {tab === "validation" || tab === "physics" ? null : null}
     </div>
   );
 }

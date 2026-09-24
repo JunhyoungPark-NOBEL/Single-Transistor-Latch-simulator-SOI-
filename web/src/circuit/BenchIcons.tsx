@@ -40,7 +40,6 @@ export function BenchIcon({ bench }: { bench: BenchId }) {
           <Fet x={140} y={36} />
           <path d="M140 52 V60 M30 47 V60 M24 60 H146" {...S} />
           <Gnd x={85} y={63} />
-          <path d="M160 18 l10 -8 l10 8" {...S} opacity={0.5} />
         </svg>
       );
     case "pulse":

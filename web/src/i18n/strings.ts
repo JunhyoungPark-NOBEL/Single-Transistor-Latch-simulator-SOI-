@@ -44,12 +44,13 @@ export const STRINGS = {
   "details": { ko: "상세", en: "Details" },
   "details.aria": { ko: "{topic} — 상세 물리 설명 열기", en: "Open detailed physics for {topic}" },
   "reset": { ko: "초기화", en: "Reset" },
-  "reset.aria": { ko: "{group} 값을 프리셋 기본값으로", en: "Reset {group} to preset defaults" },
+  "reset.aria": { ko: "{group} 초기화 (프리셋 기본값으로)", en: "Reset {group} to preset defaults" },
   "changed": { ko: "기본값에서 변경됨", en: "Changed from default" },
   "default": { ko: "기본값", en: "Default" },
   "range": { ko: "범위 {min} – {max}", en: "range {min} – {max}" },
   "invalid": { ko: "숫자를 입력하세요", en: "Enter a number" },
   "experimental": { ko: "실험적", en: "experimental" },
+  "experimental.short": { ko: "실험", en: "exp." },
   "uncalibrated": { ko: "보정되지 않은 가설 경로입니다. 결과는 정성적 탐색용입니다.", en: "Uncalibrated hypothesis path — results are for qualitative exploration only." },
   "on": { ko: "켜짐", en: "on" },
   "off": { ko: "꺼짐", en: "off" },
@@ -98,9 +99,9 @@ export const STRINGS = {
   "run.jobs": { ko: "{n}개 작업", en: "{n} jobs" },
 
   // ---------------------------------------------------------------- KPI
-  "kpi.vlu": { ko: "래치업 전압", en: "Latch-up voltage" },
-  "kpi.vld": { ko: "래치다운 전압", en: "Latch-down voltage" },
-  "kpi.window": { ko: "히스테리시스 창", en: "Hysteresis window" },
+  "kpi.vlu": { ko: "래치업 전압", en: "Latch-up" },
+  "kpi.vld": { ko: "래치다운 전압", en: "Latch-down" },
+  "kpi.window": { ko: "히스테리시스 창", en: "Window" },
   "kpi.ifold": { ko: "fold 전류", en: "Current at fold" },
   "kpi.cycles": { ko: "사이클", en: "Cycles" },
   "kpi.censored": { ko: "미스위칭 (censored)", en: "Censored" },
@@ -108,7 +109,7 @@ export const STRINGS = {
   "kpi.engine": { ko: "엔진", en: "Engine" },
   "kpi.mean": { ko: "평균 ± σ", en: "mean ± σ" },
   "kpi.nolatch": { ko: "래치 없음", en: "no latch" },
-  "kpi.fold": { ko: "fold (평균 모델)", en: "fold (mean model)" },
+  "kpi.fold": { ko: "fold", en: "fold" },
 
   // ---------------------------------------------------------------- parameter groups
   "g.bias": { ko: "바이어스 & 스윕", en: "Bias & sweep" },

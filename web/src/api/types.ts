@@ -191,7 +191,10 @@ export interface CircuitResult extends Common {
   schematic: { nodes: string[]; elements: SchematicElement[] };
   solver_stats: { steps: number; rejected: number; newton_iters: number; runtime_s: number };
 }
-export interface SolverBlock { method: "BE" | "TRAP"; dt_min_s: number; dt_max_s: number; reltol: number; max_steps: number }
+export interface SolverBlock {
+  method: "BE" | "TRAP"; dt_min_s: number | null; dt_max_s: number | null; reltol: number; max_steps: number;
+  tau_frac?: number; max_events_per_step?: number; noise_dt_min_s?: number; gauss_threshold?: number;
+}
 export interface CircuitStochBlock { seed: number; n_runs: number; carrier_noise: boolean; local_state: LocalStateBlock }
 
 // ---------------------------------------------------------------- data endpoints (normalised, see api/measured.ts)

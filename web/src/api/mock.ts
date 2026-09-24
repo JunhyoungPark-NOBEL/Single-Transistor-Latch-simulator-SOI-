@@ -172,14 +172,14 @@ export function mockChargeBalance(payload: { device?: DeviceBlock; vd?: number }
   const u2 = 0.78 - 0.3 * f;
   const u3 = 0.8 + 0.02 * f;
   const u = linspace(0.05, 0.95, 241);
-  const lnGL = u.map((x) => -900 * (x - u1) * (x - u2) * (x - u3) + off);
+  const lnGL = u.map((x) => 6 * Math.tanh((-900 * (x - u1) * (x - u2) * (x - u3) + off) / 6));
   const L = u.map((x) => 1e-16 * Math.exp(x / 0.045));
   const G = L.map((l, i) => l * Math.exp(lnGL[i]));
   const du = u[1] - u[0];
   const pot: number[] = [];
   let acc = 0;
   for (let i = 0; i < u.length; i++) {
-    acc -= lnGL[i] * du * 400;
+    acc -= lnGL[i] * du * 60;
     pot.push(acc);
   }
   const roots: ChargeBalanceResult["roots"] = [];

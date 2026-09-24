@@ -162,7 +162,7 @@ const WIN_H = 620;
 export const DEFAULT_VG_RANGE: VgRange = { min: -4.5, max: -0.5, n: 41 };
 export const DEFAULT_VGS_RANGE: VgRange = { min: -2.6, max: -0.9, n: 9 };
 
-export const useStore = create<State>((set, get) => ({
+export const useStore = create<State>((set) => ({
   tab: H.tab ?? P.tab ?? "device",
   mode: H.mode ?? P.mode ?? "deterministic",
   lang: P.lang ?? "ko",

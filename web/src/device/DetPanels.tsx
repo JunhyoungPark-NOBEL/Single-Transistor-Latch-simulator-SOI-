@@ -8,9 +8,9 @@ import { useT, type T } from "../i18n";
 import { currentAxis, HOVER_IV, type PlotPalette } from "../plots/theme";
 import { loadMeasured, runChargeBalance, runVgCurve } from "../state/runner";
 import { useStore } from "../state/store";
-import { fmtV, isNum } from "../utils/format";
-import { branchesPayload, chargeBalancePayload, iphPA, midFold, powerMW, vgCurvePayload } from "../utils/payload";
-import { abs, arrowIndices, isPaperReference, nums, pick, pos, useCurrentKey, useEntry, usePalette } from "./common";
+import { isNum } from "../utils/format";
+import { branchesPayload, chargeBalancePayload, midFold, powerMW, vgCurvePayload } from "../utils/payload";
+import { abs, arrowIndices, isPaperReference, logRange, nums, pick, pos, rangeWithin, useCurrentKey, useEntry, usePalette } from "./common";
 
 export function Seg<V extends string>({ value, options, onChange, label }: { value: V; options: { v: V; label: string }[]; onChange: (v: V) => void; label: string }) {
   return (
@@ -41,8 +41,8 @@ export function measuredIvTraces(t: T, c: PlotPalette, m: MeasuredData | undefin
     return [
       { x: p.vd_up, y: pos(p.p10_up), type: "scatter", mode: "lines", line: { width: 0 }, hoverinfo: "skip", showlegend: false, legendgroup: "meas" },
       { x: p.vd_up, y: pos(p.p90_up), type: "scatter", mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: c.measBand, name: t("iv.measBand"), hoverinfo: "skip", legendgroup: "meas" },
-      { x: p.vd_up, y: pos(p.median_up), type: "scatter", mode: "lines", line: { color: c.meas, width: 1.2, dash: "dot" }, name: `${t("iv.measMedian")} ↑`, legendgroup: "meas", hovertemplate: `${HOVER_IV}<extra>${t("measured")} ↑</extra>` },
-      { x: p.vd_down, y: pos(p.median_down), type: "scatter", mode: "lines", line: { color: c.meas, width: 1.2, dash: "dash" }, name: `${t("iv.measMedian")} ↓`, legendgroup: "meas", hovertemplate: `${HOVER_IV}<extra>${t("measured")} ↓</extra>` },
+      { x: p.vd_up, y: pos(p.median_up), type: "scatter", mode: "lines", line: { color: c.meas, width: 1.2, dash: "dot" }, name: `${t("iv.measMedian")} ↑↓`, legendgroup: "meas", hovertemplate: `${HOVER_IV}<extra>${t("measured")} ↑</extra>` },
+      { x: p.vd_down, y: pos(p.median_down), type: "scatter", mode: "lines", line: { color: c.meas, width: 1.2, dash: "dash" }, name: `${t("iv.measMedian")} ↓`, legendgroup: "meas", showlegend: false, hovertemplate: `${HOVER_IV}<extra>${t("measured")} ↓</extra>` },
     ];
   }
   if (kind === "photo" && m.light_iv.length) {
@@ -64,6 +64,12 @@ export function measuredIvTraces(t: T, c: PlotPalette, m: MeasuredData | undefin
     }));
   }
   return [];
+}
+
+/** Legend inside the top-left corner of an I–V plot (empty region for log |I_D|). */
+export function insideLegend(c: PlotPalette, corner: "tl" | "br" = "br", yBottom = 0.03): Partial<Layout>["legend"] {
+  const pos = corner === "tl" ? { x: 0.015, y: 0.985, xanchor: "left" as const, yanchor: "top" as const } : { x: 0.985, y: yBottom, xanchor: "right" as const, yanchor: "bottom" as const };
+  return { orientation: "v", ...pos, bgcolor: c.surface.startsWith("#") ? `${c.surface}e6` : c.surface, bordercolor: c.border, borderwidth: 1, font: { size: 10.5 }, tracegroupgap: 0, itemwidth: 30 };
 }
 
 function foldAnnotations(f: BranchesResult["folds"], c: PlotPalette): Partial<Layout>["annotations"] {
@@ -89,8 +95,8 @@ export function IvPanel() {
   const [showSweep, setShowSweep] = useState(true);
   const measKind = isPaperReference(params.device) ? "paper" : preset === "photo" ? "photo" : null;
   useEffect(() => {
-    if (showMeas && measKind) void loadMeasured();
-  }, [showMeas, measKind]);
+    if (showMeas && measKind && measured.status === "idle") void loadMeasured();
+  }, [showMeas, measKind, measured.status]);
 
   const plot = useMemo(() => {
     if (!data) return undefined;
@@ -124,11 +130,13 @@ export function IvPanel() {
         hovertemplate: "fold: %{x:.4f} V<br>%{y:.3~s}A<extra></extra>",
       });
     }
+    const yr = log ? logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) : undefined;
     const layout: Partial<Layout> = {
       xaxis: { title: { text: "V<sub>D</sub> (V)" }, range: [0, params.sweep.vd_max_V + 0.15], zeroline: false },
-      yaxis: currentAxis(log),
+      yaxis: { ...currentAxis(log), ...(yr ? { range: yr } : {}) },
       annotations: log && data.latch ? foldAnnotations(f, c) : [],
-      margin: { l: 64, r: 16, t: 40, b: 46 },
+      margin: { l: 64, r: 16, t: 16, b: 46 },
+      legend: insideLegend(c, "tl"),
     };
     return { data: traces, layout };
   }, [data, log, showMeas, showSweep, measured.data, measKind, c, t, params.sweep.vd_max_V, params.device]);
@@ -145,7 +153,6 @@ export function IvPanel() {
       csvName="iv_branches"
       plot={plot}
       warnings={data?.warnings}
-      empty={data === undefined ? undefined : t("empty.nolatch")}
       toolbar={
         <>
           <Seg label="y" value={log ? "log" : "lin"} onChange={(v) => setLog(v === "log")} options={[{ v: "log", label: t("log") }, { v: "lin", label: t("lin") }]} />
@@ -188,7 +195,7 @@ export function ComponentsPanel() {
     });
     const layout: Partial<Layout> = {
       xaxis: { title: { text: `V<sub>D</sub> (V) — ${branch === "full" ? t("all") : branch}` } },
-      yaxis: currentAxis(log, "|I| (A)"),
+      yaxis: { ...currentAxis(log, "|I| (A)"), ...(log ? { range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y), 1e-18, 12) } : {}) },
       legend: { orientation: "h", y: 1.01, yanchor: "bottom", x: 0, font: { size: 11 } },
       margin: { l: 64, r: 16, t: 62, b: 46 },
     };
@@ -258,14 +265,26 @@ export function ChargeBalancePanel() {
       traces.push({ x: stable.map((r) => xr(r.u, r.Q_C)), y: stable.map((r) => potAt(r.u)), yaxis: "y2", type: "scatter", mode: "markers", name: t("cb.stable"), marker: { size: 11, color: c.det, line: { color: c.surface, width: 1.5 } }, hovertemplate: `${t("cb.stable")}<br>${hv}<br>I<sub>D</sub> = %{customdata:.3~s}A<extra></extra>`, customdata: stable.map((r) => r.id) as never });
     if (unstable.length)
       traces.push({ x: unstable.map((r) => xr(r.u, r.Q_C)), y: unstable.map((r) => potAt(r.u)), yaxis: "y2", type: "scatter", mode: "markers", name: t("cb.unstable"), marker: { size: 11, color: c.surface, line: { color: c.warn, width: 2 } }, hovertemplate: `${t("cb.unstable")}<br>${hv}<extra></extra>` });
+    // U(x) grows by 10⁴–10⁵ k_BT far from the wells: frame the region around the roots
+    const uRoots = data.roots.map((r) => potAt(r.u)).filter((v): v is number => typeof v === "number");
+    let uRange: [number, number] | undefined;
+    if (uRoots.length >= 2) {
+      const lo = Math.min(...uRoots);
+      const hi = Math.max(...uRoots);
+      const d = hi - lo || 1;
+      uRange = [lo - 0.35 * d, hi + 0.8 * d];
+    } else if (uRoots.length === 1) {
+      const ru = data.roots.map((r) => xr(r.u, r.Q_C));
+      uRange = rangeWithin(x, nums(data.potential), ru[0] - 0.15 * (xq === "u" ? 1 : 1), ru[0] + 0.15);
+    }
     const shapes: Partial<Shape>[] = data.roots.map((r) => ({
       type: "line", xref: "x", yref: "paper", x0: xr(r.u, r.Q_C), x1: xr(r.u, r.Q_C), y0: 0, y1: 1, line: { color: r.kind === "stable" ? c.det : c.warn, width: 1, dash: "dot" },
     }));
     const layout: Partial<Layout> = {
       grid: undefined,
       xaxis: { title: { text: xTitle }, anchor: "y2" },
-      yaxis: { ...currentAxis(true, "G, L (A)"), domain: [0.44, 1] },
-      yaxis2: { domain: [0, 0.36], title: { text: "U (k<sub>B</sub>T)" }, zeroline: true },
+      yaxis: { ...currentAxis(true, "G, L (A)"), domain: [0.44, 1], range: logRange([pos(data.generation_A), pos(data.loss_A)], 1e-17, 12) },
+      yaxis2: { domain: [0, 0.36], title: { text: "U (k<sub>B</sub>T)" }, zeroline: true, range: uRange },
       shapes,
       margin: { l: 64, r: 16, t: 40, b: 46 },
     };
@@ -289,7 +308,7 @@ export function ChargeBalancePanel() {
         <>
           <div className="slider-inline">
             <label className="tb-label mono" htmlFor="cb-vd">V<sub>D</sub> = {vd.toFixed(3)} V</label>
-            <input id="cb-vd" type="range" min={0} max={vmax} step={0.005} value={Math.min(vmax, vd)} onChange={(e) => onVd(Number(e.target.value))} aria-label="V_D" data-testid="cb-vd" />
+            <input id="cb-vd" type="range" min={0.05} max={vmax} step={0.005} value={Math.min(vmax, vd)} onChange={(e) => onVd(Number(e.target.value))} aria-label="V_D" data-testid="cb-vd" />
           </div>
           <button type="button" className="btn sm" onClick={() => { setCbVd(null); void runChargeBalance(autoVd); }} title={t("cb.auto")} aria-pressed={cbVd == null}>
             {t("cb.auto")}
@@ -332,7 +351,7 @@ export function VgPanel() {
       ann.push({ x: (w.vg_low + w.vg_high) / 2, y: 1, xref: "x", yref: "paper", yanchor: "bottom", text: `${t("vg.window")}: ${w.vg_low.toFixed(2)} … ${w.vg_high.toFixed(2)} V`, showarrow: false, font: { size: 11, color: c.det } });
     }
     shapes.push({ type: "line", xref: "x", yref: "paper", x0: vgNow, x1: vgNow, y0: 0, y1: 1, line: { color: c.text2, width: 1.2, dash: "dash" } });
-    ann.push({ x: vgNow, y: 0.02, xref: "x", yref: "paper", text: `${t("vg.current")} ${vgNow.toFixed(2)} V`, showarrow: false, xanchor: "left", xshift: 4, font: { size: 11, color: c.text2 } });
+    ann.push({ x: vgNow, y: 0.97, xref: "x", yref: "paper", yanchor: "top", text: `${t("vg.current")} ${vgNow.toFixed(2)} V`, showarrow: false, xanchor: "left", xshift: 4, font: { size: 11, color: c.text2 }, bgcolor: c.surface });
     const layout: Partial<Layout> = {
       xaxis: { title: { text: "V<sub>G</sub> (V)" } },
       yaxis: { title: { text: "fold V<sub>D</sub> (V)" } },
@@ -379,4 +398,3 @@ export function RangeInputs({ range, setRange, onRun, maxN, label }: { range: { 
   );
 }
 
-export { fmtV, iphPA };
