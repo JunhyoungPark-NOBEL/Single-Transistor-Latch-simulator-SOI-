@@ -12,6 +12,20 @@ export const TAU_G_UP_S = 5.0;
 export const PHOTO_DELTA_PHI_G0_V = 0.07443208588005665;
 export const PHOTO_SIGMA_PHI_V = 0.21536460239140515;
 
+// Device technology + geometry (server/params.py TECHNOLOGY / GEOMETRY, also sent per preset in /api/meta).
+// The geometry is fixed by the calibrated model; PDSOI and bulk are planned ("coming soon").
+export type Technology = "FDSOI" | "PDSOI" | "Bulk";
+export interface DeviceGeometry { Lg_nm: number; W_nm: number; Tsi_nm: number; EOT_nm: number }
+export interface PresetTech { technology: Technology; geometry: DeviceGeometry }
+export const TECHNOLOGIES: { id: Technology; available: boolean }[] = [
+  { id: "FDSOI", available: true },
+  { id: "PDSOI", available: false },
+  { id: "Bulk", available: false },
+];
+export const FDSOI_GEOMETRY: DeviceGeometry = { Lg_nm: 500, W_nm: 200, Tsi_nm: 50, EOT_nm: 14.1 };
+const GEOMETRY_TEXT = "L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm";
+const FDSOI: PresetTech = { technology: "FDSOI", geometry: FDSOI_GEOMETRY };
+
 const CALIB: CalibBlock = {
   beta: 7.166501201841884,
   tau_bulk_s: 9.266283807625294e-7,
@@ -48,15 +62,23 @@ const STOCH_PAPER: StochasticBlock = {
   engine: "auto", n_traces: 12, fold_nodes: 25, hazard_nodes: 5,
 };
 
-const paper: PresetDef = {
-  label: { ko: "논문 소자 (V_G = −2 V, 암조건, 0.4 V/s)", en: "Paper device (V_G = −2 V, dark, 0.4 V/s)" },
+const paper: PresetDef & PresetTech = {
+  label: {
+    ko: `FDSOI · ${GEOMETRY_TEXT} — 기준 보정 (암조건, V_G = −2 V, 0.4 V/s)`,
+    en: `FDSOI · ${GEOMETRY_TEXT} — reference calibration (dark, V_G = −2 V, 0.4 V/s)`,
+  },
+  ...FDSOI,
   device: clone({ ...DEVICE_BASE, preset: "paper" }),
   sweep: { vd_max_V: 4.0, rate_V_per_s: 0.4, dv_V: 0.002 },
   stochastic: clone(STOCH_PAPER),
 };
 
-const photo: PresetDef = {
-  label: { ko: "광조사 소자 (V_G = −1.8 V, 1200 V/s)", en: "Photo device (V_G = −1.8 V, 1200 V/s)" },
+const photo: PresetDef & PresetTech = {
+  label: {
+    ko: `FDSOI · ${GEOMETRY_TEXT} — 광조사 보정 (V_G = −1.8 V, 1200 V/s)`,
+    en: `FDSOI · ${GEOMETRY_TEXT} — illumination calibration (V_G = −1.8 V, 1200 V/s)`,
+  },
+  ...FDSOI,
   device: clone({
     ...DEVICE_BASE,
     preset: "photo",
@@ -73,9 +95,12 @@ const photo: PresetDef = {
   },
 };
 
-const custom: PresetDef = {
+const custom: PresetDef & PresetTech = {
   ...clone(paper),
-  label: { ko: "사용자 정의", en: "Custom" },
+  label: {
+    ko: `FDSOI · ${GEOMETRY_TEXT} — 사용자 정의 (기준 보정 값에서 시작)`,
+    en: `FDSOI · ${GEOMETRY_TEXT} — custom (starts from the reference calibration)`,
+  },
   device: clone({ ...paper.device, preset: "custom" as PresetId }),
 };
 
@@ -91,6 +116,16 @@ export const BUILTIN_META: Meta = {
     { vg: -1.1, power_mW: 0 }, { vg: -1.1, power_mW: 1.15 }, { vg: -1.1, power_mW: 2.55 }, { vg: -1.1, power_mW: 3.51 },
   ],
   constants: { NA_cm3: 2.295773162796593e17, geometry: { L_nm: 500, W_nm: 200, T_Si_nm: 50, EOT_nm: 14.1 } },
+  technology: "FDSOI",
+  geometry: FDSOI_GEOMETRY,
+  technologies: TECHNOLOGIES,
 };
 
 export const PRESET_IDS: PresetId[] = ["paper", "photo", "custom"];
+
+/** Technology + geometry of a preset: from /api/meta when the server sends them, else the built-in copy. */
+export function presetTech(meta: Meta, id: PresetId): PresetTech {
+  const p = meta.presets[id] as (PresetDef & Partial<PresetTech>) | undefined;
+  const fb = (BUILTIN_META.presets[id] as PresetDef & PresetTech | undefined) ?? paper;
+  return { technology: p?.technology ?? fb.technology, geometry: p?.geometry ?? fb.geometry };
+}

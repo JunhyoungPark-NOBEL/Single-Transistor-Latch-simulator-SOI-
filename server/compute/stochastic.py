@@ -131,7 +131,7 @@ class StateMap:
             self.over["aloc"] = aloc
         if action != "gidl":
             warnings.append(f"action point '{action}' is an experimental hypothesis lever (hypotheses.py), "
-                            "not the paper's calibrated GIDL action point")
+                            "not the calibrated GIDL action point")
 
     def p(self, x: float, de: float = 0.0) -> np.ndarray:
         if self.action == "gidl":
@@ -183,10 +183,10 @@ def _measured_photo(device, sweep, warnings):
     vg, pw = P.MEASURED_PHOTO_CONDITIONS[k]
     v = raw[:, k].astype(float)
     if device.get("preset") != "photo":
-        warnings.append("measured overlay is the photo device's record (different device from the paper preset)")
+        warnings.append("measured overlay is the illumination record (a different device from the reference-calibration preset)")
     if abs(sweep["rate_V_per_s"] - 1200.) > 1e-6:
         warnings.append("measured overlay was recorded at 1200 V/s")
-    return dict(label=f"photo device, V_G = {vg:.1f} V, P = {pw:.2f} mW (400 cycles, 1200 V/s)",
+    return dict(label=f"illumination record, V_G = {vg:.1f} V, P = {pw:.2f} mW (400 cycles, 1200 V/s)",
                 V_LU=v, V_LD=None, stats=dict(LU=C.stats(v), LD=None))
 
 
@@ -194,7 +194,7 @@ def _measured_paper():
     raw = np.load(ENGINE_DIR / "model/janus_calibration_20260920/outputs/measured_idvd_parsed.npz")
     lu = (raw["VLU_low"] + raw["VLU_high"]) / 2
     ld = (raw["VLD_low"] + raw["VLD_high"]) / 2
-    return dict(label="paper device, V_G = -2 V dark, 100 sweeps (0.4 V/s, 10 mV steps)",
+    return dict(label="reference record, V_G = -2 V dark, 100 sweeps (0.4 V/s, 10 mV steps)",
                 V_LU=lu, V_LD=ld, stats=dict(LU=C.stats(lu), LD=C.stats(ld)))
 
 
@@ -308,7 +308,7 @@ def _choose_engine(device, sweep, stoch, warnings=None) -> str:
         return "calibrated_lookup" if ok and dv_ok else "general"
     if eng == "calibrated_lookup":
         if not P.is_paper_reference(device):
-            raise ValueError("calibrated_lookup covers only the calibrated paper device at V_G = -2 V, dark, no "
+            raise ValueError("calibrated_lookup covers only the reference calibration at V_G = -2 V, dark, no "
                              "extensions and zero state centre; use engine 'general' (or 'auto')")
         if ls["action"] != "gidl":
             raise ValueError("calibrated_lookup supports only the GIDL action point; use engine 'general'")
@@ -466,7 +466,7 @@ def _run_general(device, sweep, stoch, progress, warnings):
     tb = _general_tables(device, sweep, stoch, progress, warnings, 0.0, 0.9)
     sm, folds = tb["sm"], tb["folds"]
     if ls["mode"] == "evolving" and ls.get("acquisition_trend"):
-        warnings.append("acquisition_trend applies only to the calibrated_lookup engine (paper record); ignored")
+        warnings.append("acquisition_trend applies only to the calibrated_lookup engine (reference record); ignored")
     if not np.isfinite(folds.vluf).any():
         warnings.append("no latch anywhere in the state table: every cycle is censored")
     t0 = time.perf_counter()
@@ -511,7 +511,7 @@ def _run_general(device, sweep, stoch, progress, warnings):
         warnings.append("carrier (first-passage) noise off: latch-up exactly at the (state-dependent) fold")
     if not stoch["ld_carrier_noise"]:
         warnings.append("latch-down first-passage noise off: V_LD at the (state-dependent) fold; at slow ramps the "
-                        "LD escape can sit well above the fold (paper device, 0.4 V/s: +0.10 V) — enable "
+                        "LD escape can sit well above the fold (reference calibration, 0.4 V/s: +0.10 V) — enable "
                         "ld_carrier_noise")
     return out
 

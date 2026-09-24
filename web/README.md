@@ -31,9 +31,12 @@ npx playwright test    # e2e (Chromium, headless). mock 모드 + 백엔드가 :8
 e2e 스크린샷은 `e2e/screenshots/`에 저장된다. `playwright install`은 실행하지 말 것(브라우저는 `/opt/pw-browsers`).
 
 ### 화면 구성
-- 헤더: 탭(소자 · 회로 · 검증 · 물리 모델), **Deterministic | Stochastic** 토글(모드별 강조색: 청록/보라),
-  백엔드 상태 점, KO/EN, 밝은/어두운 테마.
-- 왼쪽 사이드바: 프리셋(논문/광조사/사용자 정의 — 값을 바꾸면 “사용자 정의 (…에서 수정)”), 그룹별 파라미터
+- 헤더: 로고(biristor 형태의 2단자 기호 + S자 래치 특성, `components/Logo.tsx`·`public/favicon.svg`), 제목과
+  기술 칩(FDSOI — 마우스를 올리면 L_g·W·T_Si·EOT), 탭(소자 · 회로 · 검증 · 물리 모델), **Deterministic |
+  Stochastic** 토글(모드별 강조색: 청록/보라), 백엔드 상태 점, KO/EN, 밝은/어두운 테마.
+- 모드 막대 오른쪽 끝: 크레딧(KAIST 전기및전자공학부 · NOBEL 연구실 · 지도교수 최양규 · 개발 박준형, 화면 폭에
+  따라 줄여 표시). 누르면 소개 창(`components/Credits.tsx`: 설명, 소자·모델 범위, 연구실, 버전)이 열립니다.
+- 왼쪽 사이드바: 프리셋(기준 보정/광조사 보정/사용자 정의 — 값을 바꾸면 “사용자 정의 (…에서 수정)”), 그룹별 파라미터
   카드(각 카드에 **상세** 버튼, 초기화 링크, 기본값 대비 변경 점, ⓘ 툴팁), 하단 고정 실행 바(진행률, 메시지,
   경과 시간, 취소, 결정론 자동 실행, Ctrl/⌘+Enter).
 - 본문: KPI 줄 + 패널 격자. 모든 패널에 **상세**, CSV/PNG 내보내기.
@@ -47,8 +50,8 @@ src/
   api/        types.ts(계약 §2/§4 타입) client.ts(HTTP·작업 폴링) mock.ts(데모 데이터) guards.ts measured.ts
   state/      store.ts(Zustand: 모드·탭·언어·테마·파라미터·결과·상세 창) runner.ts(작업 실행·자동 실행) presets.ts
   params/     schema.ts(파라미터 그룹/필드 정의) benches.ts(회로 벤치)
-  i18n/       strings.ts(타입이 있는 KO/EN 사전) index.ts(useT)
-  components/ Header, Panel, Plot(지연 로딩 Plotly), Tex, RichText, Tooltip, DetailsButton, icons …
+  i18n/       strings.ts(타입이 있는 KO/EN 사전) strings.{brand,schematic,stats}.ts(패키지별 키) index.ts(useT)
+  components/ Header, Logo, Credits(크레딧 + 소개 창), Panel, Plot(지연 로딩 Plotly), Tex, RichText, Tooltip, …
   sidebar/    Sidebar(프리셋·실행 바) ParamGroup Field
   device/     DeviceTab KpiStrip DetPanels(결정론 4개) StoPanels(확률 6개) common
   circuit/    CircuitTab Schematic(넷리스트 → SVG) BenchIcons
@@ -69,6 +72,17 @@ e2e/          Playwright 테스트, screenshots/
 3. 계산 실행: `state/runner.ts`의 `runKey(key, kind, payload)`(페이로드는 `utils/payload.ts`에 순수 함수로).
    실행 버튼에 묶으려면 `runDeterministic`/`runStochastic`의 목록에 추가.
 4. 문자열은 `src/i18n/strings.ts`에 KO/EN으로 추가.
+
+### 문구 규칙
+한국어 라벨은 명사형, 문장은 합니다체로 씁니다. 영어는 문장형 대소문자(sentence case)와 미국식 철자.
+branch, fold, hazard, latch-up/latch-down 같은 모델 용어는 라틴 문자로 둡니다. 용어:
+latch-up 전압 V_LU / latch-up voltage, latch-down 전압 V_LD, 히스테리시스 창 ΔV / hysteresis window,
+래치 창(fold 쌍이 있는 V_G 범위) / latch window, 국소 상태 / local state, 캐리어 잡음 / carrier noise,
+첫 통과 / first passage, 중도절단 / censored, 바디 / body, 부하선 / load line, 기준 측정 기록 / reference
+record, 기준 보정 / reference calibration(프리셋 id `paper`), 광조사 보정 / illumination calibration(`photo`),
+기본 모델 / base model(확장 항 0), 고정·진화·없음 / frozen·evolving·none. 모델은 아직 발표되지 않았으므로
+“논문/paper”라고 쓰지 않고 소자·기록으로 설명합니다(예: “FDSOI · L_g 500 nm · W 200 nm · T_Si 50 nm ·
+EOT 14.1 nm”).
 
 ### 물리 주제 추가하기
 콘텐츠는 physics-content 패키지가 `src/content/physics/topics/<id>.ts`로 관리한다(형식: `types.ts`).
@@ -97,9 +111,14 @@ npx playwright test    # e2e (Chromium, headless): mock-mode specs + a live spec
 Screenshots are written to `e2e/screenshots/`. Never run `playwright install` (browsers are in `/opt/pw-browsers`).
 
 ### UI overview
-- Header: tabs (Device · Circuit · Validation · Physics), the **Deterministic | Stochastic** toggle (teal /
-  violet accent follows the mode), backend status dot, KO/EN, light/dark theme.
-- Sidebar: preset selector (paper / photo / custom — editing shows “Custom (modified from …)”), grouped
+- Header: logo (stylised biristor-style two-terminal symbol with the S-shaped latch characteristic,
+  `components/Logo.tsx` and `public/favicon.svg`), title and technology chip (FDSOI; hover for L_g, W, T_Si,
+  EOT), tabs (Device · Circuit · Validation · Physics), the **Deterministic | Stochastic** toggle (teal / violet
+  accent follows the mode), backend status dot, KO/EN, light/dark theme.
+- Mode strip, right end: credits (NOBEL Lab · Prof. Yang-Kyu Choi · School of Electrical Engineering, KAIST ·
+  Developed by Junhyoung Park; shortened on narrow screens) opening the About card (`components/Credits.tsx`:
+  description, device and model scope, lab, version from `/api/health`).
+- Sidebar: preset selector (reference / illumination / custom — editing shows “Custom (edited from …)”), grouped
   collapsible parameter cards (Details button, reset link, changed-from-default dot, ⓘ tooltip with symbol,
   meaning, `p[i]` index and default), sticky Run bar (progress, job message, elapsed time, Cancel,
   deterministic auto-run, Ctrl/⌘+Enter).
@@ -124,6 +143,13 @@ with a `scale` (e.g. τ_bulk in µs, σ_φ in mV).
    in `src/utils/payload.ts`); add the key to `runDeterministic` / `runStochastic` to bind it to Run.
 4. Add KO/EN strings to `src/i18n/strings.ts`.
 
+### Wording
+Korean labels are noun phrases and sentences use 합니다체; English uses sentence case and American spelling.
+Terms: latch-up voltage V_LU, latch-down voltage V_LD, hysteresis window ΔV, latch window (V_G range with a pair
+of folds), local state, carrier noise, reference calibration (preset id `paper`), illumination calibration
+(`photo`), base model (all extensions at zero). The model is unpublished: never write “paper”; describe the device
+or record instead (e.g. “FDSOI · L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm”).
+
 ### Add a physics topic
 Content is owned by the physics-content package (`src/content/physics/topics/<id>.ts`, format in `types.ts`).
 Add the id to `TopicId`/`TOPIC_ORDER` and create the file; it appears in the Physics tab and Details window.
@@ -138,7 +164,8 @@ Link it from the UI with `<DetailsButton topic="<id>" />`, `GroupDef.topic` or `
   “unexpected result shape” message in the panel. Warnings are shown as a collapsible notice.
 - `GET /api/data/measured` and `/api/data/design_map` are normalised in `src/api/measured.ts`
   (`photo.conditions/V_LU`, `light_iv`, `paper_idvd.up/down.{median,p10,p90}`; design map `arrays`/`scalars`).
-- `device.preset` is sent as the preset the values were loaded from (paper / photo / custom) together with
+- `device.preset` is sent as the preset the values were loaded from (`paper` = reference calibration, `photo` =
+  illumination calibration, `custom`) together with
   every field, so the server-side resolution is a no-op.
 - Circuit `bench_params`: fields left on “auto” (`null`) are omitted from the request, so the server's
   `BENCH_DEFAULTS` apply (auto-resolved values such as `v_max_V`, or documented defaults such as

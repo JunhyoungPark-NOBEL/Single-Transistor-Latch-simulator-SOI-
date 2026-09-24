@@ -2,11 +2,14 @@
 
 fast: fold checks (3), extension-terms-zero identity vs gate_mean, light conversion, latch-window edges,
       measured-record statistics, FPT node (compound first passage), dynamic MC (100 sweeps).
-full: + paper values over 10 records, carrier-noise-only breakdown (channel-subset first passage),
-      stochastic package checks (sweep_mc photo dark, vg_curve_stochastic paper frozen) and the circuit
+full: + reference values over 10 model records, carrier-noise-only breakdown (channel-subset first passage),
+      stochastic package checks (sweep_mc photo dark, vg_curve_stochastic reference frozen) and the circuit
       load-line check.  Modules of other packages are imported lazily; when missing or failing, the check
       is reported with pass = null and the reason.
 Each check: {id, label{ko,en}, expected, computed, pass, tolerance, note?, seconds}.
+User-facing labels never say "paper" (the model is unpublished): "reference calibration" = preset "paper"
+(dark 100-sweep record, V_G = -2 V, 0.4 V/s), "illumination calibration" = preset "photo".  Check ids are
+internal keys and stay unchanged.
 """
 from __future__ import annotations
 
@@ -62,18 +65,18 @@ def _fold_check(cid: str, ko: str, en: str, device: dict, exp: tuple[float, floa
 
 
 def check_fold_paper_m2(progress) -> dict:
-    return _fold_check("fold_paper_vg-2", "논문 모델 V_G = −2 V 암조건 fold", "Paper model, V_G = −2 V dark, folds",
+    return _fold_check("fold_paper_vg-2", "기준 보정: 암조건 V_G = −2 V의 fold", "Reference calibration: folds at V_G = −2 V, dark",
                        {"preset": "paper", "vg": -2.0}, (3.7037, 2.5979))
 
 
 def check_fold_paper_m18(progress) -> dict:
-    return _fold_check("fold_paper_vg-1.8", "논문 모델 V_G = −1.8 V 암조건 fold", "Paper model, V_G = −1.8 V dark, folds",
+    return _fold_check("fold_paper_vg-1.8", "기준 보정: 암조건 V_G = −1.8 V의 fold", "Reference calibration: folds at V_G = −1.8 V, dark",
                        {"preset": "paper", "vg": -1.8}, (3.8644, 2.5979))
 
 
 def check_fold_photo(progress) -> dict:
-    return _fold_check("fold_photo_2.63pA", "광 모델 V_G = −1.8 V, I_PH = 2.63 pA fold",
-                       "Photo model, V_G = −1.8 V, I_PH = 2.63 pA, folds",
+    return _fold_check("fold_photo_2.63pA", "기준 보정 + 광조사: V_G = −1.8 V, I_PH = 2.63 pA의 fold",
+                       "Reference calibration under light: folds at V_G = −1.8 V, I_PH = 2.63 pA",
                        {"preset": "paper", "vg": -1.8, "light": {"mode": "iph", "iph_pA": 2.63}}, (3.2913, 2.596))
 
 
@@ -110,7 +113,7 @@ def check_extension_identity(progress) -> dict:
         fold_d = max(fold_d, float(np.max(np.abs(za[3] - zb[3]))))
         progress(0.5 + 0.15 * (vg + 2.0 + 1.0), "fold identity")
     ok = max_dv <= 1e-12 and fold_d <= 1e-12 and nan_mismatch == 0
-    return _check("extension_identity", "확장 항 = 0 → gate_mean과 동일", "Extension terms = 0 reproduce gate_mean",
+    return _check("extension_identity", "확장 항이 모두 0이면 gate_mean과 동일", "All extension terms at zero reproduce gate_mean",
                   "identical to gate_mean (≤ 1e-12 V)",
                   f"max |ΔV_D| = {max_dv:.2e} V over {finite} finite (u, r) points, max rel. Δ(currents) = {max_rel:.1e}, "
                   f"max |Δfold| = {fold_d:.2e} V (V_G −2, −1.8, −1.1)", ok, "≤ 1e-12 V",
@@ -122,7 +125,7 @@ def check_light_conversion(progress) -> dict:
     vals = [R * pw for pw in (1.15, 2.55, 3.51)]
     exp = [0.86, 1.91, 2.63]
     ok = all(abs(v - e) <= 0.005 for v, e in zip(vals, exp))
-    return _check("light_conversion", "광 변환 I_PH = R·P", "Light conversion I_PH = R·P",
+    return _check("light_conversion", "광 변환 I_PH = R·P", "Light-to-current conversion I_PH = R·P",
                   "0.86 / 1.91 / 2.63 pA at 1.15 / 2.55 / 3.51 mW (R = 0.75 pA/mW)",
                   " / ".join(f"{v:.4f}" for v in vals) + f" pA (R = {R:.4f} pA/mW)", ok, "±0.005 pA")
 
@@ -133,11 +136,11 @@ def check_latch_window(progress) -> dict:
     edges = {}
     for n_, (v_no, v_yes) in brackets.items():
         if D._latch_at(dev, v_no, 601) is not None or D._latch_at(dev, v_yes, 601) is None:
-            return _check("latch_window", "래치 창 (논문, 고정 상태)", "Latch window (paper, fixed states)",
+            return _check("latch_window", "래치 창 (기준 보정, 고정 상태)", "Latch window (reference calibration, fixed states)",
                           "V_G = −3.90 … −0.815 V", "bracket assumption failed", False, "±10 mV")
         edges[n_] = D._bisect_edge(dev, 601, v_no, v_yes, 5e-4, lambda: progress(0.5, "bisection"))
     ok = abs(edges["low"] + 3.90) <= 0.010 and abs(edges["high"] + 0.815) <= 0.010
-    return _check("latch_window", "래치 창 (논문, 고정 상태)", "Latch window (paper, fixed states)",
+    return _check("latch_window", "래치 창 (기준 보정, 고정 상태)", "Latch window (reference calibration, fixed states)",
                   "V_G = −3.90 … −0.815 V", f"V_G = {edges['low']:.4f} … {edges['high']:.4f} V", ok, "±10 mV",
                   note="edges = latch-existence limits of classify() (grid 601), bisection to 0.5 mV")
 
@@ -147,9 +150,9 @@ def check_measured_records(progress) -> dict:
     lu, ld = md["paper_idvd"]["stats"]["LU"]["sd"] * 1e3, md["paper_idvd"]["stats"]["LD"]["sd"] * 1e3
     ph = md["photo"]["conditions"][0]["stats"]
     ok = abs(lu - 123.1) <= 0.1 and abs(ld - 19.5) <= 0.1 and abs(ph["mean"] - 3.806) <= 0.001 and abs(ph["sd"] * 1e3 - 173.2) <= 0.1
-    return _check("measured_records", "측정 기록 통계", "Measured record statistics",
-                  "paper σ_LU 123.1 mV, σ_LD 19.5 mV; photo −1.8 V dark mean 3.806 V, SD 173.2 mV",
-                  f"paper σ_LU {lu:.1f} mV, σ_LD {ld:.1f} mV; photo mean {ph['mean']:.4f} V, SD {ph['sd'] * 1e3:.1f} mV",
+    return _check("measured_records", "측정 기록 통계", "Measured-record statistics",
+                  "reference record σ_LU 123.1 mV, σ_LD 19.5 mV; illumination record (−1.8 V, dark) mean 3.806 V, SD 173.2 mV",
+                  f"reference σ_LU {lu:.1f} mV, σ_LD {ld:.1f} mV; illumination mean {ph['mean']:.4f} V, SD {ph['sd'] * 1e3:.1f} mV",
                   ok, "±0.1 mV / ±1 mV")
 
 
@@ -158,7 +161,7 @@ def check_fpt_node(progress) -> dict:
     rec, q = A.hazard(-2.0, rate=0.4)
     mean, sd = float(np.mean(q)), float(np.std(q)) * 1e3
     ok = abs(mean - 3.644) <= 0.003 and abs(sd - 8.0) <= 1.5
-    return _check("fpt_node", "FPT 노드 V_G = −2 V, 0.4 V/s (중심 상태)", "FPT node V_G = −2 V dark, 0.4 V/s (centre states)",
+    return _check("fpt_node", "첫 통과(FPT) 노드: 암조건 V_G = −2 V, 0.4 V/s (중심 상태)", "First-passage (FPT) node: V_G = −2 V dark, 0.4 V/s (center states)",
                   "mean V_LU ≈ 3.644 V, SD ≈ 8 mV", f"mean V_LU {mean:.4f} V, SD {sd:.2f} mV", ok,
                   "mean ±3 mV, SD ±1.5 mV",
                   note="stl_api.py prints '~6.8 mV' in its comment; VALIDATION.md states ≈ 8 mV")
@@ -171,7 +174,7 @@ def check_dynamic_mc(progress) -> dict:
     mlu, slu = float(np.nanmean(lu)), float(np.nanstd(lu, ddof=1)) * 1e3
     mld, sld = float(np.nanmean(ld)), float(np.nanstd(ld, ddof=1)) * 1e3
     ok = abs(mlu - 3.63) <= 0.010 and abs(slu - 120) <= 10 and abs(mld - 2.70) <= 0.010 and abs(sld - 20) <= 3
-    return _check("dynamic_mc", "동적 MC 100 스윕 (seed 2026092920)", "Dynamic MC, 100 sweeps, seed 2026092920",
+    return _check("dynamic_mc", "동적 MC 100회 스윕 (seed 2026092920)", "Dynamic MC, 100 sweeps (seed 2026092920)",
                   "V_LU 3.63 V / 120 mV, V_LD 2.70 V / 20 mV",
                   f"V_LU {mlu:.4f} V / {slu:.1f} mV, V_LD {mld:.4f} V / {sld:.1f} mV", ok,
                   "means ±10 mV, SD_LU ±10 mV, SD_LD ±3 mV")
@@ -191,7 +194,7 @@ def check_paper_records(progress) -> dict:
     s_lu = float(np.nanstd(np.concatenate(lu), ddof=1)) * 1e3
     s_ld = float(np.nanstd(np.concatenate(ld), ddof=1)) * 1e3
     ok = abs(s_lu - 125.8) <= 1.0 and abs(s_ld - 19.6) <= 0.5
-    return _check("paper_records", "논문 값 (10 기록 × 100 스윕)", "Paper values (10 records × 100 sweeps)",
+    return _check("paper_records", "기준 보정 모델 기록 (10개 × 100회 스윕)", "Reference-calibration model records (10 × 100 sweeps)",
                   "σ_LU 125.8 mV, σ_LD 19.6 mV (measured 123.1 / 19.5)",
                   f"σ_LU {s_lu:.1f} mV, σ_LD {s_ld:.1f} mV (pooled over 1000 sweeps)", ok, "σ_LU ±1 mV, σ_LD ±0.5 mV",
                   note="seeds 2026093000 … 2026093009, as in gate_dynamic_compare.main()")
@@ -334,13 +337,13 @@ def check_carrier_noise(progress) -> dict:
     s = {k: v["sd_mV"] for k, v in res["subsets"].items()}
     exp = {"II": 4.6, "BTBT": 2.7, "REC": 4.3, "DIFF": 1.8, "all": 7.8}
     ok = all(abs(s[k] - exp[k]) <= 1.0 for k in exp)
-    return _check("carrier_noise_breakdown", "캐리어 잡음만 (논문, V_G = −2 V)", "Carrier noise only (paper, V_G = −2 V)",
+    return _check("carrier_noise_breakdown", "캐리어 잡음만 (기준 보정, V_G = −2 V)", "Carrier noise only (reference calibration, V_G = −2 V)",
                   "II 4.6, BTBT 2.7, REC 4.3, DIFF 1.8, all four 7.8 mV",
                   f"II {s['II']:.1f}, BTBT {s['BTBT']:.1f}, REC {s['REC']:.1f}, DIFF {s['DIFF']:.1f}, all four {s['all']:.1f} mV",
                   ok, "±1 mV each",
                   note="derived here: compound first passage with one channel class as jumps and the others as "
                        "deterministic drift (upwind lattice refined N = 4, 8, Richardson-extrapolated); "
-                       "BTBT = all unit generation events (GIDL + junction BTBT); the paper's own breakdown code is not "
+                       "BTBT = all unit generation events (GIDL + junction BTBT); the original breakdown code is not "
                        "in the handoff package")
 
 
@@ -352,7 +355,7 @@ def _optional(module: str) -> Any:
 
 
 def check_sweep_mc_photo(progress) -> dict:
-    ids = ("sweep_mc_photo_dark", "이 소자 V_G = −1.8 V 암조건, 1200 V/s (sweep_mc)", "This device, V_G = −1.8 V dark, 1200 V/s (sweep_mc)",
+    ids = ("sweep_mc_photo_dark", "광조사 보정: 암조건 V_G = −1.8 V, 1200 V/s (sweep_mc)", "Illumination calibration: V_G = −1.8 V dark, 1200 V/s (sweep_mc)",
            "measured mean 3.806 V, SD 173 mV (400 cycles)")
     mod, err = _optional("server.compute.stochastic")
     if mod is None:
@@ -374,7 +377,7 @@ def check_sweep_mc_photo(progress) -> dict:
 
 
 def check_vg_curve_stochastic(progress) -> dict:
-    ids = ("vg_curve_stochastic_paper", "V_G 곡선 (논문, 고정 상태): σ_LU·평균 최대", "V_G curve (paper, frozen states): σ_LU and mean peaks",
+    ids = ("vg_curve_stochastic_paper", "V_G 곡선 (기준 보정, 고정 상태): σ_LU와 평균 V_LU의 최대", "V_G curve (reference calibration, frozen states): σ_LU and mean V_LU peaks",
            "σ_LU peak 129.8 mV at −1.25 V; mean peak 4.354 V at −1.10 V")
     tol = "σ peak ±10 mV, mean peak ±20 mV, positions ±0.1 V"
     mod, err = _optional("server.compute.stochastic")
@@ -404,7 +407,7 @@ def check_vg_curve_stochastic(progress) -> dict:
 
 
 def check_circuit_load_line(progress) -> dict:
-    ids = ("circuit_load_line", "회로: 부하선 램프가 fold 재현", "Circuit: load-line ramp reproduces the folds",
+    ids = ("circuit_load_line", "회로: 부하선 램프로 fold 재현", "Circuit: load-line ramp reproduces the folds",
            "latch-up at V_D ≈ 3.7037 V, latch-down at V_D ≈ 2.5979 V")
     tol = "±30 mV"
     mod, err = _optional("server.compute.circuit")

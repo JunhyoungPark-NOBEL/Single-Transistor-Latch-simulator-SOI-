@@ -1,4 +1,5 @@
-// App header: brand, primary tabs, Deterministic | Stochastic toggle, backend status, KO/EN, theme.
+// App header: brand (logo, title, technology chip), primary tabs, Deterministic | Stochastic toggle, backend
+// status, KO/EN, theme. ModeBar (mode strip) carries the credits corner at its right end.
 import type { KeyboardEvent } from "react";
 import type { Mode } from "../api/types";
 import { useT, type T } from "../i18n";
@@ -6,7 +7,9 @@ import type { StrKey } from "../i18n/strings";
 import type { Tab } from "../params/schema";
 import { initBackend } from "../state/runner";
 import { useStore } from "../state/store";
+import { Credits } from "./Credits";
 import { IconMenu, IconMoon, IconSun } from "./icons";
+import { Logo } from "./Logo";
 
 const TABS: { id: Tab; key: StrKey; en: string }[] = [
   { id: "device", key: "tab.device", en: "Device" },
@@ -100,15 +103,15 @@ export function Header() {
         </button>
       )}
       <div className="brand">
-        <div className="brand-mark" aria-hidden>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-            <path d="M3 18c4 0 5-1 7-4s2-5 4-7 4-3 7-3" opacity=".55" />
-            <path d="M3 20h5l2-9 2 9h9" />
-          </svg>
-        </div>
+        <Logo size={34} className="brand-logo" />
         <div className="brand-text">
-          <span className="brand-title">{t("app.title")}</span>
-          <span className="brand-sub">{t("app.subtitle")}</span>
+          <span className="brand-title-row">
+            <span className="brand-title">{t("app.title")}</span>
+            <span className="tech-chip" title={t("brand.tech.title")} data-testid="tech-chip">
+              {t("brand.tech")}
+            </span>
+          </span>
+          <span className="brand-sub" title={t("app.subtitle")}>{t("app.subtitle")}</span>
         </div>
       </div>
       <nav className="tabs" role="tablist" aria-label={t("tabs.aria")} onKeyDown={(e) => arrowNav(e, TABS.map((x) => x.id), tab, setTab)}>
@@ -143,6 +146,7 @@ export function ModeBar() {
       <span className="modestrip-tag">{t(mode === "deterministic" ? "mode.deterministic" : "mode.stochastic")}</span>
       <span className="sep" aria-hidden />
       <span className="hint" data-testid="mode-hint" title={hint}>{hint}</span>
+      <Credits />
     </div>
   );
 }

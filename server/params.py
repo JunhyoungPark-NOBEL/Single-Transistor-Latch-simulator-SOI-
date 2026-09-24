@@ -83,6 +83,17 @@ CHANNEL_SEED_OPTIONS = {
     "high_vd_seed": {"seed_ip_pA": 1.33, "seed_S": 0.8},
 }
 
+# Device technology and geometry of the calibrated model (fixed by the model; editable only when a
+# future model supports it).  PDSOI and bulk presets are planned; the UI shows them as "coming soon".
+TECHNOLOGY = "FDSOI"
+GEOMETRY: dict[str, float] = dict(Lg_nm=500.0, W_nm=200.0, Tsi_nm=50.0, EOT_nm=14.1)
+GEOMETRY_TEXT = "L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm"
+TECHNOLOGIES = [
+    dict(id="FDSOI", available=True),
+    dict(id="PDSOI", available=False),
+    dict(id="Bulk", available=False),
+]
+
 _DEVICE_BASE: dict[str, Any] = dict(
     vg=-2.0,
     light=dict(mode="iph", iph_pA=0.0, power_mW=0.0, responsivity_pA_per_mW=RESPONSIVITY_PA_PER_MW),
@@ -94,7 +105,9 @@ _DEVICE_BASE: dict[str, Any] = dict(
 
 PRESETS: dict[str, dict[str, Any]] = {
     "paper": dict(
-        label={"ko": "논문 소자 (V_G = −2 V, 암조건, 0.4 V/s)", "en": "Paper device (V_G = −2 V, dark, 0.4 V/s)"},
+        label={"ko": f"FDSOI · {GEOMETRY_TEXT} — 기준 보정 (암조건, V_G = −2 V, 0.4 V/s)",
+               "en": f"FDSOI · {GEOMETRY_TEXT} — reference calibration (dark, V_G = −2 V, 0.4 V/s)"},
+        technology=TECHNOLOGY, geometry=dict(GEOMETRY),
         device=dict(copy.deepcopy(_DEVICE_BASE), preset="paper", vg=-2.0),
         sweep=dict(vd_max_V=4.0, rate_V_per_s=0.4, dv_V=0.002),
         stochastic=dict(
@@ -105,7 +118,9 @@ PRESETS: dict[str, dict[str, Any]] = {
         ),
     ),
     "photo": dict(
-        label={"ko": "광조사 소자 (V_G = −1.8 V, 1200 V/s)", "en": "Photo device (V_G = −1.8 V, 1200 V/s)"},
+        label={"ko": f"FDSOI · {GEOMETRY_TEXT} — 광조사 보정 (V_G = −1.8 V, 1200 V/s)",
+               "en": f"FDSOI · {GEOMETRY_TEXT} — illumination calibration (V_G = −1.8 V, 1200 V/s)"},
+        technology=TECHNOLOGY, geometry=dict(GEOMETRY),
         device=dict(
             copy.deepcopy(_DEVICE_BASE), preset="photo", vg=-1.8,
             light=dict(mode="power", iph_pA=0.0, power_mW=0.0, responsivity_pA_per_mW=RESPONSIVITY_PA_PER_MW),
@@ -122,7 +137,8 @@ PRESETS: dict[str, dict[str, Any]] = {
     ),
 }
 PRESETS["custom"] = copy.deepcopy(PRESETS["paper"])
-PRESETS["custom"]["label"] = {"ko": "사용자 정의", "en": "Custom"}
+PRESETS["custom"]["label"] = {"ko": f"FDSOI · {GEOMETRY_TEXT} — 사용자 정의 (기준 보정 값에서 시작)",
+                              "en": f"FDSOI · {GEOMETRY_TEXT} — custom (starts from the reference calibration)"}
 PRESETS["custom"]["device"]["preset"] = "custom"
 
 # Photo-device measured conditions (columns of data/raw_VLU.npy, same order as measured_stats.json).
@@ -226,6 +242,9 @@ def meta() -> dict:
                        photo_sigma_phi_V=PHOTO_SIGMA_PHI_V, photo_gamma=PHOTO_GAMMA,
                        responsivity_pA_per_mW=RESPONSIVITY_PA_PER_MW,
                        geometry=dict(L_nm=500, W_nm=200, T_Si_nm=50, EOT_nm=14.1)),
+        technology=TECHNOLOGY,
+        geometry=dict(GEOMETRY),
+        technologies=TECHNOLOGIES,
         channel_seed_options=CHANNEL_SEED_OPTIONS,
         measured_photo_conditions=[dict(vg=vg, power_mW=p) for vg, p in MEASURED_PHOTO_CONDITIONS],
     )

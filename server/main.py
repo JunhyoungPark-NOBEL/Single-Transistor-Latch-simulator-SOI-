@@ -347,6 +347,8 @@ Run <code>cd web &amp;&amp; npm ci &amp;&amp; npm run build</code>, or use the V
 
 @app.get("/{full_path:path}", include_in_schema=False)
 def frontend(full_path: str) -> Response:
+    if "\x00" in full_path:                             # invalid path, whether or not the frontend is built
+        raise HTTPException(404, "not found")
     index = WEB_DIST / "index.html"
     if not index.is_file():
         return HTMLResponse(_NO_FRONTEND)
