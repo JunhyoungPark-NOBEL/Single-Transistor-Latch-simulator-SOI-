@@ -7,7 +7,7 @@ Slow tests re-run reduced versions of the validation in docs/CIRCUIT_SIMULATOR.m
 
 Reference numbers (full validation, docs/CIRCUIT_SIMULATOR.md §7):
   deterministic load line, paper device V_G = -2 V dark, 0.4 V/s, R_s = 100 ohm, C_d = 1 fF:
-      V_LU(drain) = 3.70390 V (fold 3.70369 V, ramp lag +0.21 mV), V_LD = 2.59786 V (fold 2.59787 V)
+      V_LU(drain) = 3.70393 V (fold 3.70369 V, ramp lag +0.24 mV), V_LD = 2.59786 V (fold 2.59787 V)
   stochastic load line, V_G = -1.8 V, I_PH = 2.63 pA, carrier noise only:
       120 V/s (150 runs): 3.2091 V / 34.6 mV vs FPT 3.2077 V / 34.5 mV
       1200 V/s (400 runs): fraction beyond the fold 0.552 +- 0.025 vs FPT atom 0.529; below-fold mean
@@ -115,13 +115,13 @@ def test_load_line_deterministic_reproduces_folds(progress):
                        "bench_params": {"R_s_ohm": 100.0, "C_d_F": 1e-15, "rate_V_per_s": 0.4}}, progress)
     _check_contract(res, "load_line", "deterministic")
     s = _summary(res)
-    assert abs(s["V_LU"] - FOLD_LU) < 1e-3          # obtained +0.21 mV (slow-passage lag at 0.4 V/s)
+    assert abs(s["V_LU"] - FOLD_LU) < 1e-3          # obtained +0.24 mV (slow-passage lag at 0.4 V/s)
     assert abs(s["V_LD"] - FOLD_LD) < 1e-3          # obtained -0.01 mV
     assert s["V_LU"] >= s["fold_V_LU"] - 1e-5       # the dynamic latch-up can only lag the fold
     assert s["hrs_branch_dev"] < 1e-2 and s["lrs_branch_dev"] < 1e-2   # decades
     kinds = [e["kind"] for e in res["events"]]
     assert kinds == ["latch_up", "latch_down"]
-    assert res["solver_stats"]["steps"] < 20000       # ~2 300 steps (0.2-0.4 s with a warm numba cache)
+    assert res["solver_stats"]["steps"] < 20000       # ~2 900 steps (0.2-0.4 s with a warm numba cache)
 
 
 def test_load_line_trap_matches_be(progress):
@@ -130,7 +130,7 @@ def test_load_line_trap_matches_be(progress):
     be = _summary(run_circuit(base, progress))
     tr = _summary(run_circuit(dict(base, solver={"method": "TRAP"}), progress))
     assert abs(be["V_LU"] - tr["V_LU"]) < 1e-3 and abs(be["V_LD"] - tr["V_LD"]) < 1e-3
-    # ramp-rate lag of the slow passage through the fold (~ rate^(2/3)): 4.4 mV at 40 V/s
+    # ramp-rate lag of the slow passage through the fold (~ rate^(2/3)): 5.0 mV at 40 V/s
     assert 1e-3 < be["lag_LU"] < 1e-2
 
 
@@ -280,3 +280,153 @@ def test_paper_slow_ramp_event_level_vs_fpt_node():
     assert abs(r["mean"] - r["fpt_mean"]) * 1e3 < 4 * r["se_mean_mV"] + 2.0
     assert 3.0 < r["sd_mV"] < 16.0
     assert r["seconds_per_run"] < 15.0
+
+
+# ---- regression tests for the circuit review findings (2026-09-24) ----------------------------
+def test_channel_conduction_is_not_latch_up(progress):
+    """#1: above the channel threshold I_D passes 10 nA at a few mV; that must not be reported as a
+    latch-up (the latch state is the body's branch, u vs the fold values, not the current)."""
+    res = run_circuit({"bench": "load_line", "mode": "deterministic", "device": {"preset": "paper", "vg": -0.6},
+                       "bench_params": {"rate_V_per_s": 1200.0}}, progress)
+    s = _summary(res)
+    assert s["V_LU"] is None and s["V_LD"] is None and s["n_latch_up"] == "0/1"
+    assert not [e for e in res["events"] if e["kind"] in ("latch_up", "latch_down")]
+    assert any("channel/HRS conduction" in w for w in res["warnings"])
+    # V_G = +1 V: MODEL.classify fits a fold (9.3 V) across an untraced gap of the locus; the checked
+    # classify (deterministic.classify_checked) rejects it -> no latch, like the deterministic engine
+    res = run_circuit({"bench": "load_line", "mode": "deterministic", "device": {"preset": "paper", "vg": 1.0},
+                       "bench_params": {"rate_V_per_s": 1200.0}}, progress)
+    s = _summary(res)
+    assert s["V_LU"] is None and s["fold_V_LU"] is None and s["n_latch_up"] == "0/1"
+    assert any("locus not traceable" in w for w in res["warnings"])
+    assert any("channel/HRS conduction" in w for w in res["warnings"])
+    from server.compute.circuit.stochastic import fold_u
+    from server import params as PR
+    assert fold_u(np.array(PR.build_p(PR.resolve_device({"preset": "paper", "vg": 1.0})), float)) == (np.inf, np.inf)
+    # p-bit: the comparator reads 1 (v_D pulled down by the channel) but the cell is not latched
+    res = run_circuit({"bench": "pbit", "mode": "deterministic", "device": {"preset": "paper"},
+                       "bench_params": {"n_clocks": 3, "vg_list_V": [1.0]}}, progress)
+    assert res["sweeps"][0]["y"] == [1.0]
+    assert any("comparator read 1" in w for w in res["warnings"])
+    assert _summary(res)["P_latched"] == 0.0
+
+
+def test_noise_resolved_in_post_fold_passage(progress):
+    """#2: an unlatched cell beyond V_LU + 0.25 V (supra-fold pulses, fast ramps) keeps its carrier
+    noise; the band cut-offs made the delays of 3.98 V pulses nearly deterministic (SD 0.1 µs)."""
+    from server.compute.circuit.stochastic import branch_profile, noise_bands
+    from server import params as PR
+    p = np.array(PR.build_p(PR.resolve_device({"preset": "paper"})), float)
+    lu_lo, lu_hi, ld_lo, ld_hi = noise_bands(branch_profile(p, 301), None, True, 12.0)
+    assert lu_hi == np.inf and ld_lo == -np.inf and 3.4 < lu_lo < FOLD_LU < 3.8 and FOLD_LD < ld_hi < 3.0
+    res = run_circuit({"bench": "pulse", "mode": "stochastic", "device": {"preset": "paper"},
+                       "bench_params": {"v_amp_V": 3.98, "n_pulses": 2}, "stochastic": {"n_runs": 6, "seed": 3}}, progress)
+    d = np.asarray([x for x in res["distributions"] if x["key"] == "delay"][0]["values"], float)
+    assert np.all(np.isfinite(d)) and np.std(d, ddof=1) > 0.4e-6      # obtained ~1.2 µs (old code 0.1 µs)
+
+
+def test_noise_lookahead_waveform():
+    """#2: the kernel resolves the noise n_look relaxation times before the drive enters a band."""
+    from server.compute.circuit.mna import wave_reaches
+    wt = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
+    wv = np.array([0.0, 0.0, 4.0, 4.0, 0.0])
+    woff = np.array([0, 5], np.int64)
+    assert not wave_reaches(0, 0.0, 1.2, 3.6, True, wt, wv, woff)
+    assert wave_reaches(0, 0.0, 1.95, 3.6, True, wt, wv, woff)
+    assert wave_reaches(0, 0.5, 3.5, 3.6, True, wt, wv, woff)          # corner inside the interval
+    assert wave_reaches(0, 3.0, 3.99, 0.1, False, wt, wv, woff)
+    assert not wave_reaches(0, 2.1, 2.9, 3.9, False, wt, wv, woff)
+
+
+def test_truncated_runs_are_censored(progress):
+    """#3: pulses / cycles a truncated run never reached are censored, not counted as 'not switched'."""
+    res = run_circuit({"bench": "pulse", "mode": "deterministic", "device": {"preset": "paper"},
+                       "solver": {"max_steps": 7000}}, progress)
+    s = _summary(res)
+    assert any("step budget" in w for w in res["warnings"])
+    assert s["P_sw"] == 1.0                                          # every simulated pulse switched
+    pulses = [e for e in res["events"] if e["kind"] == "pulse"]
+    assert 0 < len(pulses) < 10 and all(e["value"] == 1.0 for e in pulses)
+    assert any("not reached" in w for w in res["warnings"])
+    res = run_circuit({"bench": "load_line", "mode": "deterministic", "device": {"preset": "paper"},
+                       "bench_params": {"rate_V_per_s": 1200.0, "n_cycles": 4}, "solver": {"max_steps": 3000}}, progress)
+    n, d = (int(x) for x in _summary(res)["n_latch_up"].split("/"))
+    assert n == d and d < 4
+    assert any("not completed" in w for w in res["warnings"])
+
+
+def test_detection_threshold_does_not_change_physics(progress):
+    """#4: the reporting threshold only times the events; the noise tiers use the body state."""
+    base = {"bench": "load_line", "mode": "stochastic", "device": {"preset": "paper"},
+            "bench_params": {"rate_V_per_s": 1200.0}, "stochastic": {"n_runs": 2, "seed": 4}}
+    a = run_circuit(base, progress)
+    b = run_circuit(dict(base, detect={"i_threshold_A": 1e-11}), progress)
+    assert a["regimes"]["steps_by_tier"] == b["regimes"]["steps_by_tier"]
+    assert any("not above the HRS current" in w for w in b["warnings"])
+    # a latch-down threshold above the LRS current at the fold used to move V_LD by +54 mV
+    res = run_circuit({"bench": "load_line", "mode": "deterministic", "device": {"preset": "paper"},
+                       "bench_params": {"R_s_ohm": 100.0, "C_d_F": 1e-15, "rate_V_per_s": 0.4},
+                       "detect": {"i_threshold_A": 1e-6, "hysteresis": 10}}, progress)
+    assert abs(_summary(res)["V_LD"] - FOLD_LD) < 1e-3
+    assert any("not below the LRS current" in w for w in res["warnings"])
+
+
+def test_ramp_lag_converged_at_default_tolerance(progress):
+    """#5: the default BE tolerance must converge the slow-passage lag (1 mV LTE left 6-13 % error)."""
+    base = {"bench": "load_line", "mode": "deterministic", "device": {"preset": "paper"},
+            "bench_params": {"R_s_ohm": 100.0, "C_d_F": 1e-15, "rate_V_per_s": 40.0}}
+    lag = _summary(run_circuit(base, progress))["lag_LU"]
+    ref = _summary(run_circuit(dict(base, solver={"reltol": 1e-5}), progress))["lag_LU"]
+    assert abs(lag - ref) < 0.03 * ref                               # 5.00 vs 5.07 mV
+
+
+def test_regime_diagnostics_consistent(progress):
+    """#6: regime times are cell-averaged (never above t_total) and latched steps count as tier 4."""
+    res = run_circuit({"bench": "coupled", "mode": "stochastic", "device": {"preset": "paper"},
+                       "bench_params": {"rate_V_per_s": 1200.0, "v_max_V": 5.0, "vg2_V": -1.5},
+                       "stochastic": {"n_runs": 2, "seed": 1}}, progress)
+    rg = res["regimes"]
+    assert rg["t_drift_fast"] + rg["t_lrs_drift"] + rg["t_band_drift"] + rg["t_gauss"] <= rg["t_total"] * (1 + 1e-9)
+    assert 0.0 <= _summary(res)["t_noise_resolved_frac"] <= 1.0
+    assert rg["steps_by_tier"][4] > 0 and rg["t_lrs_drift"] > 0
+
+
+def test_feasibility_estimate_and_messages(progress):
+    """#7: estimate of the band-limited event-level part (paper 0.4 V/s: actual ~2.3e5 steps) and a
+    refusal message that matches the mode."""
+    from server.compute.circuit import benches as B
+    from server.compute.circuit.runner import _estimate
+    from server.compute.circuit.stochastic import branch_profile, noise_bands
+    from server import params as PR
+    p = np.array(PR.build_p(PR.resolve_device({"preset": "paper"})), float)
+    prof = branch_profile(p, 301)
+    bp = B.merged(B.BENCH_DEFAULTS["load_line"], {"v_max_V": 4.0, "rate_V_per_s": 0.4})
+    spec = B.build_load_line(bp, p, -2.0, "")
+    sol = dict(B.SOLVER_DEFAULTS, dt_max_s=spec.net.t_end / 2000)
+    est = _estimate(spec, prof, True, True, {}, sol, window=noise_bands(prof, None, True, 12.0))
+    assert 1.6e5 < est < 3.0e5
+    with pytest.raises(ValueError) as ei:
+        run_circuit({"bench": "pulse", "mode": "deterministic", "solver": {"max_steps": 3000}}, progress)
+    assert "carrier noise" not in str(ei.value) and "max_steps" in str(ei.value)
+
+
+def test_no_randomness_runs_once(progress):
+    """#8: carrier_noise off and no local states -> one run and a warning, not n identical copies."""
+    res = run_circuit({"bench": "load_line", "mode": "stochastic", "device": {"preset": "paper"},
+                       "bench_params": {"rate_V_per_s": 1200.0}, "stochastic": {"n_runs": 5, "carrier_noise": False}},
+                      progress)
+    assert _summary(res)["runs"] == 1 and len(res["runs"]) == 1
+    assert any("no random input" in w for w in res["warnings"])
+
+
+def test_local_avalanche_substitutes_aloc_like_device_mc(progress):
+    """#9: same rule as the device-level MC (StateMap): ext.aloc = 0 -> aloc = 1.0, so the
+    local_avalanche state acts (it had no effect in the circuit before)."""
+    res = run_circuit({"bench": "load_line", "mode": "stochastic", "device": {"preset": "paper"},
+                       "bench_params": {"rate_V_per_s": 1200.0},
+                       "stochastic": {"n_runs": 4, "carrier_noise": False,
+                                      "local_state": {"mode": "frozen", "action": "local_avalanche", "sigma": 0.3}}},
+                      progress)
+    assert any("using aloc = 1.0" in w for w in res["warnings"])
+    lu = np.asarray([d for d in res["distributions"] if d["key"] == "V_LU"][0]["values"], float)
+    assert np.all(np.isfinite(lu)) and np.std(lu) > 1e-3

@@ -23,7 +23,7 @@ import time
 
 import numpy as np
 
-from server.engine_bridge import A, MODEL, S, ct, m
+from server.engine_bridge import A, S, ct
 
 from . import run_circuit
 from .netlist import Netlist
@@ -88,7 +88,8 @@ def _ks_below(x, q, fold):
 
 def v3_fixed_bias(vd: float = 3.20, n_runs: int = 100, hold: float = 3e-3) -> dict:
     p = S.params(-1.8, 2.63e-12)
-    b, i, j, fold = MODEL.classify(p, m.state_grid(601))
+    from .stochastic import classify_checked
+    b, i, j, fold = classify_checked(p, 601)[0]
     uf = b[i, 17]
     ug = np.unique(np.round(np.r_[np.linspace(.1, .9, 181), np.linspace(uf - .065, uf + .065, 61)], 12))
     rows = np.array([S.state(u, vd, p) for u in ug])

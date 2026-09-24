@@ -11,9 +11,23 @@ Residuals:
   STL, E1:   V_D(u,r) - (v_d - v_s) = 0                               (V)
   STL, E2:   [Q(u,r;V_GS) - Qc - th*h*F(u,r)] / C_ox = 0               (V)
       deterministic BE: Qc = Q_n, th = 1;  TRAP: Qc = Q_n + h/2 F_n, th = 1/2
-      stochastic (explicit tau-leap, noise resolved): Qc = Q_n + dQ_events, th = 0
-      stochastic, fast-relaxing state (tau_frac*tau_rel < noise_dt_min): drift only, as BE
+      stochastic, per cell and step one of the tiers (docs/CIRCUIT_SIMULATOR.md §4):
+        1 event-level explicit tau-leap (Eq. 2): Qc = Q_n + q (N_unit + sum k_i - N_loss), th = 0
+        2 Gaussian, drift-implicit, variance-corrected: Qc = Q_n + eta, th = 1
+        3 drift only, relaxation too fast to resolve (tau_rel < gauss_tau_min): Qc = Q_n, th = 1
+        4 drift only, latched cell with ld_carrier_noise off
+        5 drift only, outside the cell's noise band (no escape possible there)
   (DC initialisation: E2 replaced by u - u_fix = 0, then pseudo-transient BE.)
+
+Latch state (independent of the current thresholds).  Along the quasi-static branch (parameterised
+by u) the HRS is u < u_i (u at the latch-up fold), the unstable branch u_i < u < u_j and the LRS
+u > u_j (u at the latch-down fold).  A cell latches when u reaches u_j and unlatches when u falls to
+u_i (hysteresis = the unstable-branch range; no latch window -> u_i = u_j = +inf, never latched).
+This state (SS_LAT = SS_PHYS) selects the noise tier / band and is what the events and samples
+report.  An event is timed at the I_D threshold crossing (latch-up: I_D >= i_threshold with u >= u_i;
+latch-down: I_D < i_threshold/hysteresis with u <= u_j) when that crossing lies inside the switching
+transient, otherwise at the moment the body reaches the new branch.  I_D crossings of i_threshold
+with the body still on the HRS (channel / HRS conduction) are counted (SI_HRSX), never reported.
 
 Newton: the STL block of the Jacobian is a forward finite difference (d/du, d/dr) of
 ``stl_eval``; |du| <= 50 mV and |dr| <= 1 V per iteration; backtracking (halving) when the trial
@@ -43,8 +57,8 @@ N_CI = 16
 # ---- float config (cf) -------------------------------------------------------------------
 CF_TEND, CF_DTMIN, CF_DTMAX, CF_DUMAX, CF_DLNIMAX, CF_DVMAX, CF_LTEU, CF_TAUFRAC, CF_NEVMAX, \
     CF_HNOISEMIN, CF_GAUSS, CF_ITH, CF_IFLOOR, CF_DTREC, CF_DVREC, CF_DLNIREC, CF_LSSIG, CF_LSTAU, \
-    CF_LSESIG, CF_LSETAU, CF_HINIT, CF_NEWTOL, CF_ITHDN, CF_GTAUMIN, CF_GTAUFRAC = range(25)
-N_CF = 25
+    CF_LSESIG, CF_LSETAU, CF_HINIT, CF_NEWTOL, CF_ITHDN, CF_GTAUMIN, CF_GTAUFRAC, CF_NLOOK = range(26)
+N_CF = 26
 # ---- float state (sf) --------------------------------------------------------------------
 SF_T, SF_HNEXT, SF_HPREV, SF_TREC, SF_TUNRES, SF_MINU, SF_MINR, SF_TNEGU, SF_TNEGR, SF_TSTOP, SF_TGAUSS, \
     SF_TLRS, SF_TBAND = range(13)
@@ -53,16 +67,25 @@ N_SF = 13
 SI_STEPS, SI_REJ, SI_NEWT, SI_BP, SI_NEV, SI_NREC, SI_NSAMP, SI_STATUS, SI_UNRES, SI_TRAPBE, \
     SI_REFRESH, SI_HAVEPREV, SI_FAILNEWTON, SI_CHUNKSTEPS, SI_GAUSS = range(15)
 SI_DIAG = 15          # 15 + 3*regime + (0 steps, 1 newton iterations, 2 rejections), regime 0..5
-N_SI = 33
+SI_HRSX = 33          # I_D up-crossings of i_threshold with the body still on the HRS (not a latch-up)
+N_SI = 34
 # per-step regime of the charge update (stochastic mode): 1 event-level explicit tau-leap,
 # 2 Gaussian drift-implicit (variance-corrected), 3 drift only (noise-active but relaxation too fast),
 # 4 drift only (latched cell, ld_carrier_noise off), 5 drift only (outside the noise band: barrier to
 # the saddle > noise_z_max stationary SDs, no escape possible); 0 = deterministic
 # status codes
 ST_DONE, ST_CHUNK, ST_FAIL, ST_MAXSTEPS, ST_BUFFER = 0, 1, 2, 3, 4
-# per-STL state columns (ss)
-SS_QN, SS_FN, SS_IN, SS_TAU, SS_UNIT, SS_G, SS_L, SS_R, SS_LAT, SS_DQ, SS_LNI_REC, SS_VDS_REC = range(12)
-N_SS = 12
+# per-STL state columns (ss): SS_LAT = SS_PHYS latch state (body branch, see the module docstring),
+# SS_PEND timing candidate of the running transition with its time / v_DS / v_src / I_D in SS_PT..SS_PI
+SS_QN, SS_FN, SS_IN, SS_TAU, SS_UNIT, SS_G, SS_L, SS_R, SS_LAT, SS_DQ, SS_LNI_REC, SS_VDS_REC, \
+    SS_PHYS, SS_PEND, SS_PT, SS_PV, SS_PS, SS_PI = range(18)
+N_SS = 18
+# per-STL window columns (win): noise bands (unlatched lo/hi, latched lo/hi, V_DS) and the u values of
+# the latch-up fold (u_i) and latch-down fold (u_j) of the quasi-static branch
+W_LULO, W_LUHI, W_LDLO, W_LDHI, W_UI, W_UJ = range(6)
+N_WIN = 6
+# sample buffer: t, then per STL k: I_D (1 + 3k), v_DS (2 + 3k), reported latch state (3 + 3k)
+N_SAMPC = 3
 # partial derivative columns (part)
 P_VU, P_VR, P_IU, P_IR, P_FU, P_FR, P_QU, P_QR = range(8)
 # event columns
@@ -91,6 +114,35 @@ def wave_value(w, t, wt, wv, woff):
     if dt <= 0.0:
         return wv[hi]
     return wv[lo] + (wv[hi] - wv[lo]) * (t - wt[lo]) / dt
+
+
+@njit(cache=True)
+def wave_reaches(w, t0, t1, level, above, wt, wv, woff):
+    """True when the PWL waveform w reaches ``level`` (from below if ``above``, else from above)
+    anywhere in [t0, t1] (checked at the endpoints and the corners; early exit)."""
+    v0 = wave_value(w, t0, wt, wv, woff)
+    v1 = wave_value(w, t1, wt, wv, woff)
+    if above:
+        if v0 >= level or v1 >= level:
+            return True
+    elif v0 <= level or v1 <= level:
+        return True
+    a = woff[w]
+    b = woff[w + 1]
+    lo = a
+    hi = b
+    while hi - lo > 1:                      # last corner <= t0
+        mid = (lo + hi) // 2
+        if wt[mid] <= t0:
+            lo = mid
+        else:
+            hi = mid
+    i = lo if wt[lo] > t0 else lo + 1
+    while i < b and wt[i] < t1:
+        if (above and wv[i] >= level) or ((not above) and wv[i] <= level):
+            return True
+        i += 1
+    return False
 
 
 @njit(cache=True)
@@ -530,6 +582,33 @@ def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS,
 
 
 @njit(cache=True)
+def _xfrac(i0, i1, ith, up):
+    """Fraction of the step at which I_D crosses ith (log-linear interpolation)."""
+    if i0 > 0 and i1 > 0 and ith > 0:
+        a = (np.log(ith) - np.log(i0)) / (np.log(i1) - np.log(i0)) if i1 != i0 else 1.0
+    else:
+        a = (ith - i0) / (i1 - i0) if i1 != i0 else 1.0
+    return min(max(a, 0.0), 1.0)
+
+
+@njit(cache=True)
+def _set_pending(ss, k, a, t_old, h, xp, x, sD, sS, i0, i1, mainw, wt, wv, woff):
+    """Store a candidate latch transition at the fraction a of the step just accepted."""
+    a = min(max(a, 0.0), 1.0)
+    te = t_old + a * h
+    vds0 = _nv(xp, sD[k]) - _nv(xp, sS[k])
+    vds1 = _nv(x, sD[k]) - _nv(x, sS[k])
+    ss[k, SS_PEND] = 1.0
+    ss[k, SS_PT] = te
+    ss[k, SS_PV] = vds0 + a * (vds1 - vds0)
+    ss[k, SS_PS] = wave_value(mainw, te, wt, wv, woff) if mainw >= 0 else np.nan
+    if i0 > 0 and i1 > 0:
+        ss[k, SS_PI] = np.exp(np.log(i0) + a * (np.log(i1) - np.log(i0)))
+    else:
+        ss[k, SS_PI] = i0 + a * (i1 - i0)
+
+
+@njit(cache=True)
 def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS, sW,
               wt, wv, woff, bp, samp, P, Pbase, na, vbi, rg, fg, table, rv, pmf,
               ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win):
@@ -582,6 +661,8 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
     pk = np.zeros(pmf.shape[1])
     reg = np.zeros(ns, np.int64)
     tha = np.ones(ns)
+    lat_prev = np.zeros(ns)
+    te_step = np.zeros(ns)
     ldnoise = ci[CI_LDNOISE] == 1
     si[SI_CHUNKSTEPS] = 0
     t = sf[SF_T]
@@ -616,18 +697,30 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
         if carrier:
             sreg = 5
             for k in range(ns):
+                # tier choice from the physical (committed) latch state, not from the reporting threshold
+                latk = ss[k, SS_PHYS] > 0.5
                 reg[k] = 4
-                if not (ldnoise or ss[k, SS_LAT] < 0.5):
+                if latk and not ldnoise:
+                    sreg = min(sreg, 4)
                     continue
                 tk = ss[k, SS_TAU]
                 vdsk = _nv(x, sD[k]) - _nv(x, sS[k])
-                if ss[k, SS_LAT] > 0.5:
-                    blo = win[k, 2]
-                    bhi = win[k, 3]
+                if latk:
+                    blo = win[k, W_LDLO]
+                    bhi = win[k, W_LDHI]
                 else:
-                    blo = win[k, 0]
-                    bhi = win[k, 1]
-                if vdsk < blo or vdsk > bhi:
+                    blo = win[k, W_LULO]
+                    bhi = win[k, W_LUHI]
+                outside = vdsk < blo or vdsk > bhi
+                if outside and mainw >= 0 and cf[CF_NLOOK] > 0 and tk < 1e29:
+                    # look-ahead: resolve the noise already n_look relaxation times before the drive
+                    # enters the band, so the stationary fluctuation is built up on fast ramps / edges
+                    tl = t + cf[CF_NLOOK] * tk
+                    if latk:
+                        outside = not wave_reaches(mainw, t, tl, bhi, False, wt, wv, woff)
+                    else:
+                        outside = not wave_reaches(mainw, t, tl, blo, True, wt, wv, woff)
+                if outside:
                     # outside the noise band (barrier > noise_z_max SDs or monostable): drift only
                     reg[k] = 5
                 elif tk < cf[CF_GTAUMIN] and tau_frac * tk < h_noise_min:
@@ -800,29 +893,25 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
         if method == 1 and not carrier and not use_trap:
             si[SI_TRAPBE] += 1
         if carrier:
+            # regime times are cell-averaged (h / n_cells per cell), so they add up to at most t
             f3 = False
             f2 = False
-            f4 = False
-            f5 = False
+            hc = h / ns
             for k in range(ns):
                 if reg[k] == 3:
                     f3 = True
+                    sf[SF_TUNRES] += hc
                 elif reg[k] == 2:
                     f2 = True
+                    sf[SF_TGAUSS] += hc
                 elif reg[k] == 4:
-                    f4 = True
+                    sf[SF_TLRS] += hc
                 elif reg[k] == 5:
-                    f5 = True
+                    sf[SF_TBAND] += hc
             if f3:
                 si[SI_UNRES] += 1
-                sf[SF_TUNRES] += h
             if f2:
                 si[SI_GAUSS] += 1
-                sf[SF_TGAUSS] += h
-            if f4:
-                sf[SF_TLRS] += h
-            if f5:
-                sf[SF_TBAND] += h
         # capacitor state
         for e in range(nc):
             vnew = _nv(x0, cA[e]) - _nv(x0, cB[e])
@@ -862,36 +951,62 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             qc[k] = ev[k, 3]
         sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
                       sD, sG, sS, ev, part, J, f, qc, sens, ss)
-        # ---- event detection (threshold crossings of I_D) ----------------------------
+        # ---- latch state and event detection ---------------------------------------------
+        # The latch state is the body's branch (hysteresis on u between the fold values u_i and u_j);
+        # an event is the switch of that state, timed at the I_D threshold crossing when it lies inside
+        # the switching transient, else when the body reaches the new branch (module docstring).
         evflag = False
         for k in range(ns):
+            ku = nn - 1 + nv + 2 * k
             i0 = ev0[k, 1]
             i1 = ev[k, 1]
-            lat = ss[k, SS_LAT]
+            u0 = xp[ku]
+            u1 = x[ku]
+            u_i = win[k, W_UI]
+            u_j = win[k, W_UJ]
+            lat_prev[k] = ss[k, SS_LAT]
+            te_step[k] = -1e300
             kind = 0
-            if lat < 0.5 and i0 < i_th and i1 >= i_th:
-                kind = 1
-            elif lat > 0.5 and i0 >= i_dn and i1 < i_dn:
-                kind = 2
+            if ss[k, SS_LAT] < 0.5:
+                if i0 < i_th and i1 >= i_th and u1 < u_i:
+                    si[SI_HRSX] += 1                       # HRS / channel conduction above i_th: no event
+                if ss[k, SS_PEND] > 0.5 and u1 < u_i:
+                    ss[k, SS_PEND] = 0.0                   # body back on the HRS: timing candidate withdrawn
+                if ss[k, SS_PEND] < 0.5 and i1 >= i_th and u1 >= u_i:
+                    # timing candidate: the later of the I_D crossing and the body leaving the HRS (u_i)
+                    aI = _xfrac(i0, i1, i_th, True) if i0 < i_th else 0.0
+                    aU = (u_i - u0) / (u1 - u0) if (u0 < u_i and u1 != u0) else 0.0
+                    _set_pending(ss, k, max(aI, aU), t_old, h, xp, x, sD, sS, i0, i1, mainw, wt, wv, woff)
+                if u1 >= u_j:                              # body reached the LRS: latch-up
+                    if ss[k, SS_PEND] < 0.5:
+                        aU = (u_j - u0) / (u1 - u0) if (u0 < u_j and u1 != u0) else 0.0
+                        _set_pending(ss, k, aU, t_old, h, xp, x, sD, sS, i0, i1, mainw, wt, wv, woff)
+                    kind = 1
+            else:
+                if ss[k, SS_PEND] > 0.5 and u1 > u_j:
+                    ss[k, SS_PEND] = 0.0                   # body back on the LRS: timing candidate withdrawn
+                if ss[k, SS_PEND] < 0.5 and i1 < i_dn and u1 <= u_j:
+                    aI = _xfrac(i0, i1, i_dn, False) if i0 >= i_dn else 0.0
+                    aU = (u0 - u_j) / (u0 - u1) if (u0 > u_j and u1 != u0) else 0.0
+                    _set_pending(ss, k, max(aI, aU), t_old, h, xp, x, sD, sS, i0, i1, mainw, wt, wv, woff)
+                if u1 <= u_i:                              # body reached the HRS: latch-down
+                    if ss[k, SS_PEND] < 0.5:
+                        aU = (u0 - u_i) / (u0 - u1) if (u0 > u_i and u1 != u0) else 0.0
+                        _set_pending(ss, k, aU, t_old, h, xp, x, sD, sS, i0, i1, mainw, wt, wv, woff)
+                    kind = 2
+            ss[k, SS_PHYS] = ss[k, SS_LAT] if kind == 0 else (1.0 if kind == 1 else 0.0)
             if kind > 0:
-                ith = i_th if kind == 1 else i_dn
-                if i0 > 0 and i1 > 0:
-                    a = (np.log(ith) - np.log(i0)) / (np.log(i1) - np.log(i0))
-                else:
-                    a = (ith - i0) / (i1 - i0)
-                a = min(max(a, 0.0), 1.0)
-                te = t_old + a * h
                 ne = si[SI_NEV]
-                vds0 = _nv(xp, sD[k]) - _nv(xp, sS[k])
-                vds1 = _nv(x, sD[k]) - _nv(x, sS[k])
                 evb[ne, EV_KIND] = kind
                 evb[ne, EV_STL] = k
-                evb[ne, EV_T] = te
-                evb[ne, EV_VDS] = vds0 + a * (vds1 - vds0)
-                evb[ne, EV_VSRC] = wave_value(mainw, te, wt, wv, woff) if mainw >= 0 else np.nan
-                evb[ne, EV_I] = ith
+                evb[ne, EV_T] = ss[k, SS_PT]
+                evb[ne, EV_VDS] = ss[k, SS_PV]
+                evb[ne, EV_VSRC] = ss[k, SS_PS]
+                evb[ne, EV_I] = ss[k, SS_PI]
                 si[SI_NEV] = ne + 1
                 ss[k, SS_LAT] = 1.0 if kind == 1 else 0.0
+                ss[k, SS_PEND] = 0.0
+                te_step[k] = evb[ne, EV_T]
                 evflag = True
         # ---- samples ---------------------------------------------------------------------
         sampflag = False
@@ -902,10 +1017,12 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             a = min(max(a, 0.0), 1.0)
             sbuf[j, 0] = ts
             for k in range(ns):
-                sbuf[j, 1 + 2 * k] = ev0[k, 1] + a * (ev[k, 1] - ev0[k, 1])
+                sbuf[j, 1 + N_SAMPC * k] = ev0[k, 1] + a * (ev[k, 1] - ev0[k, 1])
                 vds0 = _nv(xp, sD[k]) - _nv(xp, sS[k])
                 vds1 = _nv(x, sD[k]) - _nv(x, sS[k])
-                sbuf[j, 2 + 2 * k] = vds0 + a * (vds1 - vds0)
+                sbuf[j, 2 + N_SAMPC * k] = vds0 + a * (vds1 - vds0)
+                # reported latch state at ts (the pre-step state if this step's event lies after ts)
+                sbuf[j, 3 + N_SAMPC * k] = lat_prev[k] if te_step[k] > ts else ss[k, SS_LAT]
             si[SI_NSAMP] = j + 1
             sampflag = True
         # ---- recording ---------------------------------------------------------------------
@@ -960,8 +1077,9 @@ def seed_rng(seed):
 
 @njit(cache=True)
 def init_state(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS, sW,
-               wt, wv, woff, P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, t0):
-    """Element state, partials, sensitivities and latch flags at the (DC) initial point."""
+               wt, wv, woff, P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, t0, win):
+    """Element state, partials, sensitivities and latch flags at the (DC) initial point
+    (latched = physically on the LRS, u >= u_j, independent of the current threshold)."""
     nn = ci[CI_NN]
     ns = ci[CI_NS]
     nv = ci[CI_NV]
@@ -997,7 +1115,9 @@ def init_state(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG
         ss[k, SS_G] = ev[k, 5]
         ss[k, SS_L] = ev[k, 6]
         ss[k, SS_R] = x[ku + 1]
-        ss[k, SS_LAT] = 1.0 if ev[k, 1] >= cf[CF_ITH] else 0.0
+        ss[k, SS_PHYS] = 1.0 if x[ku] >= win[k, W_UJ] else 0.0
+        ss[k, SS_LAT] = ss[k, SS_PHYS]
+        ss[k, SS_PEND] = 0.0
         ss[k, SS_VDS_REC] = _nv(x, sD[k]) - _nv(x, sS[k])
         ss[k, SS_LNI_REC] = np.log(abs(ev[k, 1]) + cf[CF_IFLOOR])
         qc[k] = ev[k, 3]

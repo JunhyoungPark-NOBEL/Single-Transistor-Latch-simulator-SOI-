@@ -46,6 +46,7 @@ class SolverConfig:
     h_init: float = 1e-9
     newton_tol: float = 1e-7
     ld_noise: bool = False
+    noise_lookahead: float = 4.0    # stochastic: noise on n relaxation times before the drive enters a band
 
     def arrays(self, net: dict, t_end: float, main_wave: int, main_stl: int = 0):
         ci = np.zeros(K.N_CI, np.int64)
@@ -73,7 +74,8 @@ class SolverConfig:
         cf[K.CF_DUMAX] = float(np.clip(0.01 * sc, 1e-3, 0.05))
         cf[K.CF_DLNIMAX] = float(np.clip(0.2 * sc, 0.02, 1.0))
         cf[K.CF_DVMAX] = float(np.clip(0.02 * sc, 1e-3, 0.2))
-        cf[K.CF_LTEU] = float(np.clip(1e-3 * sc, 1e-5, 0.02))
+        # LTE_u 30 uV at reltol 1e-3: converges the slow-passage lag of BE to ~1 % (1 mV left a 6-13 % error)
+        cf[K.CF_LTEU] = float(np.clip(3e-5 * sc, 1e-6, 0.02))
         cf[K.CF_TAUFRAC] = self.tau_frac
         cf[K.CF_NEVMAX] = self.max_events_per_step
         cf[K.CF_HNOISEMIN] = self.noise_dt_min
@@ -92,6 +94,7 @@ class SolverConfig:
         cf[K.CF_ITHDN] = self.i_threshold_down
         cf[K.CF_GTAUMIN] = self.gauss_tau_min
         cf[K.CF_GTAUFRAC] = self.gauss_tau_frac
+        cf[K.CF_NLOOK] = self.noise_lookahead
         return ci, cf
 
 
@@ -99,7 +102,7 @@ class SolverConfig:
 class RunOutput:
     rec: np.ndarray                 # (n, 1 + (N-1) + nV + 7 nS) decimated recording
     events: np.ndarray              # (n, 6) kind, stl, t, v_ds, v_src, I
-    samples: np.ndarray             # (n_samp, 1 + 2 nS) t, (I_D, v_ds) per STL
+    samples: np.ndarray             # (n_samp, 1 + 3 nS) t, (I_D, v_ds, reported latch flag) per STL; NaN = not reached
     steps: int
     rejected: int
     newton_iters: int
@@ -117,6 +120,7 @@ class RunOutput:
     t_neg_r: float
     trap_be: int
     runtime_s: float
+    hrs_crossings: int = 0          # I_D up-crossings of i_threshold with the body on the HRS (not latch-up)
     warnings: list[str] = field(default_factory=list)
     diag: list[int] = field(default_factory=list)
 
@@ -130,7 +134,9 @@ def _tables():
 def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wave: int, seed: int,
              ls_init: np.ndarray | None = None, progress=None, window: np.ndarray | None = None) -> RunOutput:
     """One transient run.  ``progress(fraction_of_run)`` is called between chunks (it may raise
-    JobCancelled)."""
+    JobCancelled).  ``window`` (n_STL x 4 or x 6): noise bands (lu_lo, lu_hi, ld_lo, ld_hi) and
+    optionally the fold u values (u_i, u_j) of the physical latch state; missing fold u values are
+    computed from each element's quasi-static branch (``stochastic.fold_u``)."""
     tic = time.perf_counter()
     na, vbi, rg, fg, table, rv, pmf = _tables()
     ci, cf = cfg.arrays(net, t_end, main_wave)
@@ -156,13 +162,20 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
     rec = np.zeros((REC_CAP, W))
     evb = np.zeros((EV_CAP, K.N_EVC))
     nsamp = len(net["samp"])
-    sbuf = np.full((max(nsamp, 1), 1 + 2 * ns), np.nan)
+    sbuf = np.full((max(nsamp, 1), 1 + K.N_SAMPC * ns), np.nan)
     a = net
-    win = np.empty((ns, 4))
-    win[:, 0::2] = -np.inf
-    win[:, 1::2] = np.inf
-    if window is not None:
-        win[:] = np.asarray(window, float).reshape(ns, 4)
+    win = np.empty((ns, K.N_WIN))
+    win[:, 0:4:2] = -np.inf
+    win[:, 1:4:2] = np.inf
+    wk = None if window is None else np.asarray(window, float).reshape(ns, -1)
+    if wk is not None:
+        win[:, :4] = wk[:, :4]
+    if wk is not None and wk.shape[1] >= K.N_WIN:
+        win[:, 4:] = wk[:, 4:K.N_WIN]
+    else:
+        from .stochastic import fold_u
+        for k in range(ns):
+            win[k, K.W_UI], win[k, K.W_UJ] = fold_u(P[k])
     K.seed_rng(int(seed) % (2 ** 32 - 1))
     # local states enter p before the DC point
     Pdc = P.copy()
@@ -179,7 +192,7 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
                          "valid only where the source barrier and the neutral base exist)")
     ok = K.init_state(x, ci, cf, a["rA"], a["rB"], a["rG"], a["cA"], a["cB"], a["cC"], a["vA"], a["vB"], a["vW"],
                       a["iA"], a["iB"], a["iW"], a["sD"], a["sG"], a["sS"], a["sW"], a["wt"], a["wv"], a["woff"],
-                      P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, 0.0)
+                      P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, 0.0, win)
     if not ok:
         raise ValueError("element evaluation failed at the initial operating point")
     xp[:] = x
@@ -233,11 +246,14 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
         break
     rec_all = np.concatenate(recs) if recs else np.zeros((0, W))
     ev_all = np.concatenate(evs) if evs else np.zeros((0, K.N_EVC))
+    if len(ev_all) > 1:
+        # latch events are written when confirmed (after the crossing): restore time order
+        ev_all = ev_all[np.argsort(ev_all[:, K.EV_T], kind="stable")]
     return RunOutput(rec=rec_all, events=ev_all, samples=sbuf[:nsamp].copy(), steps=int(si[K.SI_STEPS]),
                      rejected=int(si[K.SI_REJ]), newton_iters=int(si[K.SI_NEWT]), status=int(status),
                      t_reached=float(sf[K.SF_T]), unresolved_steps=int(si[K.SI_UNRES]),
                      t_unresolved=float(sf[K.SF_TUNRES]), gauss_steps=int(si[K.SI_GAUSS]),
                      t_gauss=float(sf[K.SF_TGAUSS]), t_lrs_drift=float(sf[K.SF_TLRS]), t_band_drift=float(sf[K.SF_TBAND]), min_u=float(sf[K.SF_MINU]), min_r=float(sf[K.SF_MINR]),
                      t_neg_u=float(sf[K.SF_TNEGU]), t_neg_r=float(sf[K.SF_TNEGR]), trap_be=int(si[K.SI_TRAPBE]),
-                     runtime_s=time.perf_counter() - tic, warnings=warnings,
+                     runtime_s=time.perf_counter() - tic, hrs_crossings=int(si[K.SI_HRSX]), warnings=warnings,
                      diag=[int(v) for v in si[K.SI_DIAG:K.SI_DIAG + 18]])
