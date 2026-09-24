@@ -181,19 +181,20 @@ def check_dynamic_mc(progress) -> dict:
 # full checks
 # ---------------------------------------------------------------------------------------------
 def check_paper_records(progress) -> dict:
+    # Same ten records as gate_dynamic_compare.main(): seeds 2026093000 … 2026093009, pooled (1000 sweeps).
     lu, ld = [], []
     for k in range(10):
         progress(k / 10, f"record {k + 1}/10")
-        sw = A.sweeps(n=100, seed=2026092920 + k)
+        sw = A.sweeps(n=100, seed=2026093000 + k)
         lu.append(np.asarray(sw["V_LU"], float))
         ld.append(np.asarray(sw["V_LD"], float))
-    s_lu = float(np.mean([np.nanstd(x, ddof=1) for x in lu])) * 1e3
-    s_ld = float(np.mean([np.nanstd(x, ddof=1) for x in ld])) * 1e3
-    ok = abs(s_lu - 125.8) <= 8 and abs(s_ld - 19.6) <= 1.5
+    s_lu = float(np.nanstd(np.concatenate(lu), ddof=1)) * 1e3
+    s_ld = float(np.nanstd(np.concatenate(ld), ddof=1)) * 1e3
+    ok = abs(s_lu - 125.8) <= 1.0 and abs(s_ld - 19.6) <= 0.5
     return _check("paper_records", "논문 값 (10 기록 × 100 스윕)", "Paper values (10 records × 100 sweeps)",
                   "σ_LU 125.8 mV, σ_LD 19.6 mV (measured 123.1 / 19.5)",
-                  f"σ_LU {s_lu:.1f} mV, σ_LD {s_ld:.1f} mV (mean of per-record SD)", ok, "σ_LU ±8 mV, σ_LD ±1.5 mV",
-                  note="seeds 2026092920 … 2026092929 (the paper's record seeds are not in the handoff package)")
+                  f"σ_LU {s_lu:.1f} mV, σ_LD {s_ld:.1f} mV (pooled over 1000 sweeps)", ok, "σ_LU ±1 mV, σ_LD ±0.5 mV",
+                  note="seeds 2026093000 … 2026093009, as in gate_dynamic_compare.main()")
 
 
 # --- carrier-noise-only breakdown -------------------------------------------------------------

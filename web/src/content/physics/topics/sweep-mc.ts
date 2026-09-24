@@ -100,7 +100,7 @@ const topic: PhysicsTopic = {
         },
       ],
       variables: [
-        { symbol: r`V_{LU}`, name: L("일반 엔진, 논문 소자, evolving(추세 없음), 100 cycle", "general engine, paper device, evolving (no trend), 100 cycles"), value: "3.6457 V, 108.5 mV" },
+        { symbol: r`V_{LU}`, name: L("일반 엔진, 논문 소자, evolving(추세 없음), 100 cycle, seed 2026092920 (실행)", "general engine, paper device, evolving (no trend), 100 cycles, seed 2026092920 (run)"), value: "3.6457 V, 108.5 mV" },
         { symbol: r`V_{LU}`, name: L("같은 조건, 상태 없음(none)", "same, no states (none)"), value: "3.6450 V, 8.3 mV" },
         { symbol: r`V_{LD}`, name: L("evolving, ld_carrier_noise 끔 (fold에서 latch-down)", "evolving, ld_carrier_noise off (latch-down at the fold)"), value: "2.5990 V, 18.7 mV" },
         { symbol: r`V_{LD}`, name: L("evolving, ld_carrier_noise 켬 (측정 2.7001 V, 19.5 mV)", "evolving, ld_carrier_noise on (measured 2.7001 V, 19.5 mV)"), value: "2.7007 V, 19.9 mV" },

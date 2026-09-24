@@ -40,8 +40,8 @@ const topic: PhysicsTopic = {
           label: L("E2: 전하식 (C_ox로 정규화)", "E2: charge equation (normalised by C_ox)"),
           tex: r`\frac{Q(u,r;V_{GS}) - Q_c - \theta\,h\,F(u,r)}{C_{ox}} = 0`,
           note: L(
-            "결정론 BE: $Q_c=Q_n$, $\\theta=1$. TRAP: $Q_c=Q_n+\\tfrac h2F_n$, $\\theta=\\tfrac12$ ($h<2\\tau_{\\min}$일 때만, 아니면 BE). 확률(잡음 분해): $Q_c=Q_n+\\Delta Q_{\\mathrm{ev}}$, $\\theta=0$. 확률(빠른 완화): $Q_c=Q_n+\\Delta Q_{\\mathrm{ev}}-hF_n$, $\\theta=1$ (drift-implicit).",
-            "Deterministic BE: $Q_c=Q_n$, $\\theta=1$. TRAP: $Q_c=Q_n+\\tfrac h2F_n$, $\\theta=\\tfrac12$ (only when $h<2\\tau_{\\min}$, else BE). Stochastic (noise resolved): $Q_c=Q_n+\\Delta Q_{\\mathrm{ev}}$, $\\theta=0$. Stochastic (fast relaxation): $Q_c=Q_n+\\Delta Q_{\\mathrm{ev}}-hF_n$, $\\theta=1$ (drift-implicit).",
+            "결정론 BE: $Q_c=Q_n$, $\\theta=1$. TRAP: $Q_c=Q_n+\\tfrac h2F_n$, $\\theta=\\tfrac12$ ($h<2\\tau_{\\min}$일 때만, 아니면 BE). 확률(잡음 분해): $Q_c=Q_n+\\Delta Q_{\\mathrm{ev}}$, $\\theta=0$. 확률, 빠르게 완화하는 상태($\\tau_{\\mathrm{frac}}\\tau_{\\mathrm{rel}}<h_{\\mathrm{noise,min}}$): 사건 증분 없이 BE와 같은 drift만.",
+            "Deterministic BE: $Q_c=Q_n$, $\\theta=1$. TRAP: $Q_c=Q_n+\\tfrac h2F_n$, $\\theta=\\tfrac12$ (only when $h<2\\tau_{\\min}$, else BE). Stochastic (noise resolved): $Q_c=Q_n+\\Delta Q_{\\mathrm{ev}}$, $\\theta=0$. Stochastic, fast-relaxing state ($\\tau_{\\mathrm{frac}}\\tau_{\\mathrm{rel}}<h_{\\mathrm{noise,min}}$): drift only, as BE, without event increments.",
           ),
           code: "circuit/mna.py · assemble() row kr; run_chunk()",
         },
@@ -107,18 +107,18 @@ const topic: PhysicsTopic = {
           label: L("가변 스텝 OU (evolving 국소 상태)", "variable-step OU (evolving local states)"),
           tex: r`\delta_{n+1} = a\,\delta_n + \sigma\sqrt{1-a^2}\,\xi,\qquad a = e^{-h/\tau}`,
           note: L(
-            "작용점 상태(p[9], p[23], p[19] 또는 p[20])와 emitter 상태(p[10])에 각각 적용; frozen 모드는 실행마다 한 번 추출.",
-            "Applied to the action-point state (p[9], p[23], p[19] or p[20]) and to the emitter state (p[10]); frozen mode draws once per run.",
+            "작용점 상태(p[9], p[23], p[19] 또는 p[20])와 emitter 상태(p[10])에 각각 적용; 초기값은 실행마다 $\\mathcal N(0,\\sigma^2)$ 추출(frozen은 실행 내내 고정). 획득 추세는 회로에 적용하지 않는다.",
+            "Applied to the action-point state (p[9], p[23], p[19] or p[20]) and to the emitter state (p[10]); the initial value is drawn from $\\mathcal N(0,\\sigma^2)$ per run (frozen: kept for the whole run). The acquisition trend is not applied in the circuit.",
           ),
-          code: "circuit/mna.py · run_chunk() (lsmode 2)",
+          code: "circuit/mna.py · run_chunk() (lsmode 2); circuit/stochastic.py · draw_local_states()",
         },
       ],
     },
     {
       heading: L("적응 Δt와 latch 검출", "Adaptive Δt and latch detection"),
       body: L(
-        "- **결정론**: $\\mathrm{err}=\\max(|\\Delta u|/\\Delta u_{\\max},\\ |\\Delta\\ln I_D|/\\Delta_{\\ln I},\\ |\\Delta v|/\\Delta v_{\\max},\\ \\mathrm{LTE}/\\mathrm{LTE}_u)$, $\\mathrm{LTE}=\\tfrac12h|F-F_0|/|\\partial Q/\\partial u|$. err > 1.5이면 거부, $h\\leftarrow h\\max(0.1,0.7/\\mathrm{err})$; 다음 스텝 $h\\cdot\\min(2.5,\\max(0.3,0.8/\\mathrm{err}))$. 파형 breakpoint에 맞춘다.\n- **확률**: $\\tau_k=1/|dF_k/dQ_k|$ (회로 제약을 따른 감도). $\\tau_{\\mathrm{frac}}\\tau_{\\min}\\ge h_{\\mathrm{noise,min}}$이면 잡음 분해 모드: $h\\le\\tau_{\\mathrm{frac}}\\tau_{\\min}$, $h\\le\\Delta u_{\\max}|\\partial Q/\\partial u|/|F|$, $h\\le N_{\\mathrm{ev,max}}/\\lambda_{\\mathrm{tot}}$. 아니면 drift-implicit.\n- **latch 검출**: $I_D$가 $I_{th}$ (기본 10 nA)를 위로 지나면 latch-up, 아래로 지나면 latch-down; 시각은 $\\ln I$ 선형 보간, 그때의 $V_{DS}$와 소스 전압을 기록.",
-        "- **deterministic**: $\\mathrm{err}=\\max(|\\Delta u|/\\Delta u_{\\max},\\ |\\Delta\\ln I_D|/\\Delta_{\\ln I},\\ |\\Delta v|/\\Delta v_{\\max},\\ \\mathrm{LTE}/\\mathrm{LTE}_u)$, $\\mathrm{LTE}=\\tfrac12h|F-F_0|/|\\partial Q/\\partial u|$. Reject if err > 1.5 with $h\\leftarrow h\\max(0.1,0.7/\\mathrm{err})$; next step $h\\cdot\\min(2.5,\\max(0.3,0.8/\\mathrm{err}))$. Steps land on waveform breakpoints.\n- **stochastic**: $\\tau_k=1/|dF_k/dQ_k|$ (sensitivity along the circuit constraints). If $\\tau_{\\mathrm{frac}}\\tau_{\\min}\\ge h_{\\mathrm{noise,min}}$ the noise-resolved mode applies: $h\\le\\tau_{\\mathrm{frac}}\\tau_{\\min}$, $h\\le\\Delta u_{\\max}|\\partial Q/\\partial u|/|F|$, $h\\le N_{\\mathrm{ev,max}}/\\lambda_{\\mathrm{tot}}$; otherwise drift-implicit.\n- **latch detection**: $I_D$ crossing $I_{th}$ (default 10 nA) upwards is latch-up, downwards latch-down; the time is interpolated linearly in $\\ln I$, and $V_{DS}$ and the source voltage at that time are recorded.",
+        "- **결정론**: $\\mathrm{err}=\\max(|\\Delta u|/\\Delta u_{\\max},\\ |\\Delta\\ln I_D|/\\Delta_{\\ln I},\\ |\\Delta v|/\\Delta v_{\\max},\\ \\mathrm{LTE}/\\mathrm{LTE}_u)$, $\\mathrm{LTE}=\\tfrac12h|F-F_0|/|\\partial Q/\\partial u|$. err > 1.5이면 거부, $h\\leftarrow h\\max(0.1,0.7/\\mathrm{err})$; 다음 스텝 $h\\cdot\\min(2.5,\\max(0.3,0.8/\\mathrm{err}))$. 파형 breakpoint에 맞춘다.\n- **확률**: $\\tau_k=1/|dF_k/dQ_k|$ (회로 제약을 따른 감도). $\\tau_{\\mathrm{frac}}\\tau_{\\min}\\ge h_{\\mathrm{noise,min}}$이면 잡음 분해 모드: $h\\le\\tau_{\\mathrm{frac}}\\tau_{\\min}$, $h\\le\\Delta u_{\\max}|\\partial Q/\\partial u|/|F|$, $h\\le N_{\\mathrm{ev,max}}/\\lambda_{\\mathrm{tot}}$. 아니면 잡음 없이 BE drift만(강하게 완화되는 상태, 예: LRS; $\\tau_{\\mathrm{rel}}<h_{\\mathrm{noise,min}}/\\tau_{\\mathrm{frac}}=40$ ns).\n- **latch 검출**: $I_D$가 $I_{th}$ (기본 10 nA)를 위로 지나면 latch-up, 아래로 지나면 latch-down; 시각은 $\\ln I$ 선형 보간, 그때의 $V_{DS}$와 소스 전압을 기록.",
+        "- **deterministic**: $\\mathrm{err}=\\max(|\\Delta u|/\\Delta u_{\\max},\\ |\\Delta\\ln I_D|/\\Delta_{\\ln I},\\ |\\Delta v|/\\Delta v_{\\max},\\ \\mathrm{LTE}/\\mathrm{LTE}_u)$, $\\mathrm{LTE}=\\tfrac12h|F-F_0|/|\\partial Q/\\partial u|$. Reject if err > 1.5 with $h\\leftarrow h\\max(0.1,0.7/\\mathrm{err})$; next step $h\\cdot\\min(2.5,\\max(0.3,0.8/\\mathrm{err}))$. Steps land on waveform breakpoints.\n- **stochastic**: $\\tau_k=1/|dF_k/dQ_k|$ (sensitivity along the circuit constraints). If $\\tau_{\\mathrm{frac}}\\tau_{\\min}\\ge h_{\\mathrm{noise,min}}$ the noise-resolved mode applies: $h\\le\\tau_{\\mathrm{frac}}\\tau_{\\min}$, $h\\le\\Delta u_{\\max}|\\partial Q/\\partial u|/|F|$, $h\\le N_{\\mathrm{ev,max}}/\\lambda_{\\mathrm{tot}}$; otherwise BE drift only, without noise (strongly relaxing state, e.g. the LRS; $\\tau_{\\mathrm{rel}}<h_{\\mathrm{noise,min}}/\\tau_{\\mathrm{frac}}=40$ ns).\n- **latch detection**: $I_D$ crossing $I_{th}$ (default 10 nA) upwards is latch-up, downwards latch-down; the time is interpolated linearly in $\\ln I$, and $V_{DS}$ and the source voltage at that time are recorded.",
       ),
       variables: [
         { symbol: r`\Delta u_{\max}`, name: L("스텝당 u 변화 (reltol/1e-3 배, [1 mV, 50 mV])", "u change per step (× reltol/1e-3, [1 mV, 50 mV])"), value: "10", unit: "mV", code: "CF_DUMAX" },
@@ -127,7 +127,7 @@ const topic: PhysicsTopic = {
         { symbol: r`\mathrm{LTE}_u`, name: L("u 국소 절단오차", "local truncation error in u"), value: "1", unit: "mV", code: "CF_LTEU" },
         { symbol: r`\tau_{\mathrm{frac}},\ h_{\mathrm{noise,min}}`, name: L("잡음 분해 스텝 비율, 최소 스텝", "noise-resolved step fraction, minimum step"), value: "0.05, 2 ns", code: "SolverConfig" },
         { symbol: r`N_{\mathrm{ev,max}}`, name: L("스텝당 최대 기대 사건 수; Gaussian 문턱", "max expected events per step; Gaussian threshold"), value: "200; 100", code: "SolverConfig" },
-        { symbol: r`h`, name: L("최소/최대/초기 스텝", "min / max / initial step"), value: "1e-15 / 1e-3 / 1e-9", unit: "s", code: "SolverConfig" },
+        { symbol: r`h_{\min},\ h_{\max}`, name: L("자동: max(1e-15 s, 1e-13·t_end), t_end/2000; 초기 1 ns", "auto: max(1e-15 s, 1e-13·t_end), t_end/2000; initial 1 ns"), unit: "s", code: "SOLVER_DEFAULTS" },
         { symbol: r`I_{th}`, name: L("latch 검출 문턱", "latch detection threshold"), value: "10", unit: "nA", code: "detect.i_threshold_A" },
       ],
       notes: [
@@ -144,16 +144,32 @@ const topic: PhysicsTopic = {
     {
       heading: L("테스트 벤치", "Test benches"),
       body: L(
-        "- **load line**: 램프 전원 → 직렬 저항 → STL. $V_{LU}/V_{LD}$와 `branches`의 I–V를 재현하는지 확인.\n- **pulse train**: 진폭·폭·간격을 바꾼 펄스열에서 전환 확률 $P_{\\mathrm{sw}}$; 잔류 $Q_B$가 간격 기억을 만든다.\n- **p-bit**: STL + 부하 저항 + 비교기; V_G·빛에 따른 출력 비트 통계.\n- **coupled pair**: 저항으로 결합한 두 STL (Ising/p-bit 네트워크의 첫 요소).",
-        "- **load line**: ramp source → series resistor → STL. Checks that $V_{LU}/V_{LD}$ and the I–V of `branches` are reproduced.\n- **pulse train**: switching probability $P_{\\mathrm{sw}}$ versus pulse amplitude, width and interval; residual $Q_B$ gives interval memory.\n- **p-bit**: STL + load resistor + comparator; output bit statistics versus V_G and light.\n- **coupled pair**: two STLs coupled through a resistor (first Ising/p-bit network element).",
+        "모든 벤치: 게이트는 DC $V_G$, 드레인 노드에 $C_d=2$ fF, 소스 접지. `None` 기본값은 소자에서 자동으로 정해진다.\n\n- **load line**: 삼각파 $v_{\\min}\\to v_{\\max}\\to v_{\\min}$ → $R_s=1$ kΩ → STL, 기본 1 cycle. $v_{\\max}$·램프 속도는 프리셋(논문 4 V, 0.4 V/s; 광 5 V, 1200 V/s; 사건 수준 확률 실행이 너무 느리면 1200 V/s). $V_{LU}/V_{LD}$는 드레인 노드($V_{DS}$)와 전원 쪽에서 모두 기록. $Q_B$가 cycle 사이에 연속이므로 잔류 body 기억이 자동 포함.\n- **pulse**: 펄스열(기본 진폭 = fold $V_{LU}$ + 0.10 V, 평탄부 200 µs, 주기 1 ms, 상승/하강 1 µs, 10개) → $R_s=1$ kΩ. 평탄부 끝의 전환 확률, 주기 끝의 유지 비율, 전환 지연; 진폭 목록으로 $P_{\\mathrm{sw}}$ 곡선.\n- **p-bit**: 클럭(0 / fold $V_{LU}-0.02$ V, 주기 1 ms, high 200 µs, 50 clock) → $R_L=100$ kΩ → STL, 비교기는 $v_D$. $P(1)$와 비트 lag-1; V_G 또는 빛 목록으로 $P(1)$ 곡선.\n- **coupled**: 공통 램프 또는 펄스 전원에서 각자 $R_{s1}=R_{s2}=100$ kΩ, 드레인 사이 $R_c=1$ MΩ; 두 번째 셀은 V_G·빛을 따로 지정 가능.",
+        "All benches: DC gate $V_G$, $C_d=2$ fF on the drain node, grounded source. `None` defaults are resolved from the device.\n\n- **load line**: triangle $v_{\\min}\\to v_{\\max}\\to v_{\\min}$ → $R_s=1$ kΩ → STL, 1 cycle by default. $v_{\\max}$ and ramp rate follow the preset (paper 4 V, 0.4 V/s; photo 5 V, 1200 V/s; event-level stochastic runs fall back to 1200 V/s when the preset rate is too slow). $V_{LU}/V_{LD}$ are recorded at the drain node ($V_{DS}$) and at the supply. $Q_B$ is continuous across cycles, so residual body memory is included automatically.\n- **pulse**: pulse train (default amplitude = fold $V_{LU}$ + 0.10 V, 200 µs flat top, 1 ms period, 1 µs rise/fall, 10 pulses) → $R_s=1$ kΩ. Switching probability at the end of the flat top, retention at the end of the period, switching delay; an amplitude list gives a $P_{\\mathrm{sw}}$ curve.\n- **p-bit**: clock (0 / fold $V_{LU}-0.02$ V, 1 ms period, 200 µs high, 50 clocks) → $R_L=100$ kΩ → STL, comparator on $v_D$. $P(1)$ and bit lag-1; a V_G or light list gives a $P(1)$ curve.\n- **coupled**: common ramp or pulse source through $R_{s1}=R_{s2}=100$ kΩ each, $R_c=1$ MΩ between the drains; the second cell may override V_G and light.",
       ),
+      equations: [
+        {
+          id: "eq-ckt-psw",
+          label: L("펄스 전환 확률", "pulse switching probability"),
+          tex: r`P_{\mathrm{sw}} = \frac{1}{N}\sum_{n=1}^{N}\mathbf 1\big[I_D(t^{\mathrm{top}}_n) \ge I_{th}\big]`,
+          note: L("$t^{\\mathrm{top}}_n$: $n$번째 펄스 평탄부의 끝(latch된 펄스의 비율).", "$t^{\\mathrm{top}}_n$: end of the flat top of pulse $n$ (fraction of pulses latched)."),
+          code: "circuit/benches.py · build_pulse()",
+        },
+        {
+          id: "eq-ckt-pbit",
+          label: L("p-bit 비교기", "p-bit comparator"),
+          tex: r`b_n = \mathbf 1\big[v_D(t^{\mathrm{top}}_n) < v_{th}\big],\qquad v_{th} = v_{\mathrm{high}} - R_L\cdot 100\,\mathrm{nA},\qquad P(1) = \frac{1}{N}\sum_n b_n`,
+          note: L("$b_n=1$은 셀이 latch되어 $v_D$가 부하선을 따라 내려간 상태.", "$b_n=1$ means the cell latched and $v_D$ dropped along the load line."),
+          code: "circuit/benches.py · build_pbit()",
+        },
+      ],
       notes: [
-        L("구현 세부: docs/CIRCUIT_SIMULATOR.md 참조 (벤치 기본값).", "Implementation detail: see docs/CIRCUIT_SIMULATOR.md (bench defaults)."),
+        L("구현 세부: docs/CIRCUIT_SIMULATOR.md 참조 (분석 출력, 요약 항목).", "Implementation detail: see docs/CIRCUIT_SIMULATOR.md (analysis outputs, summary items)."),
       ],
     },
   ],
   related: ["charge-balance", "stochastic-events", "first-passage", "local-states", "open-problems", "numerics"],
-  codeRefs: [CODE.circuit + "element.py", CODE.circuit + "mna.py", "engine/docs/CIRCUIT_ELEMENT_DESIGN.md", "docs/CIRCUIT_SIMULATOR.md"],
+  codeRefs: [CODE.circuit + "element.py", CODE.circuit + "mna.py", CODE.circuit + "benches.py", CODE.circuit + "stochastic.py", CODE.circuit + "sim.py", "engine/docs/CIRCUIT_ELEMENT_DESIGN.md", "docs/CIRCUIT_SIMULATOR.md"],
 };
 
 export default topic;
