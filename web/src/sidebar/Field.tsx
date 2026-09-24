@@ -211,9 +211,10 @@ function SelectField({ f, ctx, value, def, onChange }: FieldProps) {
           }}
         >
           {opts.map((o) => (
-            <option key={String(o.value)} value={String(o.value)}>
+            <option key={String(o.value)} value={String(o.value)} disabled={o.disabled} title={o.note ? t.l(o.note) : undefined}>
               {optLabel(t, o)}
               {o.experimental ? ` — ${t("experimental")}` : ""}
+              {o.disabled && o.note ? ` (${t.l(o.note)})` : ""}
             </option>
           ))}
         </select>

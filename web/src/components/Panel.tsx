@@ -39,6 +39,25 @@ export function Progress({ value, indeterminate }: { value: number; indeterminat
   );
 }
 
+/** Informational server warnings: a small collapsible notice (most runs carry a few). */
+export function Notices({ items }: { items: string[] }) {
+  const t = useT();
+  return (
+    <div className="panel-foot">
+      <details className="notices" data-testid="notices">
+        <summary>
+          {t("warnings")} · {items.length}
+        </summary>
+        <ul>
+          {items.map((w, i) => (
+            <li key={i}>{w}</li>
+          ))}
+        </ul>
+      </details>
+    </div>
+  );
+}
+
 export function Panel(p: PanelProps) {
   const t = useT();
   const theme = useStore((s) => s.theme);
@@ -127,15 +146,7 @@ export function Panel(p: PanelProps) {
         )}
       </div>
       {p.children}
-      {p.warnings && p.warnings.length > 0 && (
-        <div className="panel-foot">
-          <ul className="warn-list" aria-label={t("warnings")}>
-            {p.warnings.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {p.warnings && p.warnings.length > 0 && <Notices items={p.warnings} />}
     </section>
   );
 }

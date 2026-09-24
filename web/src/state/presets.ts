@@ -43,7 +43,7 @@ const DEVICE_BASE: DeviceBlock = {
 };
 
 const STOCH_PAPER: StochasticBlock = {
-  n_cycles: 100, seed: 2026092920, carrier_noise: true, ld_carrier_noise: false,
+  n_cycles: 100, seed: 2026092920, carrier_noise: true, ld_carrier_noise: true,
   local_state: { mode: "evolving", action: "gidl", sigma: SIGMA_PHI_G_V, tau_s: TAU_G_UP_S, sigma_E_V: SIGMA_PHI_E_V, tau_E_s: TAU_E_S, acquisition_trend: true },
   engine: "auto", n_traces: 12, fold_nodes: 25, hazard_nodes: 5,
 };
@@ -67,7 +67,7 @@ const photo: PresetDef = {
   } as DeviceBlock),
   sweep: { vd_max_V: 5.0, rate_V_per_s: 1200.0, dv_V: 0.002 },
   stochastic: {
-    n_cycles: 400, seed: 20260922, carrier_noise: true, ld_carrier_noise: false,
+    n_cycles: 400, seed: 20260922, carrier_noise: true, ld_carrier_noise: true,
     local_state: { mode: "frozen", action: "gidl", sigma: PHOTO_SIGMA_PHI_V, tau_s: TAU_G_UP_S, sigma_E_V: 0, tau_E_s: TAU_E_S, acquisition_trend: false },
     engine: "auto", n_traces: 12, fold_nodes: 25, hazard_nodes: 5,
   },

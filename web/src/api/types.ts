@@ -125,6 +125,7 @@ export interface VgCurveResult extends Common {
 export interface HazardResult extends Common {
   fold_V: number | null; VLD_fold_V: number | null; voltage: Arr; hazard: Arr; survival: Arr;
   quantiles: { prob: Arr; v: Arr }; stats: Stats; rate_V_per_s: number;
+  window_V?: number; fold_atom?: number; I_at_fold_A?: number | null;
 }
 export interface Hist { edges: number[]; counts: number[] }
 export interface Cdf { v: number[]; p: number[] }
@@ -140,11 +141,28 @@ export interface SweepMCResult extends Common {
   fold_table: { delta: Arr; V_LU: Arr; V_LD: Arr } | null;
   centre: { V_LU: number | null; V_LD: number | null; HRS: XY; LRS: XY };
   measured: { label: string; V_LU: Arr; V_LD: Arr | null; stats: { LU: Stats; LD: Stats | null } } | null;
+  // optional extras from server/compute/stochastic.py
+  V_LU_continuous?: Arr;
+  V_LD_continuous?: Arr;
+  quantisation_V?: number | null;
+  cycle_state_emitter?: Arr | null;
+  /** cycle_state / fold_table.delta are deviations from `centre` in `unit` ("V" or "ln"). */
+  state_axis?: { action: string; unit: string; label: string; centre: number; sigma: number; mode: string };
+  sensitivity?: { dVLU_dX: number | null; dVLD_dX: number | null; dVLU_dE?: number | null; dVLD_dE?: number | null };
+  no_latch_weight?: number;
+  fold_atom_fraction?: number | null;
+  n_cycles?: number;
+  seed?: number;
+  rate_V_per_s?: number;
+  vd_max_V?: number;
 }
 export interface VgCurveStochasticResult extends Common {
   vg: Arr; mean_VLU: Arr; sd_VLU_mV: Arr; state_sd_mV: Arr; noise_sd_mV: Arr;
   fold_centre_V: Arr; VLD_fold_V: Arr; no_latch_weight: Arr;
   measured: { vg: number; power_mW: number; mean_V: number; sd_mV: number }[];
+  latch?: boolean[];
+  window?: { vg_low: number | null; vg_high: number | null };
+  rate_V_per_s?: number;
 }
 export interface ValidationCheck {
   id: string; label: L10n; expected: string; computed: string; pass: boolean | null;

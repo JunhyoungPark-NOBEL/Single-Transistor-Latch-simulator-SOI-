@@ -31,6 +31,9 @@ export interface Option {
   value: string | number | boolean;
   label: L10n | StrKey;
   experimental?: boolean;
+  /** Shown but not selectable; `note` explains why (tooltip). */
+  disabled?: boolean;
+  note?: L10n;
 }
 export interface FieldDef {
   key: string;
@@ -161,11 +164,14 @@ export const GROUPS: GroupDef[] = [
       { key: "isat", path: ["device", "ext", "isat_pA"], sym: "I_{\\mathrm{sat}}", label: L("국소 경로 포화", "Local path saturation"), help: L("국소 경로 포화 전류", "Local path saturation current"), code: "p[22]", unit: "pA", min: 0, max: 1e6, step: 0.1, experimental: true },
       { key: "dloc", path: ["device", "ext", "dloc"], sym: "\\delta_{\\mathrm{loc}}", label: L("국소 경로 로그 요동", "Local path log fluctuation"), help: L("국소 경로의 로그 요동 (local state 작용점)", "Log fluctuation of the local path (local-state action point)"), code: "p[23]", unit: "ln", min: -10, max: 10, step: 0.01, experimental: true },
       {
-        key: "loc_carriers", path: ["device", "ext", "loc_carriers"], sym: "c_{\\mathrm{loc}}", label: L("국소 경로 carrier 정의", "Local path carriers"), help: L("0 가장자리(채널 포함), 1 벌크, 2 가장자리(채널 제외)", "0 edge incl. channel, 1 bulk, 2 edge excl. channel"), code: "p[24]", type: "select", experimental: true,
+        key: "loc_carriers", path: ["device", "ext", "loc_carriers"], sym: "c_{\\mathrm{loc}}", label: L("국소 경로 carrier 정의", "Local path carriers"), help: L("0 가장자리(채널 포함), 1 벌크. 2(채널 제외)는 현재 엔진에서 1과 동일 (photo_mean.py p[24] > 0.5)", "0 edge incl. channel, 1 bulk. 2 (edge excl. channel) is currently identical to 1 in the engine (photo_mean.py p[24] > 0.5)"), code: "p[24]", type: "select", experimental: true,
         options: [
           { value: 0, label: L("0 · 가장자리 (채널 포함)", "0 · edge incl. channel") },
           { value: 1, label: L("1 · 벌크", "1 · bulk") },
-          { value: 2, label: L("2 · 가장자리 (채널 제외)", "2 · edge excl. channel") },
+          {
+            value: 2, label: L("2 · 가장자리 (채널 제외)", "2 · edge excl. channel"), disabled: true,
+            note: L("현재 엔진에서는 1과 동일 (photo_mean.py의 p[24] > 0.5 검사)", "currently identical to 1 in the engine (photo_mean.py p[24] check)"),
+          },
         ],
       },
       { key: "kappaF", path: ["device", "ext", "kappaF"], sym: "\\kappa_F", label: L("κ_F", "κ_F"), help: L("국소 경로 전계 기울기", "Local path field slope"), code: "p[25]", unit: "1/V", min: -10, max: 10, step: 0.01, experimental: true },
