@@ -66,7 +66,7 @@ def parse_local_state(block: dict | None, warnings: list[str]) -> LocalStateConf
     if cfg.tau_s <= 0 or cfg.tau_E_s <= 0:
         raise ValueError("local-state correlation times must be > 0")
     if mode != "none" and b.get("acquisition_trend"):
-        warnings.append("local_state.acquisition_trend is specific to the calibrated paper-record lookup engine "
+        warnings.append("local_state.acquisition_trend is specific to the calibrated reference-record lookup engine "
                         "and is not applied in the circuit simulator")
     return cfg
 

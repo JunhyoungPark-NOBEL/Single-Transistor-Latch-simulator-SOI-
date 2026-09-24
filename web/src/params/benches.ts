@@ -40,7 +40,7 @@ const L = (ko: string, en: string): L10n => ({ ko, en });
 
 const f = {
   vMin: { key: "v_min_V", sym: "V_{\\min}", label: L("램프 시작/끝 전압", "Ramp start/end"), help: L("삼각파 최저 전압", "Triangle low level"), unit: "V", min: -8, max: 8, step: 0.05 },
-  vMax: { key: "v_max_V", sym: "V_{\\max}", label: L("램프 최대 전압", "Ramp peak"), help: L("자동: 프리셋 스윕 V_D,max (논문 4 V, 광조사 5 V)", "auto: preset sweep V_D,max (paper 4 V, photo 5 V)"), unit: "V", min: -8, max: 8, step: 0.05, auto: true },
+  vMax: { key: "v_max_V", sym: "V_{\\max}", label: L("램프 최대 전압", "Ramp peak"), help: L("자동: 프리셋의 스윕 V_D,max (기준 보정 4 V, 광조사 보정 5 V)", "Auto: the preset's sweep V_D,max (reference 4 V, illumination 5 V)"), unit: "V", min: -8, max: 8, step: 0.05, auto: true },
   rate: { key: "rate_V_per_s", sym: "\\dot V", label: L("램프 속도", "Ramp rate"), help: L("자동: 프리셋 스윕 속도 (확률 run은 너무 느리면 1200 V/s)", "auto: preset sweep rate (stochastic runs fall back to 1200 V/s when too slow)"), unit: "V/s", min: 1e-4, max: 1e8, slider: "log" as const, auto: true },
   nCycles: { key: "n_cycles", sym: "N_{\\mathrm{cyc}}", label: L("삼각파 사이클", "Triangle cycles"), help: L("≤ 50", "≤ 50"), unit: "", min: 1, max: 50, step: 1, int: true },
   Rs: { key: "R_s_ohm", sym: "R_s", label: L("직렬 저항", "Series resistor"), help: L("전원과 드레인 사이 저항", "Resistor between source and drain"), unit: "kΩ", scale: 1e-3, min: 1e-6, max: 1e9, slider: "log" as const },

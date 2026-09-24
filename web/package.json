@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "katex": "^0.18.9",
-    "plotly.js-dist-min": "^3.7.0",
+    "plotly.js-cartesian-dist-min": "^3.7.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-plotly.js": "^2.6.0",

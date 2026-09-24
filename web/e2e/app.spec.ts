@@ -130,7 +130,7 @@ test.describe("STL simulator (mock mode)", () => {
     const input = page.getByTestId("field-vg").locator("input.input");
     await input.fill("-1.8");
     await input.press("Enter");
-    await expect(page.getByTestId("preset-label")).toContainText("논문 소자에서 수정");
+    await expect(page.getByTestId("preset-label")).toContainText("기준 보정에서 수정");
     await expect(page.getByTestId("field-vg").locator(".field-changed")).toBeVisible();
     // out-of-range input shows a validation message and is not committed
     await input.fill("-9");
@@ -146,6 +146,7 @@ test.describe("STL simulator (mock mode)", () => {
 
   test("circuit tab: bench cards, generic result rendering", async ({ page }) => {
     await fresh(page, "#tab=circuit&mode=deterministic");
+    await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
     await expect(page.getByTestId("bench-picker")).toBeVisible();
     await expect(page.getByTestId("schematic")).toBeVisible();
     await expect(page.getByTestId("group-bench")).toBeVisible();
@@ -255,6 +256,7 @@ test.describe("UX regressions", () => {
 
   test("mode banner describes the circuit meaning of each mode on the Circuit tab", async ({ page }) => {
     await fresh(page, "#tab=circuit&mode=deterministic");
+    await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
     const hint = page.getByTestId("mode-hint");
     await expect(hint).toContainText("MNA");
     await expect(hint).toContainText("BE");
@@ -270,6 +272,7 @@ test.describe("UX regressions", () => {
 
   test("rise/fall edges default to auto (server default) on the pulse bench", async ({ page }) => {
     await fresh(page, "#tab=circuit&mode=deterministic");
+    await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
     await page.getByTestId("bench-pulse").click();
     await expect(page.getByTestId("auto-bench_rise_s")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("auto-bench_fall_s")).toHaveAttribute("aria-pressed", "true");
@@ -303,6 +306,33 @@ test.describe("UX regressions", () => {
     await expect(page.getByTestId("panel-components").locator(".badge.stale")).toBeVisible();
   });
 
+  test("credits corner opens the About card (lab, advisor, developer, version) and never says “paper”", async ({ page }) => {
+    await fresh(page);
+    await expect(page.getByTestId("tech-chip")).toHaveText("FDSOI");
+    const chip = page.getByTestId("credits-chip");
+    await expect(chip).toBeVisible();
+    await chip.click();
+    const about = page.getByTestId("about");
+    await expect(about).toBeVisible();
+    await expect(about).toContainText("NOBEL");
+    await expect(about).toContainText("최양규");
+    await expect(about).toContainText("박준형");
+    await expect(about).toContainText("KAIST");
+    await expect(about).toContainText("500 nm");
+    await page.keyboard.press("Escape");
+    await expect(about).toHaveCount(0);
+    await expect(chip).toBeFocused();
+    await page.getByTestId("lang-toggle").click();
+    await chip.click();
+    await expect(about).toContainText("Prof. Yang-Kyu Choi");
+    await expect(about).toContainText("Junhyoung Park");
+    // the credits must not cover the Run bar or the panels: they live in the sticky mode strip
+    const box = await chip.boundingBox();
+    const strip = await page.getByTestId("modebar").boundingBox();
+    expect(box && strip && box.y >= strip.y && box.y + box.height <= strip.y + strip.height).toBe(true);
+    await expect(page.locator("body")).not.toContainText(/\bpaper\b|논문/i);
+  });
+
   for (const [name, raw] of [
     ["null", "null"],
     ["not JSON", "{oops"],
@@ -327,6 +357,7 @@ test.describe("UX regressions", () => {
       await expect(page.getByTestId("tab-device")).toHaveAttribute("aria-selected", "true");
       await expect(page.getByTestId("group-bias")).toBeVisible();
       await page.getByTestId("tab-circuit").click();
+      await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
       await expect(page.getByTestId("bench-load_line")).toHaveAttribute("aria-checked", "true");
     });
   }

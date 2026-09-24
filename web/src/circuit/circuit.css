@@ -1,0 +1,14 @@
+/* Circuit tab sub-view switch (schematic editor | quick benches). */
+.view-switch { display: inline-flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--surface-3); border: 1px solid var(--border); align-self: flex-start; max-width: 100%; }
+.view-tab { display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text-2); text-align: left; transition: background .15s, color .15s, box-shadow .15s; min-width: 0; }
+.view-tab svg { flex: none; color: var(--muted); }
+.view-tab-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.view-tab-text strong { font-size: 13.5px; font-weight: 700; white-space: nowrap; }
+.view-tab-text span { font-size: 11px; color: var(--faint); white-space: nowrap; }
+.view-tab:hover { color: var(--text); background: color-mix(in srgb, var(--surface) 60%, transparent); }
+.view-tab[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); }
+.view-tab[aria-selected="true"] svg { color: var(--accent-strong); }
+.view-tab[aria-selected="true"] .view-tab-text span { color: var(--muted); }
+@media (max-width: 560px) {
+  .view-tab-text span { display: none; }
+}

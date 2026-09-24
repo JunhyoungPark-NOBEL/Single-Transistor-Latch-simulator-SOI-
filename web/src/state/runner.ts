@@ -272,10 +272,16 @@ export async function runValidationVg() {
   await runKey("val_vgs", "vg_curve_stochastic", { device: pr.device, sweep: pr.sweep, stochastic: pr.stochastic, vg_min: -3.6, vg_max: -0.9, n: 10 });
 }
 
+/** Circuit-tab Run override: the schematic editor registers one while its sub-view is active (circuit/view.ts). */
+let circuitRunOverride: (() => Promise<unknown>) | null = null;
+export function setCircuitRunOverride(fn: (() => Promise<unknown>) | null) {
+  circuitRunOverride = fn;
+}
+
 /** Run button dispatch for the current tab and mode. */
 export function runCurrent() {
   const s = useStore.getState();
-  if (s.tab === "circuit") return runCircuit();
+  if (s.tab === "circuit") return circuitRunOverride ? circuitRunOverride() : runCircuit();
   if (s.tab === "validation") return runValidation("fast");
   return s.mode === "stochastic" ? runStochastic() : runDeterministic();
 }

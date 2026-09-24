@@ -400,7 +400,7 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
             device = dict(device, ext=dict(device["ext"], aloc=1.0))
     if stochastic and ls_cfg.mode != "none" and ls_cfg.action != "gidl":
         warnings.append(f"action point '{ls_cfg.action}' is an experimental hypothesis lever (hypotheses.py), "
-                        "not the paper's calibrated GIDL action point")
+                        "not the reference calibration's GIDL action point")
     progress(0.01, "device branches / folds")
 
     vg1 = float(bp["vg_V"]) if bp.get("vg_V") is not None else float(device["vg"])

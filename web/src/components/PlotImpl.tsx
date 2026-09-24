@@ -1,5 +1,6 @@
-// Plotly component (react-plotly.js factory + plotly.js-dist-min). Loaded lazily by ./Plot.tsx.
-import Plotly from "plotly.js-dist-min";
+// Plotly component (react-plotly.js factory + the cartesian Plotly bundle: scatter, bar, histogram, heatmap,
+// contour … — every trace type the app uses; 1.4 MB instead of 4.7 MB). Loaded lazily by ./Plot.tsx.
+import Plotly from "plotly.js-cartesian-dist-min";
 import createPlotlyComponent from "react-plotly.js/factory";
 import type { PlotImplProps } from "./Plot";
 

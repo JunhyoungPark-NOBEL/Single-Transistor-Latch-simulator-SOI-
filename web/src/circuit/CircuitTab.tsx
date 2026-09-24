@@ -2,7 +2,7 @@
 // grouped by axis on shared-x stacked subplots, I–V trajectory over the steady-state branches, summary
 // cards, distributions, sweeps, events, solver stats and warnings.
 import type { Data, Layout, Shape } from "plotly.js";
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import type { BenchId, BranchesResult, CircuitResult, Signal } from "../api/types";
 import { finite } from "../api/guards";
 import { Notices, Panel } from "../components/Panel";
@@ -12,12 +12,17 @@ import { BENCH_ORDER, BENCHES } from "../params/benches";
 import { currentAxis, HOVER_IV } from "../plots/theme";
 import { useStore } from "../state/store";
 import { fmtDuration, fmtInt, fmtSig, isNum, siPrefix } from "../utils/format";
+import { splitUnit } from "./summary";
+
+export { splitUnit };
 import { circuitPayload } from "../utils/payload";
 import { Kpi } from "../device/KpiStrip";
 import { isStale, logRange, nums, pos, useCurrentKey, useEntry, usePalette } from "../device/common";
 import { Check, Seg } from "../device/DetPanels";
 import { BenchIcon } from "./BenchIcons";
 import { Schematic } from "./Schematic";
+import { useCircuitView, type CircuitView } from "./view";
+import "./circuit.css";
 
 const AXES = ["voltage", "current", "charge", "state", "logic"] as const;
 type AxisKind = (typeof AXES)[number];
@@ -64,20 +69,6 @@ function defaultSchematic(bench: BenchId, vg: number): CircuitResult["schematic"
       ...cell(1, "d", "g"),
     ],
   };
-}
-
-/** Summary value → display value + unit (V with 3 decimals, A/C/s with SI prefixes, dimensionless plain). */
-export function splitUnit(v: number | string | null | undefined, unit?: string, force?: "mV"): { value: string; unit: string } {
-  if (typeof v === "string") return { value: v, unit: unit && unit !== "1" ? unit : "" };
-  if (!isNum(v)) return { value: "—", unit: "" };
-  if (force === "mV") return { value: (v * 1e3).toFixed(1), unit: "mV" };
-  if (unit === "V") return Math.abs(v) < 0.1 && v !== 0 ? { value: fmtSig(v * 1e3, 3), unit: "mV" } : { value: v.toFixed(3), unit: "V" };
-  if (unit === "A" || unit === "C" || unit === "s" || unit === "F" || unit === "Ω") {
-    const [f, p] = siPrefix(v);
-    return { value: (v / f).toPrecision(3), unit: `${p}${unit}` };
-  }
-  if (Number.isInteger(v)) return { value: v.toLocaleString("en-US"), unit: unit && unit !== "1" ? unit : "" };
-  return { value: fmtSig(v, 3), unit: unit && unit !== "1" ? unit : "" };
 }
 
 function BenchPicker() {
@@ -315,7 +306,55 @@ function EventsPanel({ res, stale }: { res: CircuitResult; stale: boolean }) {
   );
 }
 
+const SchematicView = lazy(() => import("../schematic/SchematicView"));
+
+function ViewSwitch() {
+  const t = useT();
+  const view = useCircuitView((s) => s.view);
+  const setView = useCircuitView((s) => s.setView);
+  const opts: { v: CircuitView; title: StrKey; sub: StrKey; icon: ReactNode }[] = [
+    {
+      v: "schematic", title: "schematic.view.editor", sub: "schematic.view.editorSub",
+      icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 6h5l2-3 3 6 2-3h6" /><path d="M6 6v6m0 4v5M3 12h6M3 16h6M18 6v15" /><path d="M14 21h8" /></svg>,
+    },
+    {
+      v: "benches", title: "schematic.view.benches", sub: "schematic.view.benchesSub",
+      icon: <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>,
+    },
+  ];
+  return (
+    <div className="view-switch" role="tablist" aria-label={t("schematic.view.aria")} data-testid="circuit-view-switch">
+      {opts.map((o) => (
+        <button key={o.v} type="button" role="tab" aria-selected={view === o.v} className="view-tab" onClick={() => setView(o.v)} data-testid={`circuit-view-${o.v}`}>
+          {o.icon}
+          <span className="view-tab-text">
+            <strong>{t(o.title)}</strong>
+            <span>{t(o.sub)}</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function CircuitTab() {
+  const view = useCircuitView((s) => s.view);
+  const t = useT();
+  return (
+    <>
+      <ViewSwitch />
+      {view === "schematic" ? (
+        <Suspense fallback={<div className="skeleton-plot" aria-label={t("schematic.loading")} style={{ height: 540 }} />}>
+          <SchematicView />
+        </Suspense>
+      ) : (
+        <BenchesView />
+      )}
+    </>
+  );
+}
+
+function BenchesView() {
   const t = useT();
   const params = useStore((s) => s.params);
   const mode = useStore((s) => s.mode);

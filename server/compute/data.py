@@ -120,7 +120,7 @@ def _measured_cached() -> dict:
     vlu = (z["VLU_low"] + z["VLU_high"]) / 2
     vld = (z["VLD_low"] + z["VLD_high"]) / 2
     paper = dict(
-        description="Paper device, V_G = -2 V, dark, 0->4 V (up) and 4->0 V (down), 10 mV steps, ~0.4 V/s, "
+        description="Reference record (FDSOI, reference calibration), V_G = -2 V, dark, 0->4 V (up) and 4->0 V (down), 10 mV steps, ~0.4 V/s, "
                     "100 separate up and 100 separate down sweeps (not paired cycles). "
                     "Currents summarised as median and 10/90 % quantile bands plus 10 chronological samples.",
         vg=-2.0, rate_V_per_s=0.4, n_sweeps=int(z["Iup"].shape[1]),
@@ -159,7 +159,7 @@ DESIGN_MAP_DOC: dict[str, dict[str, str]] = {
     "sigma_VLU_sweep5p2V_mV": dict(unit="mV", meaning="SD of V_LU for a 0-5.2 V sweep (depth x length)"),
     "expected_trap_count": dict(unit="1", meaning="expected number of traps N_t L^2 in the local region (depth x length)"),
     "Nt_cm2": dict(unit="cm^-2", meaning="trap areal density used for the map"),
-    "device_sigma_phi_mV": dict(unit="mV", meaning="calibrated sigma_phi of the paper device (153.4 mV) - reference contour"),
+    "device_sigma_phi_mV": dict(unit="mV", meaning="calibrated sigma_phi of the reference calibration (153.4 mV) - reference contour"),
     "phi_50mV": dict(unit="mV", meaning="reference contour value stored with the map (as provided)"),
     "line_Nt": dict(unit="cm^-2", meaning="trap densities of the reference lines"),
     "line_L0_device": dict(unit="nm", meaning="length L at which sigma_phi reaches the device value for each line_Nt"),

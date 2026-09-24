@@ -78,6 +78,7 @@ test("live: circuit load-line bench reproduces the folds", async ({ page, reques
   });
   await page.goto("/#tab=circuit&mode=deterministic");
   await expect(page.getByTestId("backend-status")).toContainText("API", { timeout: 15_000 });
+  await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
   await page.getByTestId("bench-load_line").click();
   await page.getByTestId("run-button").click();
   const summary = page.getByTestId("circuit-summary");
@@ -108,6 +109,7 @@ test("live: pulse bench uses the server's rise/fall default (auto → 10 µs)", 
   });
   await page.goto("/#tab=circuit&mode=deterministic");
   await expect(page.getByTestId("backend-status")).toContainText("API", { timeout: 15_000 });
+  await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
   await page.getByTestId("bench-pulse").click();
   await page.getByTestId("run-button").click();
   const chips = page.getByTestId("resolved-params");

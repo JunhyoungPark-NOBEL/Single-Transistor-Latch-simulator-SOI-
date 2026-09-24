@@ -1446,7 +1446,8 @@ def _fin(x):
 
 def _stl_label(e: El) -> str:
     dev = e.device or {}
-    pre = dev.get("preset", "paper")
+    pre = {"paper": "FDSOI reference calibration", "photo": "FDSOI illumination calibration"}.get(
+        dev.get("preset", "paper"), "FDSOI custom")
     iph = float(e.p[13]) * 1e12 if e.p is not None else 0.0
     lt = "light wave" if e.light is not None else (f"I_PH {iph:.3g} pA" if iph else "dark")
     return f"STL ({pre}, {lt})"

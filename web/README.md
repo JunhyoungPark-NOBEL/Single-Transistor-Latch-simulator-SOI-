@@ -39,7 +39,15 @@ e2e 스크린샷은 `e2e/screenshots/`에 저장된다. `playwright install`은 
 - 왼쪽 사이드바: 프리셋(기준 보정/광조사 보정/사용자 정의 — 값을 바꾸면 “사용자 정의 (…에서 수정)”), 그룹별 파라미터
   카드(각 카드에 **상세** 버튼, 초기화 링크, 기본값 대비 변경 점, ⓘ 툴팁), 하단 고정 실행 바(진행률, 메시지,
   경과 시간, 취소, 결정론 자동 실행, Ctrl/⌘+Enter).
-- 본문: KPI 줄 + 패널 격자. 모든 패널에 **상세**, CSV/PNG 내보내기.
+- 본문: KPI 줄 + 패널 격자. 모든 패널에 **상세**, CSV/PNG 내보내기. Stochastic 모드에서는 KPI 아래에 **통계 요약**
+  (평균·95 % 신뢰구간·SD·IQR·분위수·왜도·첨도·lag-1·중도절단, 측정값 대비 Δ평균·SD 비·KS 검정)이 붙습니다.
+- **소자 라이브러리**(`devices/`): 사이드바 소자 카드(기술 FDSOI / PDSOI·Bulk 준비 중, 형상, 보정 프리셋,
+  “소자로 저장”), 관리 창(불러오기·회로에 배치·이름 바꾸기·복제·삭제·JSON 내보내기/가져오기).
+- **회로 탭**: **회로도 편집기**(기본, `schematic/`)와 **빠른 벤치**. 편집기는 LTspice처럼 R·C·V·I 전원(DC/PULSE/
+  PWL/SINE)·접지·STL(라이브러리 소자)을 배치·배선하고(단축키 R C V I G X W N P, Ctrl+R/Z/Y/D), `.tran` 설정(정지
+  시간, 저장 시작, 최대/최소 time step, BE/TRAP, reltol)으로 `bench: "custom"`을 실행합니다. 노드/소자를 클릭하면
+  V(노드)·I(소자) 파형이 추가되고, 시간 커서 위치의 노드 전압과 단자 전류(방향 화살표)가 회로도 위에 표시됩니다.
+  Stochastic 모드는 run별 파형 + 평균 ± SD 대역, STL별 사건 통계, 분포 통계 표를 보여 줍니다.
 - **상세 창**(`PhysicsWindow`): 화면 전환 없이 버튼 옆에 뜨는 작은 창. 헤더로 끌어 이동, 오른쪽 아래 모서리로
   크기 조절, Esc/×로 닫기(포커스는 버튼으로 복귀). 섹션 알약, 번호 붙은 KaTeX 수식(LaTeX 복사), 변수 표,
   가정/주의, 관련 주제(뒤로 가기), “물리 모델 탭에서 열기”.
@@ -54,7 +62,10 @@ src/
   components/ Header, Logo, Credits(크레딧 + 소개 창), Panel, Plot(지연 로딩 Plotly), Tex, RichText, Tooltip, …
   sidebar/    Sidebar(프리셋·실행 바) ParamGroup Field
   device/     DeviceTab KpiStrip DetPanels(결정론 4개) StoPanels(확률 6개) common
-  circuit/    CircuitTab Schematic(넷리스트 → SVG) BenchIcons
+  circuit/    CircuitTab(편집기/빠른 벤치 전환) Schematic(벤치 넷리스트 → SVG) BenchIcons
+  schematic/  회로도 편집기(모델·넷·ERC·netlist·편집·결과 뷰어)
+  devices/    소자 라이브러리(저장소·소자 카드·관리 창)
+  stats/      통계 모듈(describe, ks2, histogram, ecdf, StatsTable)
   validation/ ValidationTab
   physics/    PhysicsWindow TopicBody(공용 렌더러) PhysicsTab
   plots/      theme.ts(Plotly 테마·의미 색)
@@ -127,6 +138,19 @@ Screenshots are written to `e2e/screenshots/`. Never run `playwright install` (b
   draggable by its header, resizable (bottom-right corner), Esc/× closes and returns focus. Section pills,
   numbered KaTeX equations (copy LaTeX), variable tables, notes, related topics with back navigation,
   “Open in Physics tab”.
+
+### Circuit editor and device library
+- **Device library** (`devices/`): the sidebar Device card (technology FDSOI; PDSOI/Bulk coming later; geometry;
+  calibration presets; “Save as device”) and a manager (load, place in schematic, rename, duplicate, delete,
+  JSON export/import).
+- **Circuit tab**: the **Schematic editor** (default, `schematic/`) and **Quick benches**. Place and wire R, C,
+  V/I sources (DC/PULSE/PWL/SINE), ground and STL cells from the library (shortcuts R C V I G X W N P,
+  Ctrl+R/Z/Y/D), set the `.tran` options (stop time, start saving, max/min time step, BE/TRAP, reltol) and run
+  `bench: "custom"`. Clicking a node or part adds V(node)/I(part) traces; the time cursor writes node voltages and
+  terminal currents (with direction arrows) onto the schematic. Stochastic runs add a mean ± SD band, per-STL
+  event statistics and a statistics table.
+- **Statistics** (`stats/`): `describe`, `ks2`, `histogram`, `ecdf` and `StatsTable`, shared by the Device tab
+  (stochastic) and the circuit editor.
 
 ### Structure
 See the Korean section above (same tree). Units: the store keeps values exactly as the payload schema

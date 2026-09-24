@@ -1,5 +1,5 @@
 // Offline demo backend. Deterministic, plausible-looking fixtures that follow the result shapes of
-// docs/WEB_CONTRACT.md §2/§4 (folds at 3.70 / 2.60 V for the paper device at V_G = −2 V). These are
+// docs/WEB_CONTRACT.md §2/§4 (folds at 3.70 / 2.60 V for the reference calibration at V_G = −2 V). These are
 // NOT model results — the UI shows a "demo data" banner whenever this backend is active.
 import type { Backend } from "./client";
 import type {
@@ -282,7 +282,7 @@ export function mockSweepMC(payload: { device?: DeviceBlock; sweep?: SweepBlock;
     const mLU = Array.from({ length: isPaper ? 100 : 400 }, () => (isPaper ? 3.63 : VLU - 0.05) + (isPaper ? 0.123 : 0.173) * gauss(r2));
     const mLD = isPaper ? Array.from({ length: 100 }, () => 2.7 + 0.0195 * gauss(r2)) : null;
     measured = {
-      label: isPaper ? "Paper device (demo)" : "Photo device (demo)",
+      label: isPaper ? "Reference record (demo)" : "Illumination record (demo)",
       V_LU: mLU,
       V_LD: mLD,
       stats: { LU: statsOf(mLU), LD: mLD ? statsOf(mLD) : null },
@@ -344,13 +344,13 @@ export function mockValidation(payload: { level?: string }): ValidationResult {
     id, label: { ko, en }, expected, computed, tolerance, pass, seconds, note,
   });
   const checks = [
-    c("folds_paper_m2", "논문 모델 V_G = −2 V 암조건 fold", "Paper model folds, V_G = −2 V dark", "3.7037 / 2.5979 V", "3.7037 / 2.5979 V", "±1 mV", true, 0.4),
-    c("folds_paper_m18", "논문 모델 V_G = −1.8 V fold", "Paper model folds, V_G = −1.8 V", "3.8644 / 2.5979 V", "3.8644 / 2.5979 V", "±1 mV", true, 0.4),
-    c("folds_photo", "광조사 모델 I_PH = 2.63 pA fold", "Photo model folds, I_PH = 2.63 pA", "3.2913 / 2.596 V", "3.2913 / 2.5959 V", "±2 mV", true, 0.5),
-    c("ext_zero", "확장 항 = 0 → 논문 모델과 동일", "Extensions = 0 → identical to paper model", "Δ < 1e-12 V", "0", "1e-12 V", true, 0.3),
-    c("fpt_node", "FPT 노드 (중심 상태, 0.4 V/s)", "FPT node (centre states, 0.4 V/s)", "3.644 V, SD ≈ 8 mV", full ? "3.6442 V, 6.8 mV" : "—", "±5 mV / ±3 mV", full ? true : null, full ? 4.2 : 0, full ? undefined : "full only"),
-    c("mc_100", "동적 MC 100 스윕", "Dynamic MC, 100 sweeps", "3.63 V / 120 mV; 2.70 V / 20 mV", "3.629 V / 121 mV; 2.702 V / 19.6 mV", "±20 mV / ±25 %", true, 1.1),
-    c("light_conv", "광 변환 I_PH = R·P", "Light conversion I_PH = R·P", "0.86 / 1.91 / 2.63 pA", "0.8625 / 1.9125 / 2.6325 pA", "±0.01 pA", true, 0.0),
+    c("folds_paper_m2", "기준 보정: 암조건 V_G = −2 V의 fold", "Reference calibration: folds at V_G = −2 V, dark", "3.7037 / 2.5979 V", "3.7037 / 2.5979 V", "±1 mV", true, 0.4),
+    c("folds_paper_m18", "기준 보정: 암조건 V_G = −1.8 V의 fold", "Reference calibration: folds at V_G = −1.8 V, dark", "3.8644 / 2.5979 V", "3.8644 / 2.5979 V", "±1 mV", true, 0.4),
+    c("folds_photo", "기준 보정 + 광조사: I_PH = 2.63 pA의 fold", "Reference calibration under light: folds at I_PH = 2.63 pA", "3.2913 / 2.596 V", "3.2913 / 2.5959 V", "±2 mV", true, 0.5),
+    c("ext_zero", "확장 항이 모두 0이면 기본 모델과 동일", "All extension terms at zero reproduce the base model", "Δ < 1e-12 V", "0", "1e-12 V", true, 0.3),
+    c("fpt_node", "첫 통과(FPT) 노드 (중심 상태, 0.4 V/s)", "First-passage (FPT) node (center states, 0.4 V/s)", "3.644 V, SD ≈ 8 mV", full ? "3.6442 V, 6.8 mV" : "—", "±5 mV / ±3 mV", full ? true : null, full ? 4.2 : 0, full ? undefined : "full only"),
+    c("mc_100", "동적 MC 100회 스윕", "Dynamic MC, 100 sweeps", "3.63 V / 120 mV; 2.70 V / 20 mV", "3.629 V / 121 mV; 2.702 V / 19.6 mV", "±20 mV / ±25 %", true, 1.1),
+    c("light_conv", "광 변환 I_PH = R·P", "Light-to-current conversion I_PH = R·P", "0.86 / 1.91 / 2.63 pA", "0.8625 / 1.9125 / 2.6325 pA", "±0.01 pA", true, 0.0),
   ];
   return { checks, runtime_s: checks.reduce((a, b) => a + b.seconds, 0), warnings: ["demo data — backend offline"] };
 }
@@ -409,7 +409,7 @@ export function mockCircuit(payload: {
         sig("v_src", "전원 전압", "Source voltage", "V", "voltage", vsrc),
         sig("v_d", "드레인 전압", "Drain voltage", "V", "voltage", vd),
         sig("i_d", "드레인 전류", "Drain current", "A", "current", id),
-        sig("q_b", "Body 전하", "Body charge", "C", "charge", qb),
+        sig("q_b", "바디 전하", "Body charge", "C", "charge", qb),
       ];
       if (bench === "coupled") {
         signals.push(sig("v_d2", "드레인 전압 (소자 2)", "Drain voltage (device 2)", "V", "voltage", vd.map((v, i) => v * (0.98 + 0.01 * Math.sin(i / 40)))));
@@ -452,7 +452,7 @@ export function mockCircuit(payload: {
           sig("v_src", "펄스 전압", "Pulse voltage", "V", "voltage", vsrc),
           sig("v_d", "드레인 전압", "Drain voltage", "V", "voltage", vd),
           sig("i_d", "드레인 전류", "Drain current", "A", "current", id),
-          sig("q_b", "Body 전하", "Body charge", "C", "charge", qb),
+          sig("q_b", "바디 전하", "Body charge", "C", "charge", qb),
         ],
       });
       if (k === 0) traj = { vd, id };
@@ -482,7 +482,7 @@ export function mockCircuit(payload: {
         signals: [
           sig("v_d", "드레인 전압", "Drain voltage", "V", "voltage", vd),
           sig("i_d", "드레인 전류", "Drain current", "A", "current", id),
-          sig("q_b", "Body 전하", "Body charge", "C", "charge", qb),
+          sig("q_b", "바디 전하", "Body charge", "C", "charge", qb),
           sig("bit", "비교기 출력", "Comparator bit", "1", "logic", bits),
         ],
       });
@@ -490,7 +490,7 @@ export function mockCircuit(payload: {
     }
   }
   const cell = (k: number, d: string, g: string) => [
-    { kind: "STL", name: `X${k}`, nodes: [d, g, "0"], value: "paper model" },
+    { kind: "STL", name: `X${k}`, nodes: [d, g, "0"], value: "FDSOI reference calibration" },
     { kind: "V", name: `VG${k}`, nodes: [g, "0"], value: `${dev.vg} V (DC)` },
   ];
   const schematic: CircuitResult["schematic"] =
@@ -623,8 +623,17 @@ const MESSAGES: Partial<Record<Kind, string>> = {
   vg_curve_stochastic: "V_G nodes", circuit: "transient", validation: "checks", charge_balance: "lattice",
 };
 
+// bench "custom" (user-drawn circuits, §6): the mini MNA mock is loaded on demand (keeps the main chunk small)
+type CustomMod = typeof import("./mockCustom");
+let customMod: CustomMod | null = null;
+const isCustom = (kind: Kind, payload: unknown) => kind === "circuit" && (payload as { bench?: string } | null)?.bench === "custom";
+
 function compute(kind: Kind, payload: unknown): unknown {
   const p = payload as never;
+  if (isCustom(kind, payload)) {
+    if (!customMod) throw new Error("custom-circuit mock not loaded");
+    return customMod.mockCustomCircuit(p);
+  }
   switch (kind) {
     case "branches": return mockBranches(p);
     case "charge_balance": return mockChargeBalance(p);
@@ -638,7 +647,7 @@ function compute(kind: Kind, payload: unknown): unknown {
   throw new Error(`unknown kind ${kind as string}`);
 }
 
-interface MockJob { id: string; kind: Kind; start: number; dur: number; payload: unknown; cancelled: boolean }
+interface MockJob { id: string; kind: Kind; start: number; dur: number; payload: unknown; cancelled: boolean; result?: { ok: true; v: unknown } | { ok: false; e: string } }
 
 export function createMockBackend(speed = 1): Backend {
   const jobs = new Map<string, MockJob>();
@@ -648,11 +657,16 @@ export function createMockBackend(speed = 1): Backend {
     const frac = Math.min(1, (el * 1000) / j.dur);
     if (j.cancelled) return { job_id: j.id, kind: j.kind, status: "cancelled", progress: frac, message: "cancelled", cached: false, elapsed_s: el };
     if (frac >= 1) {
-      try {
-        return { job_id: j.id, kind: j.kind, status: "done", progress: 1, message: "done", result: compute(j.kind, j.payload), cached: false, elapsed_s: el };
-      } catch (e) {
-        return { job_id: j.id, kind: j.kind, status: "error", progress: frac, message: "error", error: String((e as Error).message), cached: false, elapsed_s: el };
+      if (!j.result) {
+        try {
+          j.result = { ok: true, v: compute(j.kind, j.payload) };
+        } catch (e) {
+          j.result = { ok: false, e: String((e as Error).message) };
+        }
       }
+      return j.result.ok
+        ? { job_id: j.id, kind: j.kind, status: "done", progress: 1, message: "done", result: j.result.v, cached: false, elapsed_s: el }
+        : { job_id: j.id, kind: j.kind, status: "error", progress: frac, message: "error", error: j.result.e, cached: false, elapsed_s: el };
     }
     return { job_id: j.id, kind: j.kind, status: "running", progress: frac, message: `${MESSAGES[j.kind] ?? "running"} (demo)`, cached: false, elapsed_s: el };
   };
@@ -661,6 +675,7 @@ export function createMockBackend(speed = 1): Backend {
     health: async () => ({ ok: true, version: "mock", workers: 0 }),
     meta: async () => BUILTIN_META,
     submit: async (kind, payload) => {
+      if (isCustom(kind, payload)) customMod ??= await import("./mockCustom");
       const j: MockJob = { id: `mock-${++seq}`, kind, start: performance.now(), dur: (RUNTIME_MS[kind] ?? 600) * speed, payload, cancelled: false };
       jobs.set(j.id, j);
       return status(j);

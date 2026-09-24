@@ -118,8 +118,8 @@ export const STRINGS = {
   "run.jobs": { ko: "작업 {n}개", en: "{n} jobs" },
 
   // ---------------------------------------------------------------- KPI
-  "kpi.vlu": { ko: "latch-up 전압", en: "Latch-up" },
-  "kpi.vld": { ko: "latch-down 전압", en: "Latch-down" },
+  "kpi.vlu": { ko: "래치업 전압", en: "Latch-up" },
+  "kpi.vld": { ko: "래치다운 전압", en: "Latch-down" },
   "kpi.window": { ko: "히스테리시스 창", en: "Hysteresis window" },
   "kpi.ifold": { ko: "fold 전류", en: "Fold current" },
   "kpi.cycles": { ko: "사이클", en: "Cycles" },

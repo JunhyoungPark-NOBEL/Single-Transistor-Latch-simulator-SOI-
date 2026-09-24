@@ -1,53 +1,19 @@
-// Left sidebar: preset selector, grouped parameter cards, sticky Run bar. Collapses to a drawer < 1100 px.
-import { useEffect, useMemo, useState } from "react";
-import type { PresetId } from "../api/types";
+// Left sidebar: Device card (technology, geometry, calibration preset, saved devices), grouped parameter
+// cards, sticky Run bar. On the Circuit tab's schematic editor it shows the device library and the
+// simulation settings instead (lazy chunk). Collapses to a drawer < 1100 px.
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { useCircuitView } from "../circuit/view";
+import { DeviceCard } from "../devices/DeviceCard";
 import { Progress } from "../components/Panel";
 import { IconPlay, IconStop, IconX } from "../components/icons";
 import { useT } from "../i18n";
 import { GROUPS, groupVisible, type Ctx } from "../params/schema";
-import { PRESET_IDS } from "../state/presets";
 import { cancelActive, runContext, runCurrent } from "../state/runner";
-import { presetDefaults, useStore } from "../state/store";
+import { useStore } from "../state/store";
 import { fmtDuration } from "../utils/format";
-import { deepEqual } from "../utils/object";
 import { ParamGroup } from "./ParamGroup";
 
-function PresetCard() {
-  const t = useT();
-  const preset = useStore((s) => s.preset);
-  const meta = useStore((s) => s.meta);
-  const load = useStore((s) => s.loadPreset);
-  const modified = useStore((s) => {
-    const d = presetDefaults(s);
-    return !(deepEqual(s.params.device, d.device) && deepEqual(s.params.sweep, d.sweep) && deepEqual(s.params.stochastic, d.stochastic));
-  });
-  const baseName = t(`preset.${preset}` as never);
-  return (
-    <div className="preset-card" data-testid="preset-card">
-      <div className="preset-head">{t("preset.label")}</div>
-      <div className="preset-options" role="radiogroup" aria-label={t("preset.label")}>
-        {PRESET_IDS.map((id: PresetId) => (
-          <button key={id} type="button" role="radio" aria-checked={preset === id && !modified} className="preset-opt" data-testid={`preset-${id}`} onClick={() => load(id)} title={meta.presets[id]?.label?.[t.lang] ?? id}>
-            {t(`preset.${id}` as never)}
-          </button>
-        ))}
-      </div>
-      <div className="preset-note" data-testid="preset-label" aria-live="polite">
-        {modified ? (
-          <>
-            <span className="chg" aria-hidden />
-            <span style={{ flex: 1 }}>{t("preset.modified", { base: baseName })}</span>
-            <button type="button" className="link-btn" onClick={() => load(preset)}>
-              {t("reset")}
-            </button>
-          </>
-        ) : (
-          <span className="muted">{meta.presets[preset]?.label?.[t.lang] ?? preset}</span>
-        )}
-      </div>
-    </div>
-  );
-}
+const SchematicSidebar = lazy(() => import("../schematic/SchematicSidebar"));
 
 function useTick(active: boolean, ms = 200) {
   const [, set] = useState(0);
@@ -66,9 +32,11 @@ export function RunBar() {
   const setAutoRun = useStore((s) => s.setAutoRun);
   const lastRun = useStore((s) => s.activeRun);
   const results = useStore((s) => s.results);
+  const view = useCircuitView((s) => s.view);
   const anyRunning = (lastRun?.keys ?? []).some((k) => results[k]?.status === "running" || results[k]?.status === "queued");
-  // report a finished run only in its own context (tab + mode); a running one is always shown (cancellable)
-  const active = lastRun && (anyRunning || lastRun.label === runContext(tab, mode)) ? lastRun : null;
+  // report a finished run only in its own context (tab + mode, schematic vs benches); a running one is always shown (cancellable)
+  const ctx = tab === "circuit" && view === "schematic" ? `schematic ${mode}` : runContext(tab, mode);
+  const active = lastRun && (anyRunning || lastRun.label === ctx) ? lastRun : null;
   const entries = useMemo(() => (active?.keys ?? []).map((k) => results[k]).filter(Boolean), [active, results]);
   const running = entries.some((e) => e.status === "running" || e.status === "queued");
   useTick(running);
@@ -123,6 +91,8 @@ export function Sidebar() {
   const params = useStore((s) => s.params);
   const open = useStore((s) => s.sidebarOpen);
   const setOpen = useStore((s) => s.setSidebar);
+  const view = useCircuitView((s) => s.view);
+  const schematic = tab === "circuit" && view === "schematic";
   const ctx: Ctx = { root: params, mode, tab };
   // groups specific to the current tab (e.g. bench/solver on the circuit tab) come first
   const circuitFirst = (g: (typeof GROUPS)[number]) => Number(tab === "circuit" && g.tabs.length === 1 && g.tabs[0] === "circuit");
@@ -138,10 +108,18 @@ export function Sidebar() {
           </button>
         </div>
         <div className="sidebar-scroll">
-          <PresetCard />
-          {groups.map((g) => (
-            <ParamGroup key={g.id} g={g} ctx={ctx} />
-          ))}
+          {schematic ? (
+            <Suspense fallback={<div className="skeleton-plot" style={{ height: 220 }} />}>
+              <SchematicSidebar />
+            </Suspense>
+          ) : (
+            <>
+              <DeviceCard />
+              {groups.map((g) => (
+                <ParamGroup key={g.id} g={g} ctx={ctx} />
+              ))}
+            </>
+          )}
         </div>
         <RunBar />
       </aside>

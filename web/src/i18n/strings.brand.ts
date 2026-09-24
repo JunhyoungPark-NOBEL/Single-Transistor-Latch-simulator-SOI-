@@ -21,7 +21,7 @@ export const BRAND_STRINGS = {
   "brand.about.title": { ko: "STL Simulator 정보", en: "About STL Simulator" },
   "brand.about.tagline": { ko: "SOI 단일 트랜지스터 래치 시뮬레이터", en: "Single-transistor latch simulator for SOI" },
   "brand.about.body": {
-    ko: "SOI n-MOSFET의 단일 트랜지스터 래치(STL) 동작을 계산하는 웹 시뮬레이터입니다. 결정론(평균) 모델은 정상상태 branch, latch-up·latch-down 전압과 바디 전하 균형을 구하고, 확률 모델(Eq. 2 캐리어 잡음 + 국소 상태)은 사이클 간 변동, V_LU/V_LD 분포와 hazard를 Monte Carlo로 계산합니다. 같은 소자 모델을 회로에 넣어 과도해석도 할 수 있습니다.",
+    ko: "SOI n-MOSFET의 단일 트랜지스터 래치(STL) 동작을 계산하는 웹 시뮬레이터입니다. 결정론(평균) 모델은 정상상태 branch, 래치업·래치다운 전압과 바디 전하 균형을 구하고, 확률 모델(Eq. 2 캐리어 잡음 + 국소 상태)은 사이클 간 변동, V_LU/V_LD 분포와 hazard를 Monte Carlo로 계산합니다. 같은 소자 모델을 회로에 넣어 과도해석도 할 수 있습니다.",
     en: "A web simulator for the single-transistor latch (STL) in SOI n-MOSFETs. The deterministic (mean) model gives the steady-state branches, the latch-up and latch-down voltages and the body-charge balance; the stochastic model (Eq. 2 carrier noise + local states) gives cycle-to-cycle variability, V_LU/V_LD distributions and the hazard by Monte Carlo. The same device model can also be simulated in circuits (transient analysis).",
   },
   "brand.about.device": { ko: "소자", en: "Device" },
