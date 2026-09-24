@@ -377,6 +377,39 @@ Same `CircuitResult` as §4 (generic signals/summary/events/distributions), with
 Limits: ≤ 40 elements, ≤ 8 STL cells, ≤ 30 nodes, waves ≤ 2000 points, t_stop and steps checked by the feasibility estimate (refuse with an explanation instead of running for minutes).
 ERC errors (floating node, no ground reference, voltage-source loop, current source in series with nothing, unknown node in STL) → ValueError with a precise message naming the element/node.
 
+### 6.3 Implementation notes (circuit-custom, as implemented in `server/compute/circuit/custom.py`)
+Details: `docs/CIRCUIT_SIMULATOR.md` §12. Everything above holds; these are the precisions / deviations:
+- **Wave points**: user `pwl` lists ≤ 2000 points; server-generated waves may have up to **20 000** points
+  (`pulse` ≤ 5000 periods, `sine` 128 samples per period, ≥ 16, ≤ 1250 periods) — deviation from "waves ≤ 2000
+  points", which applies to what the client sends. `tr`/`tf` = 0 and vertical PWL steps (repeated time) get a finite
+  edge min(dt_max, 1e-3·t_stop, 0.1·pw, 0.1·per) (warning). `pulse`: `per` ≤ 0 = single pulse, `pw` default t_stop.
+  `sine` accepts an optional `phase` (degrees, SPICE PHASE).
+- **Limits**: 30 nodes = nodes besides ground. Node names 1–32 chars without spaces/parentheses (`gnd` any case =
+  ground); element names 1–32 chars without spaces, dots, commas, brackets, unique case-insensitively.
+  Request bodies of bench `custom` may hold up to 40 000 JSON values (other kinds 5000; byte cap unchanged).
+- **ERC**: "floating" = no DC path to ground through R, V or an STL drain–source path (C, I sources and STL gates do not
+  conduct DC) — SPICE practice, so a capacitor-only island or an undriven gate is an error; nodes with one connection,
+  shorted R/C/I and STL terminals sharing a node are warnings.
+- **STL**: V_GS comes from the circuit (the device block's `vg` is ignored, warned when different). Optional
+  per-element **`local_state`** (§1 block, the library device's setting) is used for that STL in stochastic mode;
+  **`stochastic.local_state_override: true`** applies `stochastic.local_state` to every STL instead (frontend: send it
+  when the user chose "override").
+- **Signals**: `X1.q_b` = Q_B(t) − Q_B(0); `X1.dphi` / `X1.dphi_E` added for cells with local states. `probes`: unknown
+  keys → ValueError; `V(0)` allowed (zeros); `[]` → ValueError (use null). Plotted values rounded to 7 significant
+  digits (t: 10, envelopes: 6). Stored points: run 0 ≤ 4000 (and ≤ 400 000 values over all signals), runs 1–7 ≤ 1500
+  (≤ 100 000 values); envelopes ≤ 1000 points (fewer for very many signals).
+- **Events**: `{run, kind, t, cell, v_d, value (= v_d), i_d}`; `v_d` = V_DS of the cell (= V(d) − V(s)); no `v_src`.
+- **Summary keys** (aligned with the frontend mock): per STL `X1.n_latch_up`, `X1.n_latch_down`, `X1.t_first_lu` (s),
+  `X1.vd_first_lu` (V), `X1.fold_V_LU`, `X1.fold_V_LD`; deterministic `X1.latched_end` (0/1), `X1.final_state`
+  ("LRS" | "HRS"); stochastic `X1.p_any_lu`, `X1.p_latched_end` (spread = SD over runs). Global `runs`,
+  `steps_per_run` (+ `t_noise_resolved_frac`, `truncated_runs`). Distributions: `X1.t_first_lu`, `X1.vd_first_lu`,
+  `X1.n_latch_up`, `end:<signal key>` (every probed signal at t_stop; null for truncated runs).
+- **`op`**: flat `{signal key: value}` at t = 0 for every signal (not only the probes). `elements`: resolved echo
+  (`value`, `value_label`, `wave` with resolved parameters; STL: `nodes {d,g,s}`, `device {preset, vg_device_V,
+  iph_pA, label}`, `light_pA`, `vgs_V`, `vgs_range_V`, `folds`, `latch_window`, `u_fold`, `local_state`,
+  `noise_band_V`, `estimated_steps`). Extra keys: `probes`, `trajectory {vd, id, cell}` (first STL), `tran`, `solver`,
+  `detect`, `stochastic`, `feasibility`, `regimes`; `sweeps` = [], `distributions`/`envelopes` = [] when deterministic.
+
 ## 7. Device library (frontend, device-library package)
 
 A device = `{ id, name, technology: "FDSOI" | "PDSOI" | "Bulk", geometry: { Lg_nm, W_nm, Tsi_nm, EOT_nm },

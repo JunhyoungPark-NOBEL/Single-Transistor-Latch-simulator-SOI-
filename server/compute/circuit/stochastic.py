@@ -257,7 +257,8 @@ def estimate_steps(wave_t: np.ndarray, wave_v: np.ndarray, t_end: float, profile
                    carrier: bool, dt_max: float, dv_max: float, tau_frac: float, n_ev: float,
                    noise_dt_min: float, n_breakpoints: int, ld_noise: bool = False,
                    gauss_tau_min: float = 2e-9, gauss_tau_frac: float = 0.5,
-                   window: tuple = (-np.inf, np.inf, -np.inf, np.inf), n_look: float = 4.0) -> float:
+                   window: tuple = (-np.inf, np.inf, -np.inf, np.inf), n_look: float = 4.0,
+                   corner_weights: np.ndarray | None = None) -> float:
     """Expected number of accepted steps for one run (drain voltage ~ source voltage).
 
     The drive is sampled on a voltage-resolved grid (<= 2 mV per point on ramps, one point per flat
@@ -266,7 +267,9 @@ def estimate_steps(wave_t: np.ndarray, wave_v: np.ndarray, t_end: float, profile
     With carrier noise the HRS -> LRS switch happens at the noise-induced escape (median of the
     empirical compound-noise hazard lambda(z)) or at the fold, whichever comes first (likewise for the
     LRS with ld_carrier_noise).  Fixed costs per latch transition, waveform corner and other breakpoint
-    cover the resolved switching transients.  Typically within about +-30 % of the actual count."""
+    cover the resolved switching transients.  Typically within about +-30 % of the actual count.
+    ``corner_weights`` (one per interior waveform point, in [0, 1]; custom circuits): how sharp each
+    corner is (1 = a pulse corner, ~0 = a sampled smooth waveform); default: every point is a corner."""
     V_LU, V_LD = profile["folds"]
     latch = bool(profile["latch"]) and np.isfinite(V_LU) and np.isfinite(V_LD)
     wt = np.asarray(wave_t, float)
@@ -305,6 +308,8 @@ def estimate_steps(wave_t: np.ndarray, wave_v: np.ndarray, t_end: float, profile
                                   float(n_ev), float(noise_dt_min), float(gauss_tau_min), float(gauss_tau_frac),
                                   w[0], w[1], w[2], w[3], float(n_look))
     corners = max(len(wave_t) - 2, 0)
+    if corner_weights is not None:
+        corners = float(np.sum(corner_weights))
     other = max(int(n_breakpoints) - corners, 0)
     return float(steps + _STEPS_PER_TRANSITION * trans + _STEPS_PER_CORNER * corners + _STEPS_PER_BREAKPOINT * other)
 

@@ -83,7 +83,9 @@ longer cached …"` and should be submitted again). The stochastic package's nod
 * Structure (any kind): the body must be a JSON object, nested at most 12 levels, with at most 5000 values,
   strings/keys of at most 1000 characters and finite numbers only (`NaN`/`Infinity` literals and integers
   beyond the float range are rejected); nested blocks (`device.light/calib/ext/state/numerics`,
-  `stochastic.local_state`, circuit `bench_params/solver/stochastic/detect`) must be objects → otherwise 422.
+  `stochastic.local_state`, circuit `bench_params/solver/stochastic/detect`, custom circuit `netlist/tran`) must be
+  objects → otherwise 422. Circuit requests with `bench: "custom"` may hold up to 40 000 values (netlists with PWL
+  waves of up to 2000 points; the byte limit `STL_MAX_BODY_KB` still applies).
 
 * `device` is resolved against its preset (`params.resolve_device`); every numeric field must be finite
   (`vg` within ±10 V, light values ≥ 0, `light.mode` ∈ {iph, power}, `ext.loc_carriers` ∈ {0,1,2}).
@@ -167,6 +169,30 @@ first-passage lattice with only one channel class as jumps (II clusters, unit ge
 BTBT, REC = bulk + junction SRH loss, DIFF = emitter out-diffusion) and the others as deterministic drift,
 discretised upwind on a lattice refined N = 4 and 8 and Richardson-extrapolated in log h. Result: II 5.1,
 BTBT 3.0, REC 4.2, DIFF 1.9, all 8.0 mV.
+
+## Circuit — `POST /api/compute/circuit`
+
+One kind for the test benches and user-drawn circuits; full description in `docs/CIRCUIT_SIMULATOR.md`
+(benches §5–§10, custom circuits §12) and the contract `docs/WEB_CONTRACT.md` §4 / §6.
+
+* **Benches** — `{bench: "load_line" | "pulse" | "pbit" | "coupled", mode, device, bench_params, solver, stochastic,
+  detect}` → `CircuitResult` (§4) + `bench_params`, `solver`, `detect`, `stochastic`, `folds`, `feasibility`, `regimes`.
+* **Custom circuits** — `{bench: "custom", mode, netlist: {elements: [R | C | V | I | STL]}, tran: {t_stop_s,
+  t_start_save_s, dt_max_s, dt_min_s, method, reltol}, stochastic?, detect?, probes: null | [keys], solver?}`.
+  Elements: `{type: "R"|"C", name, nodes: [a, b], value}` (Ω / F), `{type: "V"|"I", name, nodes: [+, −], wave}`,
+  `{type: "STL", name, nodes: {d, g, s}, device, light_pA: wave | null, local_state?}`; waves `dc {value}`,
+  `pulse {v1, v2, td, tr, tf, pw, per, ncycles}` (SPICE PULSE), `pwl {t[], v[]}` (≤ 2000 points), `sine {vo, va,
+  freq, td, theta, phase?}`; node `0` / `gnd` / `GND` is ground. Limits: 40 elements, 8 STL, 30 nodes, `n_runs` ≤ 200.
+  Result: `CircuitResult` with signals `V(n)`, `I(R1)` / `I(C1)` (first → second node), `I(V1)` / `I(I1)` (through the
+  source + → −, SPICE sign), `I(X1.d|s|g)` (into the STL terminals, gate 0), `X1.u`, `X1.r`, `X1.q_b` (ΔQ_B); `nodes`,
+  `elements` (resolved echo), `op` (flat `{key: value}` at t = 0), `events` (`latch_up`/`latch_down` with `cell`,
+  `v_d` = V_DS, `i_d`), per-STL `summary` (`X1.n_latch_up`, `X1.t_first_lu`, `X1.vd_first_lu`, `X1.final_state` |
+  `X1.p_any_lu`, `X1.p_latched_end`, …), stochastic `envelopes` `{key, t, mean, sd, p05, p95}` (≤ 1000 points) and
+  `distributions` (`X1.t_first_lu`, `X1.vd_first_lu`, `X1.n_latch_up`, `end:<key>`), plus `probes`, `trajectory`,
+  `tran`, `solver`, `detect`, `stochastic`, `feasibility`, `regimes`.
+  ERC and validation failures (no ground, node without a DC path to ground, voltage-source loop, current source into
+  an open node, unknown probe, limits, a run estimated above 2 × `solver.max_steps`) are `ValueError`s inside the job:
+  `status: "error"` with the message naming the element / node (HTTP 200 on the job, as for every compute error).
 
 ## Data endpoints
 

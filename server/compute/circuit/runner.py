@@ -368,8 +368,11 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
     payload = dict(payload or {})
     warnings: list[str] = []
     bench = payload.get("bench", "load_line")
+    if bench == "custom":                      # user-drawn netlist (WEB_CONTRACT §6)
+        from .custom import run_custom
+        return run_custom(payload, progress)
     if bench not in B.BENCH_DEFAULTS:
-        raise ValueError(f"unknown bench {bench!r}; choose one of {sorted(B.BENCH_DEFAULTS)}")
+        raise ValueError(f"unknown bench {bench!r}; choose one of {sorted(B.BENCH_DEFAULTS) + ['custom']}")
     mode = payload.get("mode", "deterministic")
     if mode not in ("deterministic", "stochastic"):
         raise ValueError("mode must be 'deterministic' or 'stochastic'")

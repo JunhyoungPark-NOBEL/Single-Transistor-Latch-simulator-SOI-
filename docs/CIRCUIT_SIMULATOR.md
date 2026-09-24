@@ -515,5 +515,195 @@ reached pulses only), `bit` (comparator value 0/1 per clock, first 8 runs, reach
 | `netlist.py` | netlist builder (R, C, V, I, STL, CMP), PWL waveforms, compilation to arrays, schematic |
 | `benches.py` | bench defaults, builders, statistics helpers (no numba import) |
 | `stochastic.py` | local states, branch profiles (τ_rel, rates, barrier z), noise bands, feasibility estimate |
-| `runner.py` | `run_circuit`: parsing, feasibility, run loop, analysis, result |
+| `runner.py` | `run_circuit`: parsing, feasibility, run loop, analysis, result (bench `custom` → `custom.py`) |
+| `custom.py` | user-drawn circuits (§12): netlist/wave parsing, ERC, linear DC estimate, per-cell profiles, streaming signal reduction, statistics |
 | `validate.py` | validation V1–V6 |
+
+## 12. 사용자 회로 / Custom circuits (`bench: "custom"`, WEB_CONTRACT §6)
+
+> **KO.** 회로 탭에서 사용자가 그린 회로(STL, 저항, 커패시터, 전압원·전류원)를 벤치와 **같은 커널**로
+> 과도해석한다. 넷리스트(JSON)를 검증하고 ERC(접지 없음, 접지까지 DC 경로가 없는 노드, 전압원 루프,
+> 개방 노드로 흐르는 전류원 등)를 통과해야 실행된다. 파형은 dc / pulse(SPICE PULSE 의미) / pwl / sine을
+> 조각선형(PWL)으로 바꾸고 모든 꺾임점에 시간 스텝을 정확히 맞춘다. 시간 스텝·종료 시각은 `tran`에서
+> 사용자가 정한다. 모든 노드 전압과 모든 소자 전류(STL은 단자별)를 매 스텝 기록하고, 모서리·래치 전이를
+> 보존하며 4000점 이하로 줄여 보낸다. 확률 모드에서는 STL마다 소자 라이브러리의 국소 상태 설정을 쓸 수
+> 있고, 실행별 파형(최대 8개), 공통 시간축의 평균·SD·p05·p95 포락선, 실행별 스칼라 분포(첫 래치업 시각,
+> 그때의 V_DS, t_stop에서의 각 신호 값)와 확률 요약(종료 시 래치 확률, 1회 이상 래치업 확률)을 준다.
+> 부하선 벤치를 사용자 회로로 그리면 벤치와 **비트 단위로 같은 결과**(결정론·확률 모두)를 얻는다.
+
+### 12.1 Request
+
+```jsonc
+{ "bench": "custom", "mode": "deterministic" | "stochastic",
+  "netlist": { "elements": [
+    { "type": "R",   "name": "R1", "nodes": ["n1", "n2"], "value": 1000 },          // Ω, 1e-3 … 1e15
+    { "type": "C",   "name": "C1", "nodes": ["d", "0"],   "value": 2e-15 },         // F, 0 … 1 (0 = open)
+    { "type": "V",   "name": "V1", "nodes": ["n+", "n-"], "wave": Wave },           // V, |v| ≤ 1000
+    { "type": "I",   "name": "I1", "nodes": ["n+", "n-"], "wave": Wave },           // A, |i| ≤ 1
+    { "type": "STL", "name": "X1", "nodes": { "d": "d", "g": "g", "s": "0" },
+      "device": { ...device block (§1)... },          // each STL may use a different device
+      "light_pA": Wave | null,                         // I_PH(t) in pA (≥ 0); null = the device block's light
+      "local_state": { ...§1 local_state... } }        // optional (extension): this cell's local states
+  ] },
+  "tran": { "t_stop_s": 5e-3, "t_start_save_s": 0, "dt_max_s": 1e-5, "dt_min_s": 1e-15,
+            "method": "BE" | "TRAP", "reltol": 1e-4 },  // dt_max default t_stop/2000, dt_min max(1e-15, 1e-13 t_stop)
+  "stochastic": { "seed", "n_runs" (≤ 200), "carrier_noise", "ld_carrier_noise", "local_state",
+                  "local_state_override": false },       // true: stochastic.local_state for every STL
+  "solver": { "max_steps", "tau_frac", "max_events_per_step", "noise_dt_min_s", ... },  // optional, §6 of this doc
+  "detect": { "i_threshold_A": 1e-8, "hysteresis": 10 },
+  "probes": null | ["V(d)", "I(R1)", "I(X1.d)", "X1.u"] }  // null: every signal
+```
+
+* **Nodes**: any string of 1–32 characters without spaces/parentheses; `0`, `gnd`, `GND` (any case of
+  "gnd") are ground. Element names: 1–32 characters, no spaces, dots, commas or brackets; unique
+  (case-insensitive).
+* **Waves** (all converted to piecewise-linear; every point is a solver breakpoint, so steps land exactly
+  on the corners):
+
+| kind | parameters | semantics |
+|---|---|---|
+| `dc` | `value` | constant |
+| `pulse` | `v1, v2, td, tr, tf, pw, per, ncycles` | SPICE PULSE: v1 until td, rise tr to v2, flat pw, fall tf, repeat every per (`per` ≤ 0: one pulse; `ncycles` 0 = until t_stop). tr or tf = 0 → a finite edge min(dt_max, 1e-3 t_stop, 0.1 pw, 0.1 per) (warned); pw default t_stop; tr + pw + tf ≤ per |
+| `pwl` | `t[], v[]` | ≤ 2000 points, t ≥ 0 non-decreasing; v[0] before t[0], v[-1] after the last point; a vertical step (repeated time) gets a finite edge ≤ that of `pulse` (warned) |
+| `sine` | `vo, va, freq, td, theta` (+ `phase` in degrees, extension) | SPICE SIN: vo before td, then vo + va e^(−θ(t−td)) sin(2πf(t−td) + phase); sampled with 128 points per period (≥ 16; fewer than 48 → warning with the PWL error 1 − cos(π/N)) |
+
+  Generated waves (pulse corners, sine samples) may have up to 20 000 points (≤ 5000 pulse periods,
+  ≤ 1250 sine periods); user PWL lists up to 2000.
+* **STL**: the device block is resolved exactly like the device tab (`payloads.normalize_device` +
+  `params.build_p`). The gate is driven by the circuit: V_GS = v(g) − v(s) is re-evaluated at every Newton
+  iteration; the block's `vg` is not used (a warning names both values when they differ). `light_pA` drives
+  p[13] = I_PH(t). The quasi-static branches used for the latch state (fold values u_i/u_j) and the noise
+  bands are computed at the V_GS and light the cell sees — from a linear DC estimate of the network with
+  the STLs open (1 pS drain–source) and the capacitors open; when V_GS or the light varies in time, at both
+  extremes (u_i = min, u_j = max over the variants with a latch window, bands = their union; warned).
+
+### 12.2 Sign conventions and signals
+
+| key | unit | axis | meaning |
+|---|---|---|---|
+| `V(n)` | V | voltage | node voltage to ground (`V(0)`/`V(gnd)` may be probed: zero) |
+| `I(R1)`, `I(C1)` | A | current | through the element from its first to its second node; `I(C1)` is the companion current of the integration formula (BE: C Δv/h, TRAP: 2C Δv/h − i_n) |
+| `I(V1)`, `I(I1)` | A | current | through the source from its + (first) to its − (second) node (SPICE: a source delivering power has I(V1) < 0); `I(I1)` = the wave value |
+| `I(X1.d)`, `I(X1.s)`, `I(X1.g)` | A | current | into the STL terminals: I(X1.d) = I_D, I(X1.s) = −I_D, I(X1.g) = 0 (ideal gate: the gate–body displacement current is not stamped, §9) |
+| `X1.u`, `X1.r` | V | state | internal unknowns |
+| `X1.q_b` | C | charge | ΔQ_B = Q(t) − Q(0) |
+| `X1.dphi`, `X1.dphi_E` | V or 1 | state | local-state deviations (stochastic, cell with local states) |
+
+Kirchhoff's current law holds for the reported currents at every node to the Newton tolerance
+(≤ 1e-5 of the largest current at the node; the tests check it) plus the numerical GMIN = 1e-18 S from
+every node to ground (≈ 1e-17 A, not an element).
+The latch **events** are those of §4 (body branch, timed at the I_D thresholds) with `cell` = element name,
+`v_d` = V_DS of the cell at the event (= `value`), `i_d`; events before `t_start_save_s` are reported too.
+
+### 12.3 ERC and limits (ValueError, message names the element / node)
+
+* no element on node 0 → "no ground reference";
+* every node needs a **DC path to ground** through resistors, voltage sources or an STL drain–source path
+  (capacitors, current sources and STL gates do not conduct DC) → "node 'c' has no DC path to ground: it is
+  connected only through capacitors C1, C2" (SPICE practice; covers capacitor-only islands and floating
+  gates); a node reached only by a current source → "current source I1 drives node 'x', which has no other
+  connection (open circuit)";
+* voltage-source loops (incl. parallel sources): "voltage source V2 is in parallel with V1" / "… in a loop
+  with V1, V3"; a source with both terminals on one node: "short-circuited";
+* warnings: nodes with a single connection, R/C/I with both terminals on one node, STL terminals on the
+  same node (d = s, d = g, g = s);
+* limits: ≤ 40 elements, ≤ 8 STL cells, ≤ 30 nodes besides ground, PWL ≤ 2000 points, generated waves
+  ≤ 20 000 points, `n_runs` ≤ 200, `max_steps` ≤ 2e6; unknown element types / wave kinds / probes and
+  duplicate names are errors ("unknown probe 'V(zz)' (no node 'zz'; nodes: …)").
+
+### 12.4 Integration and feasibility
+
+The kernel is the bench kernel (§2–§4) with four additions, all off for the benches (bit-identical bench
+results, checked): (1) the noise look-ahead drive is per cell — the source that moves the cell's V_DS most,
+with V_DS(t') ≈ V_DS(t) + g (w(t') − w(t)), g = ∂V_DS/∂w from the linear DC estimate; (2) per-cell
+local-state configurations; (3) capacitor currents are recorded; (4) a node-voltage LTE control (custom
+circuits only; deterministic integration): LTE_i = |v_i − v_i,pred| h/(h + h_prev) ≤ 7 (reltol |v_i| + 1 µV)
+(SPICE's trtol = 7) in addition to |Δv| ≤ 20 mV × reltol/1e-3, |Δu|, |Δ ln I_D| and LTE_u.
+`tran` maps onto the solver (`method`, `dt_min_s`, `dt_max_s`, `reltol`); `solver.max_steps` and the
+stochastic tier parameters may still be given in `solver`.
+
+**Feasibility** before running: (a) the linear network's node voltages over the union of all source
+breakpoints (with the STLs open, clipped to ±max(10 V, 1.5 max|V source|)) give the Δv/dt_max steps of
+every node plus 60 steps per sharp corner (corner sharpness |Δslope|/(|s−| + |s+|), so a sampled sine
+costs ≈ 1 step per point); (b) per cell, the bench estimator of §6 is walked along the cell's open-circuit
+drive V_DS(t) (Thevenin voltage) at every V_GS/light variant; the cells' own extra steps (transitions,
+resolved noise) are added to the shared part. Refused above 2 × max_steps per run or 4e7 steps per
+request, warned above 0.5 × max_steps. Current-biased cells (no DC path to the drain except the cell,
+R_th > 1e11 Ω) are warned: they can sit on the negative-resistance branch and oscillate (a relaxation
+oscillator), which the estimate cannot foresee (example below: estimate 2.6e3, actual 2.2e5 steps).
+
+### 12.5 Output reduction and statistics
+
+Every accepted step is recorded (node voltages, source currents, per cell u, r, Q, I_D, F, local states,
+capacitor currents); a streaming reducer converts each 4000-step block to the output signals, applies
+`t_start_save_s` (a row interpolated at t_start_save) and keeps ≤ 30 000–60 000 rows in memory. The stored
+waveforms are selected by 60 % arc length over the normalised signals (+ 0.3 × log10|I_D| of the STL
+terminals, deterministic mode), 40 % uniform in time, plus every source corner and the rows around each
+latch event: run 0 ≤ 4000 points (≤ 400 000 values over all signals), runs 1–7 ≤ 1500 (≤ 100 000 values).
+Plotted values are rounded to 7 significant digits (time axes 10, envelopes 6); summary, events and `op`
+keep full precision.
+
+Stochastic (`n_runs` ≤ 200, per-run seeds as §4): the first ≤ 8 runs' waveforms; `envelopes` (mean, SD
+(ddof 1), p05, p95 over the runs that reached each time) of every probed signal on a common grid of
+≤ 1000 points (half uniform, half the arc-length points of run 0); `distributions` per run:
+`X1.t_first_lu`, `X1.vd_first_lu`, `X1.n_latch_up` and `end:<signal>` (value at t_stop; truncated runs
+are null); summary per cell `X1.p_any_lu` (P(≥ 1 latch-up)), `X1.p_latched_end` (P(latched at t_stop)),
+`X1.t_first_lu`, `X1.vd_first_lu`, `X1.n_latch_up`, `X1.n_latch_down` (mean, spread = SD over runs).
+Deterministic summary per cell: `X1.n_latch_up`, `X1.n_latch_down`, `X1.t_first_lu`, `X1.vd_first_lu`,
+`X1.latched_end` (0/1), `X1.final_state` ("LRS" | "HRS"); always `X1.fold_V_LU`, `X1.fold_V_LD`
+(quasi-static at the cell's V_GS), `runs`, `steps_per_run` (+ `t_noise_resolved_frac` with carrier noise,
+`truncated_runs`). Further result keys: `nodes`, `elements` (resolved echo: values, resolved waves, per STL
+V_GS and its range, folds, latch window, u_i/u_j, noise band, local state, estimated steps), `op` (flat
+{signal key: value} at t = 0, every signal), `probes`, `trajectory` (first STL: V_DS, I_D of run 0),
+`tran`, `solver`, `detect`, `stochastic`, `feasibility`, `regimes`, `schematic` (minimal).
+
+### 12.6 Validation (server/tests/test_circuit_custom.py, 47 tests, ~15 s warm)
+
+| check | result |
+|---|---|
+| RC charging (1 V step, τ = 1 ms, 6τ) vs 1 − e^(−t/τ) | BE max error 0.055 % (reltol 1e-3), 0.047 % (1e-4), 0.031 % (1e-5); TRAP 1e-4 % |
+| current source into R, V source power sign | V(n) = ±1 V, I(I1) = wave, I(V1) = −2 mA for a 2 V source on 1 kΩ |
+| PULSE (td, tr ≠ tf, ncycles 3), SIN with θ | pulse exact at the recorded points (< 1e-6 V), every corner present in the output; sine within the PWL error (< 1e-3) |
+| KCL at every node (STL with source resistor, 2 capacitors, current source) | ≤ 1e-5 relative (+ GMIN floor) |
+| load-line template (V_src → 1 kΩ → d, 2 fF, V_G −2 V, 1200 / 40 / 0.4 V/s) vs `load_line` bench | V_LU, V_LD **identical** (Δ = 0), same step count (2659 / 2773 / 2928) |
+| stochastic load line (photo condition, 1200 V/s, same seeds) vs bench | identical events of every run |
+| two STLs with different devices (−1.8 V + 2.63 pA, −2 V dark) | each latches at its own fold + ramp lag (3.337 / 3.748 V) |
+| n_runs = 5, seed | envelopes/distributions present, p05 ≤ p95, reproducible with the seed, different with another seed |
+| per-cell frozen local states (carrier noise off) | V_LU spread over runs, distinct δ per run |
+| ERC / limits / invalid requests | 28 error messages checked; warnings (single connection, shorted element); ground aliases |
+| feasibility | refused with the cause (dt_max too small for t_stop; event-level noise on a 0.4 V/s ramp with a small max_steps; six 1000-period sines); cancellation between chunks |
+| API (TestClient, POST /api/compute/circuit) | result with the §6 keys; ERC error → job status "error" with the message |
+
+### 12.7 Performance (4-CPU shared container, warm numba cache)
+
+| case | steps / run | time |
+|---|---|---|
+| RC, 1 V step, 6τ | 2 100–3 800 | 7–12 ms |
+| RC driven by a 100-period sine (12 800 PWL points), BE reltol 1e-4 | 2.9e5 | 1.0 s |
+| load-line template, 1 STL, 1200 V/s | 2 600 | 0.2–0.35 s |
+| two STLs on one ramp | 3 080 | 0.7 s |
+| eight STLs (4 V_G, 8 series R) on one ramp | 3 155 | 1.9 s (≈ 530 µs/step) |
+| stochastic load line, photo condition, 1200 V/s, 20 runs | 3 400 | 5.9 s (20 runs) |
+| stochastic pulse train through 10 kΩ / 5 fF, 5 pulses, 10 runs | 5 800 | 4.1 s (10 runs) |
+| current-biased STL + 10 fF (relaxation oscillator), 5 ms | 2.2e5 | 18 s |
+
+Cost per step ≈ 3 µs without STL, 60–90 µs per STL cell (Newton with finite-difference partials +
+τ_rel sensitivities). The custom path uses the same compiled kernels as the benches (one signature per
+kernel function for every circuit size and mode — no recompilation per request); a changed kernel source
+recompiles once (~40 s, cached in `server/compute/circuit/__pycache__`); `scripts/warmup.py` runs a small
+RC + STL netlist deterministically and stochastically. Post-processing (conversion, reduction, envelopes)
+is ≲ 2 % of the run time. Result size: 1 STL deterministic (13 signals) 0.45 MB JSON (0.13 MB gzip);
+20 stochastic runs 2.4 MB (0.57 MB gzip); 8 STLs, 58 signals 2.8 MB.
+
+### 12.8 Limitations
+
+* Linear elements are ideal R and C and independent sources (no inductors, controlled sources or
+  switches); the STL gate is ideal (no gate current; gate–body coupling acts through V_GS in the charge
+  coordinate only).
+* TRAP can ring on stiff RC nodes (h ≫ RC) like any trapezoidal integrator; use BE there (the STL charge
+  equation already falls back to BE on stiff steps).
+* The noise look-ahead uses one drive source per cell and the open-cell gain; cells whose V_DS is set by
+  several sources that move simultaneously get the look-ahead of the dominant one only.
+* The feasibility estimate cannot foresee self-oscillation (current-biased cells, large load resistors on
+  the negative-resistance branch); such runs are bounded by `solver.max_steps` (warning, truncated run,
+  censored statistics).

@@ -275,6 +275,25 @@ def test_static_and_api_fallbacks(client):
         assert "def build_p" not in r.text and r.status_code in (200, 404)
 
 
+def test_custom_circuit_payload_limits():
+    """bench "custom" carries a netlist with PWL waves (<= 2000 points each): more values than the generic
+    5000-value body limit are accepted for it (the byte size is still capped by STL_MAX_BODY_KB)."""
+    from server import payloads
+    n = 2000
+    wave = {"kind": "pwl", "t": [i * 1e-6 for i in range(n)], "v": [0.5] * n}
+    body = {"bench": "custom", "mode": "deterministic", "tran": {"t_stop_s": 1e-3},
+            "netlist": {"elements": [{"type": "V", "name": f"V{k}", "nodes": [f"n{k}", "0"], "wave": wave} for k in range(2)]
+                        + [{"type": "R", "name": f"R{k}", "nodes": [f"n{k}", "0"], "value": 1e3} for k in range(2)]}}
+    p, _ = payloads.normalize("circuit", body)
+    assert len(p["netlist"]["elements"][0]["wave"]["t"]) == n
+    with pytest.raises(ValueError, match="too large"):
+        payloads.normalize("circuit", dict(body, bench="load_line"))
+    with pytest.raises(ValueError, match="netlist must be an object"):
+        payloads.normalize("circuit", {"bench": "custom", "netlist": [1, 2]})
+    with pytest.raises(ValueError, match="too large"):
+        payloads.normalize("circuit", {"bench": "custom", "junk": [0] * (payloads.CUSTOM_CIRCUIT_NODES + 1)})
+
+
 def test_canonical_big_ints():
     c = jsonutil.canonical
     assert c({"a": 2}) == c({"a": 2.0})

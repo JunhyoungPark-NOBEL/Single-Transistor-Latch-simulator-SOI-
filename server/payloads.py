@@ -36,20 +36,24 @@ VG_RANGE_KINDS = {"vg_curve", "vg_curve_stochastic"}
 
 # Structural limits of a request body (real payloads: < 200 values, depth <= 4, strings < 40 chars).
 TREE_LIMITS = {"depth": 12, "nodes": 5000, "string": 1000}
+# user-drawn circuits (kind "circuit", bench "custom"): up to 40 elements with device blocks and PWL waves of up to
+# 2000 points each (t and v lists) — the byte size stays bounded by STL_MAX_BODY_KB
+CUSTOM_CIRCUIT_NODES = 40000
 
 
-def check_tree(payload: Any) -> None:
+def check_tree(payload: Any, max_nodes: int | None = None) -> None:
     """Reject bodies that are expensive to copy/hash/pickle or that would crash later: nesting deeper than
     TREE_LIMITS["depth"], more than TREE_LIMITS["nodes"] values, strings/keys longer than TREE_LIMITS["string"],
     non-finite numbers (NaN/Infinity are accepted by the stdlib JSON parser) and integers beyond float range.
-    Iterative, so it cannot hit the recursion limit itself."""
+    Iterative, so it cannot hit the recursion limit itself.  ``max_nodes`` overrides TREE_LIMITS["nodes"]."""
+    limit = TREE_LIMITS["nodes"] if max_nodes is None else int(max_nodes)
     stack: list[tuple[Any, str, int]] = [(payload, "body", 0)]
     nodes = 0
     while stack:
         obj, path, depth = stack.pop()
         nodes += 1
-        if nodes > TREE_LIMITS["nodes"]:
-            raise ValueError(f"request body too large (more than {TREE_LIMITS['nodes']} values)")
+        if nodes > limit:
+            raise ValueError(f"request body too large (more than {limit} values)")
         if isinstance(obj, (dict, list, tuple)):
             if depth >= TREE_LIMITS["depth"]:
                 raise ValueError(f"request body nested too deeply at {path} (max depth {TREE_LIMITS['depth']})")
@@ -208,7 +212,8 @@ def normalize(kind: str, payload: Any) -> tuple[dict, list[str]]:
         payload = {}
     if not isinstance(payload, dict):
         raise ValueError("the request body must be a JSON object")
-    check_tree(payload)                        # before deepcopy/hash/pickle (depth, size, NaN, huge ints)
+    custom = kind == "circuit" and payload.get("bench") == "custom"
+    check_tree(payload, CUSTOM_CIRCUIT_NODES if custom else None)   # before deepcopy/hash/pickle (depth, size, NaN, huge ints)
     p = copy.deepcopy(payload)
     warnings: list[str] = []
     if kind in DEVICE_KINDS:
@@ -243,7 +248,7 @@ def normalize(kind: str, payload: Any) -> tuple[dict, list[str]]:
             if k in p and p[k] is not None:
                 p[k] = _num(p[k], k)
     if kind == "circuit":
-        for block in ("bench_params", "solver", "stochastic", "detect"):
+        for block in ("bench_params", "solver", "stochastic", "detect") + (("netlist", "tran") if custom else ()):
             _obj(p, block, block)
         if p.get("bench") is not None and not isinstance(p["bench"], str):
             raise ValueError("bench must be a string")

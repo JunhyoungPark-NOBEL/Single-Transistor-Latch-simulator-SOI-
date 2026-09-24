@@ -77,6 +77,24 @@ def main() -> int:
     step("circuit load_line, deterministic (numba compile)", lambda: circuit("deterministic"))
     step("circuit load_line, stochastic (numba compile)", lambda: circuit("stochastic"))
 
+    # [circuit-custom] user-drawn circuits (bench "custom"): small RC + STL netlist, deterministic and stochastic
+    # (same kernels; also fills the branch-profile / fold caches of the photo condition used by the defaults)
+    def circuit_custom(mode: str):
+        from server.compute.circuit import run_circuit
+        T = 2 * 4.0 / 1200.0
+        els = [{"type": "V", "name": "V1", "nodes": ["src", "0"], "wave": {"kind": "pwl", "t": [0, T / 2, T], "v": [0, 4.0, 0]}},
+               {"type": "R", "name": "R1", "nodes": ["src", "d"], "value": 1e3},
+               {"type": "C", "name": "C1", "nodes": ["d", "0"], "value": 2e-15},
+               {"type": "V", "name": "VG", "nodes": ["g", "0"], "wave": {"kind": "dc", "value": -1.8}},
+               {"type": "STL", "name": "X1", "nodes": {"d": "d", "g": "g", "s": "0"},
+                "device": {"preset": "paper", "vg": -1.8, "light": {"mode": "iph", "iph_pA": 2.63}}, "light_pA": None}]
+        out = run_circuit({"bench": "custom", "mode": mode, "netlist": {"elements": els},
+                           "tran": {"t_stop_s": T, "dt_max_s": T / 2000}, "stochastic": {"n_runs": 2, "seed": 1}})
+        return out["solver_stats"]
+
+    step("circuit custom RC + STL, deterministic", lambda: circuit_custom("deterministic"))
+    step("circuit custom RC + STL, stochastic", lambda: circuit_custom("stochastic"))
+
     if args.validate:
         from server.compute.validation import run_validation
         v = step("validation (fast)", lambda: run_validation({"level": "fast"}))

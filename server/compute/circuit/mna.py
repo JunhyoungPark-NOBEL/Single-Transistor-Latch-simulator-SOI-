@@ -57,8 +57,12 @@ N_CI = 16
 # ---- float config (cf) -------------------------------------------------------------------
 CF_TEND, CF_DTMIN, CF_DTMAX, CF_DUMAX, CF_DLNIMAX, CF_DVMAX, CF_LTEU, CF_TAUFRAC, CF_NEVMAX, \
     CF_HNOISEMIN, CF_GAUSS, CF_ITH, CF_IFLOOR, CF_DTREC, CF_DVREC, CF_DLNIREC, CF_LSSIG, CF_LSTAU, \
-    CF_LSESIG, CF_LSETAU, CF_HINIT, CF_NEWTOL, CF_ITHDN, CF_GTAUMIN, CF_GTAUFRAC, CF_NLOOK = range(26)
-N_CF = 26
+    CF_LSESIG, CF_LSETAU, CF_HINIT, CF_NEWTOL, CF_ITHDN, CF_GTAUMIN, CF_GTAUFRAC, CF_NLOOK, \
+    CF_LTEV, CF_LTEVABS = range(28)
+N_CF = 28
+# CF_LTEV / CF_LTEVABS: optional node-voltage LTE control (custom circuits; 0 = off, the benches):
+#   LTE_i = |v_i - v_i,pred| h / (h + h_prev) (linear-extrapolation predictor, BE-order estimate)
+#   err  >= LTE_i / (CF_LTEV max(|v_i|, |v_i,prev|) + CF_LTEVABS), deterministic integration only
 # ---- float state (sf) --------------------------------------------------------------------
 SF_T, SF_HNEXT, SF_HPREV, SF_TREC, SF_TUNRES, SF_MINU, SF_MINR, SF_TNEGU, SF_TNEGR, SF_TSTOP, SF_TGAUSS, \
     SF_TLRS, SF_TBAND = range(13)
@@ -80,10 +84,13 @@ ST_DONE, ST_CHUNK, ST_FAIL, ST_MAXSTEPS, ST_BUFFER = 0, 1, 2, 3, 4
 SS_QN, SS_FN, SS_IN, SS_TAU, SS_UNIT, SS_G, SS_L, SS_R, SS_LAT, SS_DQ, SS_LNI_REC, SS_VDS_REC, \
     SS_PHYS, SS_PEND, SS_PT, SS_PV, SS_PS, SS_PI = range(18)
 N_SS = 18
-# per-STL window columns (win): noise bands (unlatched lo/hi, latched lo/hi, V_DS) and the u values of
-# the latch-up fold (u_i) and latch-down fold (u_j) of the quasi-static branch
-W_LULO, W_LUHI, W_LDLO, W_LDHI, W_UI, W_UJ = range(6)
-N_WIN = 6
+# per-STL configuration columns (win): noise bands (unlatched lo/hi, latched lo/hi, V_DS), the u values of
+# the latch-up fold (u_i) and latch-down fold (u_j) of the quasi-static branch, the noise look-ahead drive
+# (waveform index or -1, gain dV_DS/dw, mode 0: V_DS ~ w (benches) | 1: V_DS(t') ~ V_DS(t) + g (w(t') - w(t)))
+# and the cell's local-state configuration (mode 0/1/2, p index of the action point, sigma, tau, sigma_E, tau_E)
+W_LULO, W_LUHI, W_LDLO, W_LDHI, W_UI, W_UJ, W_LAW, W_LAG, W_LAMODE, \
+    W_LSMODE, W_LSIDX, W_LSSIG, W_LSTAU, W_LSESIG, W_LSETAU = range(15)
+N_WIN = 15
 # sample buffer: t, then per STL k: I_D (1 + 3k), v_DS (2 + 3k), reported latch state (3 + 3k)
 N_SAMPC = 3
 # partial derivative columns (part)
@@ -415,6 +422,8 @@ def sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, i
     nv = ci[CI_NV]
     ns = ci[CI_NS]
     n = x.shape[0]
+    if ns == 0:
+        return
     assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
              sD, sG, sS, ev, part, 0, qc0, np.zeros(ns), 0.0, J, f)
     B = np.zeros((n, ns))
@@ -622,8 +631,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
     stoch = ci[CI_STOCH] == 1
     carrier = stoch and ci[CI_CARRIER] == 1
     method = ci[CI_METHOD]
-    lsmode = ci[CI_LSMODE] if stoch else 0
-    lsidx = ci[CI_LSIDX]
+    lsmode = ci[CI_LSMODE] if stoch else 0      # > 0: some cell has local states (per-cell config in win)
     t_end = cf[CF_TEND]
     t_stop = min(sf[SF_TSTOP], t_end)
     dt_min = cf[CF_DTMIN]
@@ -671,8 +679,9 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
         P[k, 11] = _nv(x, sG[k]) - _nv(x, sS[k])
     sources_at(t, vW, iW, sW, wt, wv, woff, vval, ival, P, Pbase)
     for k in range(ns):
-        if lsmode > 0:
-            P[k, lsidx] = Pbase[k, lsidx] + ls[k, 0]
+        if lsmode > 0 and win[k, W_LSMODE] > 0.5:
+            ix = int(win[k, W_LSIDX])
+            P[k, ix] = Pbase[k, ix] + ls[k, 0]
             P[k, 10] = Pbase[k, 10] + ls[k, 1]
     eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev0)
     status = ST_DONE
@@ -712,14 +721,23 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                     blo = win[k, W_LULO]
                     bhi = win[k, W_LUHI]
                 outside = vdsk < blo or vdsk > bhi
-                if outside and mainw >= 0 and cf[CF_NLOOK] > 0 and tk < 1e29:
+                lw = int(win[k, W_LAW])
+                if outside and lw >= 0 and cf[CF_NLOOK] > 0 and tk < 1e29:
                     # look-ahead: resolve the noise already n_look relaxation times before the drive
                     # enters the band, so the stationary fluctuation is built up on fast ramps / edges
                     tl = t + cf[CF_NLOOK] * tk
-                    if latk:
-                        outside = not wave_reaches(mainw, t, tl, bhi, False, wt, wv, woff)
+                    if win[k, W_LAMODE] < 0.5:
+                        # benches: the drive waveform is the cell's V_DS (series R, grounded source)
+                        if latk:
+                            outside = not wave_reaches(lw, t, tl, bhi, False, wt, wv, woff)
+                        else:
+                            outside = not wave_reaches(lw, t, tl, blo, True, wt, wv, woff)
                     else:
-                        outside = not wave_reaches(mainw, t, tl, blo, True, wt, wv, woff)
+                        # general circuit: V_DS(t') ~ V_DS(t) + g (w(t') - w(t)), g = dV_DS/dw (linear network)
+                        gk = win[k, W_LAG]
+                        if gk != 0.0 and np.isfinite(gk):
+                            lev = wave_value(lw, t, wt, wv, woff) + ((bhi if latk else blo) - vdsk) / gk
+                            outside = not wave_reaches(lw, t, tl, lev, (gk > 0.0) != latk, wt, wv, woff)
                 if outside:
                     # outside the noise band (barrier > noise_z_max SDs or monostable): drift only
                     reg[k] = 5
@@ -765,20 +783,22 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
         for att in range(40):
             t1 = t + h
             sources_at(t1, vW, iW, sW, wt, wv, woff, vval, ival, P, Pbase)
-            if lsmode == 2:
-                for k in range(ns):
-                    a = np.exp(-h / cf[CF_LSTAU]) if cf[CF_LSTAU] > 0 else 0.0
-                    ls_new[k, 0] = ls[k, 0] * a + cf[CF_LSSIG] * np.sqrt(max(1.0 - a * a, 0.0)) * np.random.normal()
-                    a2 = np.exp(-h / cf[CF_LSETAU]) if cf[CF_LSETAU] > 0 else 0.0
-                    ls_new[k, 1] = ls[k, 1] * a2 + cf[CF_LSESIG] * np.sqrt(max(1.0 - a2 * a2, 0.0)) * np.random.normal()
-            else:
-                for k in range(ns):
+            for k in range(ns):
+                if lsmode > 0 and win[k, W_LSMODE] > 1.5:
+                    # evolving local states: Ornstein-Uhlenbeck step (per-cell sigma / tau)
+                    a = np.exp(-h / win[k, W_LSTAU]) if win[k, W_LSTAU] > 0 else 0.0
+                    ls_new[k, 0] = ls[k, 0] * a + win[k, W_LSSIG] * np.sqrt(max(1.0 - a * a, 0.0)) * np.random.normal()
+                    a2 = np.exp(-h / win[k, W_LSETAU]) if win[k, W_LSETAU] > 0 else 0.0
+                    ls_new[k, 1] = ls[k, 1] * a2 + win[k, W_LSESIG] * np.sqrt(max(1.0 - a2 * a2, 0.0)) * np.random.normal()
+                else:
                     ls_new[k, 0] = ls[k, 0]
                     ls_new[k, 1] = ls[k, 1]
             if lsmode > 0:
                 for k in range(ns):
-                    P[k, lsidx] = Pbase[k, lsidx] + ls_new[k, 0]
-                    P[k, 10] = Pbase[k, 10] + ls_new[k, 1]
+                    if win[k, W_LSMODE] > 0.5:
+                        ix = int(win[k, W_LSIDX])
+                        P[k, ix] = Pbase[k, ix] + ls_new[k, 0]
+                        P[k, 10] = Pbase[k, 10] + ls_new[k, 1]
             # charge-equation mode for this step (per element)
             use_trap = False
             if carrier:
@@ -872,6 +892,17 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                 qu = abs(part[k, P_QU])
                 ltek = 0.5 * h * abs(ev[k, 2] - ev0[k, 2]) / qu if qu > 0 else 0.0
                 err = max(err, duk / du_max, dlk / dlni_max, ltek / lte_u)
+            if (cf[CF_LTEV] > 0.0 and not carrier and lsmode != 2 and si[SI_HAVEPREV] == 1
+                    and sf[SF_HPREV] > 0.0):
+                # node-voltage LTE (custom circuits): BE-order estimate from the linear-extrapolation predictor
+                hp = sf[SF_HPREV]
+                wl = h / (h + hp)
+                for i in range(nn - 1):
+                    pred = x[i] + (x[i] - xp[i]) * (h / hp)
+                    tolv = cf[CF_LTEV] * max(abs(x0[i]), abs(x[i])) + cf[CF_LTEVABS]
+                    ev_ = abs(x0[i] - pred) * wl / tolv
+                    if ev_ > err:
+                        err = ev_
             if err > 1.5 and h > dt_min * 1.01:
                 si[SI_DIAG + 3 * sreg + 2] += 1
                 si[SI_REJ] += 1
@@ -896,7 +927,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             # regime times are cell-averaged (h / n_cells per cell), so they add up to at most t
             f3 = False
             f2 = False
-            hc = h / ns
+            hc = h / ns if ns > 0 else 0.0
             for k in range(ns):
                 if reg[k] == 3:
                     f3 = True
@@ -1052,6 +1083,10 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                 c += 7
                 ss[k, SS_VDS_REC] = _nv(x, sD[k]) - _nv(x, sS[k])
                 ss[k, SS_LNI_REC] = np.log(abs(ev[k, 1]) + i_floor)
+            for e in range(nc):
+                # capacitor current a -> b of the accepted step (companion current of the integration formula)
+                rec[j, c] = cI[e]
+                c += 1
             si[SI_NREC] = j + 1
             sf[SF_TREC] = t
         for k in range(ns):
@@ -1097,8 +1132,10 @@ def init_state(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG
     sources_at(t0, vW, iW, sW, wt, wv, woff, vval, ival, P, Pbase)
     if ci[CI_STOCH] == 1 and ci[CI_LSMODE] > 0:
         for k in range(ns):
-            P[k, ci[CI_LSIDX]] = Pbase[k, ci[CI_LSIDX]] + ls[k, 0]
-            P[k, 10] = Pbase[k, 10] + ls[k, 1]
+            if win[k, W_LSMODE] > 0.5:
+                ix = int(win[k, W_LSIDX])
+                P[k, ix] = Pbase[k, ix] + ls[k, 0]
+                P[k, 10] = Pbase[k, 10] + ls[k, 1]
     if not eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev):
         return False
     if not fd_partials(x, ci, P, na, vbi, rg, fg, table, ev, part, tmp):

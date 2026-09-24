@@ -47,6 +47,8 @@ class SolverConfig:
     newton_tol: float = 1e-7
     ld_noise: bool = False
     noise_lookahead: float = 4.0    # stochastic: noise on n relaxation times before the drive enters a band
+    lte_v: float = 0.0              # node-voltage LTE control (custom circuits): relative factor, 0 = off
+    lte_v_abs: float = 0.0          # absolute part of the node-voltage LTE tolerance (V)
 
     def arrays(self, net: dict, t_end: float, main_wave: int, main_stl: int = 0):
         ci = np.zeros(K.N_CI, np.int64)
@@ -95,12 +97,14 @@ class SolverConfig:
         cf[K.CF_GTAUMIN] = self.gauss_tau_min
         cf[K.CF_GTAUFRAC] = self.gauss_tau_frac
         cf[K.CF_NLOOK] = self.noise_lookahead
+        cf[K.CF_LTEV] = self.lte_v
+        cf[K.CF_LTEVABS] = self.lte_v_abs
         return ci, cf
 
 
 @dataclass
 class RunOutput:
-    rec: np.ndarray                 # (n, 1 + (N-1) + nV + 7 nS) decimated recording
+    rec: np.ndarray                 # (n, 1 + (N-1) + nV + 7 nS + nC) decimated recording (empty with rec_sink)
     events: np.ndarray              # (n, 6) kind, stl, t, v_ds, v_src, I
     samples: np.ndarray             # (n_samp, 1 + 3 nS) t, (I_D, v_ds, reported latch flag) per STL; NaN = not reached
     steps: int
@@ -132,11 +136,16 @@ def _tables():
 
 
 def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wave: int, seed: int,
-             ls_init: np.ndarray | None = None, progress=None, window: np.ndarray | None = None) -> RunOutput:
+             ls_init: np.ndarray | None = None, progress=None, window: np.ndarray | None = None,
+             rec_sink=None) -> RunOutput:
     """One transient run.  ``progress(fraction_of_run)`` is called between chunks (it may raise
-    JobCancelled).  ``window`` (n_STL x 4 or x 6): noise bands (lu_lo, lu_hi, ld_lo, ld_hi) and
-    optionally the fold u values (u_i, u_j) of the physical latch state; missing fold u values are
-    computed from each element's quasi-static branch (``stochastic.fold_u``)."""
+    JobCancelled).  ``window`` (n_STL x 4, 6, 9 or 15 columns, see ``mna.W_*``): noise bands (lu_lo,
+    lu_hi, ld_lo, ld_hi), optionally the fold u values (u_i, u_j) of the physical latch state (missing:
+    computed from each element's quasi-static branch, ``stochastic.fold_u``), the noise look-ahead drive
+    (wave, gain, mode; default: ``main_wave``, 1, 0 = the benches) and the per-cell local-state
+    configuration (default: the global ``cfg`` values for every cell).
+    ``rec_sink(rows, events)``: when given, every flushed block of recorded rows (and the latch events
+    of that block) is passed to it instead of being accumulated (``RunOutput.rec`` is then empty)."""
     tic = time.perf_counter()
     na, vbi, rg, fg, table, rv, pmf = _tables()
     ci, cf = cfg.arrays(net, t_end, main_wave)
@@ -158,7 +167,7 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
     cI = np.zeros(nc)
     sf = np.zeros(K.N_SF)
     si = np.zeros(K.N_SI, np.int64)
-    W = 1 + (nn - 1) + nv + 7 * ns
+    W = 1 + (nn - 1) + nv + 7 * ns + nc
     rec = np.zeros((REC_CAP, W))
     evb = np.zeros((EV_CAP, K.N_EVC))
     nsamp = len(net["samp"])
@@ -170,19 +179,34 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
     wk = None if window is None else np.asarray(window, float).reshape(ns, -1)
     if wk is not None:
         win[:, :4] = wk[:, :4]
-    if wk is not None and wk.shape[1] >= K.N_WIN:
-        win[:, 4:] = wk[:, 4:K.N_WIN]
+    if wk is not None and wk.shape[1] >= 6:
+        win[:, 4:6] = wk[:, 4:6]
     else:
         from .stochastic import fold_u
         for k in range(ns):
             win[k, K.W_UI], win[k, K.W_UJ] = fold_u(P[k])
+    win[:, K.W_LAW] = main_wave
+    win[:, K.W_LAG] = 1.0
+    win[:, K.W_LAMODE] = 0.0
+    if wk is not None and wk.shape[1] >= 9:
+        win[:, 6:9] = wk[:, 6:9]
+    win[:, K.W_LSMODE] = cfg.ls_mode
+    win[:, K.W_LSIDX] = cfg.ls_idx
+    win[:, K.W_LSSIG] = cfg.ls_sigma
+    win[:, K.W_LSTAU] = cfg.ls_tau
+    win[:, K.W_LSESIG] = cfg.lsE_sigma
+    win[:, K.W_LSETAU] = cfg.lsE_tau
+    if wk is not None and wk.shape[1] >= K.N_WIN:
+        win[:, 9:K.N_WIN] = wk[:, 9:K.N_WIN]
     K.seed_rng(int(seed) % (2 ** 32 - 1))
     # local states enter p before the DC point
     Pdc = P.copy()
     if cfg.stochastic and cfg.ls_mode > 0:
         for k in range(ns):
-            Pdc[k, cfg.ls_idx] = Pbase[k, cfg.ls_idx] + ls[k, 0]
-            Pdc[k, 10] = Pbase[k, 10] + ls[k, 1]
+            if win[k, K.W_LSMODE] > 0.5:
+                ix = int(win[k, K.W_LSIDX])
+                Pdc[k, ix] = Pbase[k, ix] + ls[k, 0]
+                Pdc[k, 10] = Pbase[k, 10] + ls[k, 1]
     ok = K.dc_op(x, ci, cf, a["rA"], a["rB"], a["rG"], a["cA"], a["cB"], a["cC"], a["vA"], a["vB"], a["vW"],
                  a["iA"], a["iB"], a["iW"], a["sD"], a["sG"], a["sS"], a["sW"], a["wt"], a["wv"], a["woff"],
                  Pdc, Pbase if not (cfg.stochastic and cfg.ls_mode > 0) else Pdc, na, vbi, rg, fg, table,
@@ -217,7 +241,11 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
         stl_eval(x[ku], x[ku + 1], P[k], na, vbi, rg, fg, table, ev0)
         row[c:c + 7] = [x[ku], x[ku + 1], ev0[3], ev0[1], ev0[2], ls[k, 0], ls[k, 1]]
         c += 7
-    recs.append(row[None, :].copy())
+    row[c:c + nc] = 0.0                          # capacitor currents at the DC operating point
+    if rec_sink is not None:
+        rec_sink(row[None, :].copy(), np.zeros((0, K.N_EVC)))
+    else:
+        recs.append(row[None, :].copy())
     warnings: list[str] = []
     while True:
         sf[K.SF_TSTOP] = t_end
@@ -226,10 +254,13 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
                              a["woff"], a["bp"], a["samp"] if nsamp else np.zeros(0), P, Pbase, na, vbi, rg, fg, table,
                              rv, pmf, ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win)
         nr = int(si[K.SI_NREC])
-        if nr:
-            recs.append(rec[:nr].copy())
-            si[K.SI_NREC] = 0
         ne = int(si[K.SI_NEV])
+        if rec_sink is not None:
+            if nr or ne:
+                rec_sink(rec[:nr].copy(), evb[:ne].copy())
+        elif nr:
+            recs.append(rec[:nr].copy())
+        si[K.SI_NREC] = 0
         if ne:
             evs.append(evb[:ne].copy())
             si[K.SI_NEV] = 0
