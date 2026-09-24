@@ -94,8 +94,9 @@ test.describe("STL simulator (mock mode)", () => {
     await page.mouse.move(hb.x + 60 - 150, hb.y + 20 + 60, { steps: 6 });
     await page.mouse.up();
     const box2 = (await win.boundingBox())!;
-    expect(Math.round(box2.x)).toBe(Math.round(box!.x - 150));
-    expect(Math.round(box2.y)).toBe(Math.round(box!.y + 60));
+    // sub-pixel layout rounding: allow ±2 px
+    expect(Math.abs(box2.x - (box!.x - 150))).toBeLessThanOrEqual(2);
+    expect(Math.abs(box2.y - (box!.y + 60))).toBeLessThanOrEqual(2);
     // related topic replaces the content, back restores it
     const title1 = await win.getByRole("heading", { level: 2 }).textContent();
     const related = win.locator("[data-testid^=related-]").first();
