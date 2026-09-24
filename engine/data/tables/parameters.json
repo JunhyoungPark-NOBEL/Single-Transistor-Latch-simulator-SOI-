@@ -1,0 +1,82 @@
+{
+ "parameter_vector": [
+  7.166501201841884,
+  9.266283807625294e-07,
+  5.358373401760838e-09,
+  1.0000000009063326,
+  28.754392875051614,
+  3.312683950426714,
+  1.0002399957771266e+17,
+  70.0,
+  117.42471623552643,
+  0.0002721229842976664,
+  5.908461490149247e-05,
+  -2.0,
+  1.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  1.0,
+  0.0,
+  0.0,
+  0.0,
+  2e-11,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "indices": {
+  "0": "beta (diffusion ratio)",
+  "1": "tau_bulk_s",
+  "2": "tau_junction_s",
+  "3": "Rcontact_ohm",
+  "4": "lGIDL_nm",
+  "5": "t_access_nm",
+  "6": "NA_access_cm3",
+  "7": "L_access_nm",
+  "8": "tau_p/tau_n",
+  "9": "phi_gidl mean offset (V)",
+  "10": "phi_emitter mean offset (V)",
+  "11": "VG (V)",
+  "12": "channel II scale",
+  "13": "I_PH (A)",
+  "14": "DIBL eta (V/V)",
+  "15": "body-to-channel gamma",
+  "16": "slope kappa (1/V)",
+  "17": "high-VD channel seed I_p at VG=-1.8 V (A)",
+  "18": "its slope S (V/dec)",
+  "19": "junction potential offset (V)",
+  "20": "log scale of (M-1)",
+  "21": "local avalanche strength",
+  "22": "local path saturation (A)",
+  "23": "local path log fluctuation",
+  "24": "local path carrier definition (0 edge incl. channel, 1 bulk, 2 edge excl. channel)",
+  "25": "kappaF (1/V)"
+ },
+ "NA_cm3": 2.295773162796593e+17,
+ "sigma_phi_G_V": 0.15339035678526572,
+ "sigma_phi_E_V": 0.00043696121025623943,
+ "kinetics": {
+  "fraction_slow": 5.561580619897564e-14,
+  "tau_fast_s": 1.6205564347468981,
+  "slow_tau_s": 1000.0,
+  "up_residual_tau_s": 5.0,
+  "training_voltage_V": [
+   3,
+   3.5
+  ],
+  "heldout_voltage_V": [
+   3.6,
+   4
+  ],
+  "heldout_covariance_RMSE": 3.772695384642759e-05,
+  "heldout_r_RMSE": 0.06904005279701557,
+  "static_heldout_r_RMSE": 0.8207239378803453,
+  "LD_event_derivatives": [
+   -0.00019900247405502114,
+   -41.165502338724735
+  ]
+ }
+}

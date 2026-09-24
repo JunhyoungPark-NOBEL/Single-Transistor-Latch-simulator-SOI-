@@ -1,0 +1,51 @@
+{
+  "source": "User clarification in this conversation, 2026-09-20",
+  "device": {
+    "gate_length_nm": 500,
+    "width_nm": 200,
+    "silicon_thickness_nm": 50,
+    "EOT_nm": 14.1,
+    "nominal_spacer_nm": 35,
+    "underlap": true,
+    "body_doping_search_cm3": [
+      1e+17,
+      1e+18
+    ]
+  },
+  "IDVG": {
+    "drain_voltage_V": 0.05,
+    "current_unit": "A",
+    "columns": [
+      "VG_V",
+      "trace_1_A",
+      "trace_2_A"
+    ],
+    "trace_direction_or_repeat_identity": "unconfirmed"
+  },
+  "IDVD": {
+    "gate_voltage_V": -2,
+    "back_gate_voltage_V": 0,
+    "current_unit": "A",
+    "up_duration_s_approx": 10,
+    "up_range_V": [
+      0,
+      4
+    ],
+    "nominal_step_V": 0.01,
+    "up_average_rate_V_per_s_approx": 0.4,
+    "up_point_period_s_approx": 0.025,
+    "hold_between_sweeps": "none per user",
+    "up_down_acquisition": "separate measurements; columns are not paired cycles",
+    "up_column_chronology": "confirmed chronological acquisition order by user",
+    "down_column_chronology": "not explicitly confirmed",
+    "down_duration_s": null,
+    "temperature_K": null
+  },
+  "TEM": "User supplied image copied unchanged as TEM_user_original.png; original 50 nm scale bar retained. No new dimensional extraction.",
+  "PDSOI": "user will provide later; defer measured capacitance comparison",
+  "Cumulative_curve": "separate file not identified; empirical CDF can be derived from the supplied 100-cycle traces",
+  "trap_hypothesis": "candidate explanation only, not a mandatory assumption or proven mechanism",
+  "gate_material_user_confirmed": "n+ poly-Si",
+  "gate_work_function": "Unknown; user has no value",
+  "mean_fit_acceptance_user": "User accepts approximately25% high-voltage LRS residual as a reasonable starting point, and prohibits implausible added physics solely to improve fit."
+}

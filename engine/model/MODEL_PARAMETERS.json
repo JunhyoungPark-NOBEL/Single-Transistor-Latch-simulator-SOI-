@@ -1,0 +1,45 @@
+{
+  "mean_source": "joint_model/refit_3.json",
+  "NA_cm3": 2.295773162796593e+17,
+  "mean_parameters": {
+    "beta_diff_ref": 7.166501201841884,
+    "tau_bulk_s": 9.266283807625294e-07,
+    "tau_junction_s": 5.358373401760838e-09,
+    "Rcontact_ohm": 1.0000000009063326,
+    "effective_GIDL_field_length_nm": 28.754392875051614,
+    "access_thickness_nm": 3.312683950426714,
+    "access_NA_cm3": 1.0002399957771266e+17,
+    "access_length_nm": 70.0,
+    "SRH_tau_p_over_tau_n": 117.42471623552643
+  },
+  "local_state_parameters": {
+    "mean_GIDL_phi_V": 0.0002721229842976664,
+    "mean_emitter_phi_mV": 0.059084614901492465,
+    "SD_GIDL_phi_V": 0.15339035678526572,
+    "SD_emitter_phi_mV": 0.4369612102562394
+  },
+  "kinetic_fit": {
+    "fraction_slow": 5.561580619897564e-14,
+    "tau_fast_s": 1.6205564347468981,
+    "slow_tau_s": 1000.0,
+    "up_residual_tau_s": 5.0,
+    "training_voltage_V": [
+      3,
+      3.5
+    ],
+    "heldout_voltage_V": [
+      3.6,
+      4
+    ],
+    "heldout_covariance_RMSE": 3.772695384642759e-05,
+    "heldout_r_RMSE": 0.06904005279701557,
+    "static_heldout_r_RMSE": 0.8207239378803453,
+    "LD_event_derivatives": [
+      -0.00019900247405502114,
+      -41.165502338724735
+    ]
+  },
+  "default_VG_V": -2.0,
+  "default_channel_II_scale": 1.0,
+  "scope": "Conditional fit for one high-C2C device. Effective GIDL field length is not the hotspot length in the design map. Use source JSON for the full fitting protocol."
+}
