@@ -38,20 +38,25 @@ FD_R = 1e-6           # V, finite-difference step in r
 
 # ---- integer config (ci) -----------------------------------------------------------------
 CI_NN, CI_NV, CI_NR, CI_NC, CI_NI, CI_NS, CI_METHOD, CI_STOCH, CI_CARRIER, CI_MAXSTEPS, \
-    CI_MAINW, CI_LSMODE, CI_LSIDX, CI_CHUNK, CI_MAIN_STL = range(15)
-N_CI = 15
+    CI_MAINW, CI_LSMODE, CI_LSIDX, CI_CHUNK, CI_MAIN_STL, CI_LDNOISE = range(16)
+N_CI = 16
 # ---- float config (cf) -------------------------------------------------------------------
 CF_TEND, CF_DTMIN, CF_DTMAX, CF_DUMAX, CF_DLNIMAX, CF_DVMAX, CF_LTEU, CF_TAUFRAC, CF_NEVMAX, \
     CF_HNOISEMIN, CF_GAUSS, CF_ITH, CF_IFLOOR, CF_DTREC, CF_DVREC, CF_DLNIREC, CF_LSSIG, CF_LSTAU, \
-    CF_LSESIG, CF_LSETAU, CF_HINIT, CF_NEWTOL, CF_ITHDN, CF_GTAUMIN, CF_GTAUFRAC = range(25)
-N_CF = 25
+    CF_LSESIG, CF_LSETAU, CF_HINIT, CF_NEWTOL, CF_ITHDN, CF_GTAUMIN, CF_GTAUFRAC, CF_MONOFRAC = range(26)
+N_CF = 26
 # ---- float state (sf) --------------------------------------------------------------------
-SF_T, SF_HNEXT, SF_HPREV, SF_TREC, SF_TUNRES, SF_MINU, SF_MINR, SF_TNEGU, SF_TNEGR, SF_TSTOP, SF_TGAUSS = range(11)
-N_SF = 11
+SF_T, SF_HNEXT, SF_HPREV, SF_TREC, SF_TUNRES, SF_MINU, SF_MINR, SF_TNEGU, SF_TNEGR, SF_TSTOP, SF_TGAUSS, \
+    SF_TLRS = range(12)
+N_SF = 12
 # ---- int state (si) ----------------------------------------------------------------------
 SI_STEPS, SI_REJ, SI_NEWT, SI_BP, SI_NEV, SI_NREC, SI_NSAMP, SI_STATUS, SI_UNRES, SI_TRAPBE, \
     SI_REFRESH, SI_HAVEPREV, SI_FAILNEWTON, SI_CHUNKSTEPS, SI_GAUSS = range(15)
-N_SI = 15
+SI_DIAG = 15          # 15 + 3*regime + (0 steps, 1 newton iterations, 2 rejections), regime 0..4
+N_SI = 30
+# per-step regime of the charge update (stochastic mode): 1 event-level explicit tau-leap,
+# 2 Gaussian drift-implicit (variance-corrected), 3 drift only (noise-active but relaxation too fast),
+# 4 drift only (latched cell, ld_carrier_noise off); 0 = deterministic
 # status codes
 ST_DONE, ST_CHUNK, ST_FAIL, ST_MAXSTEPS, ST_BUFFER = 0, 1, 2, 3, 4
 # per-STL state columns (ss)
@@ -148,7 +153,7 @@ def fd_partials(x, ci, P, na, vbi, rg, fg, table, ev, part, tmp):
 
 @njit(cache=True)
 def assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-             sD, sG, sS, ev, part, emode, qc, th, h, J, f):
+             sD, sG, sS, ev, part, emode, qc, tha, h, J, f):
     """Residual f(x) and Jacobian J.  emode 0: charge equation, 1: u fixed at qc[k]."""
     nn = ci[CI_NN]
     nv = ci[CI_NV]
@@ -234,6 +239,7 @@ def assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
         if s > 0:
             J[ku, s - 1] += 1.0
         if emode == 0:
+            th = tha[k]
             f[kr] = (ev[k, 3] - qc[k] - th * h * ev[k, 2]) / COX
             J[kr, ku] = (part[k, P_QU] - th * h * part[k, P_FU]) / COX
             J[kr, kr] = (part[k, P_QR] - th * h * part[k, P_FR]) / COX
@@ -244,7 +250,7 @@ def assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
 
 @njit(cache=True)
 def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-           sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, emode, qc, th, h,
+           sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, emode, qc, tha, h,
            refresh, maxit, J, f, xt, evt):
     """Solve the nonlinear system at one time point in place (x, ev, part).
     Returns (converged, iterations)."""
@@ -261,7 +267,7 @@ def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival
             if not fd_partials(x, ci, P, na, vbi, rg, fg, table, ev, part, tmp):
                 return False, it + 1
         assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                 sD, sG, sS, ev, part, emode, qc, th, h, J, f)
+                 sD, sG, sS, ev, part, emode, qc, tha, h, J, f)
         for i in range(n):
             if not np.isfinite(f[i]):
                 return False, it + 1
@@ -357,7 +363,7 @@ def sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, i
     ns = ci[CI_NS]
     n = x.shape[0]
     assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-             sD, sG, sS, ev, part, 0, qc0, 0.0, 0.0, J, f)
+             sD, sG, sS, ev, part, 0, qc0, np.zeros(ns), 0.0, J, f)
     B = np.zeros((n, ns))
     for k in range(ns):
         B[nn - 1 + nv + 2 * k + 1, k] = 1.0 / COX
@@ -369,8 +375,10 @@ def sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, i
         dfdq = part[k, P_FU] * S[ku, k] + part[k, P_FR] * S[ku + 1, k]
         if dfdq != 0.0 and np.isfinite(dfdq):
             ss[k, SS_TAU] = 1.0 / abs(dfdq)
+            ss[k, SS_DQ] = dfdq
         else:
             ss[k, SS_TAU] = 1e30
+            ss[k, SS_DQ] = 0.0
 
 
 @njit(cache=True)
@@ -479,7 +487,7 @@ def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS,
     for k in range(ns):
         qc[k] = 0.0
     ok, it = newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                    sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 1, qc, 0.0, 0.0,
+                    sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 1, qc, np.ones(ns), 0.0,
                     True, 60, J, f, xt, evt)
     if not ok:
         return False
@@ -493,7 +501,7 @@ def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS,
     for itr in range(600):
         cap_companion(ci, 0, h, cA, cB, cC, cv, cI, cGeq, cIeq)
         ok, it = newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                        sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 0, qc, 1.0, h,
+                        sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 0, qc, np.ones(ns), h,
                         True, 40, J, f, xt, evt)
         if not ok:
             for i in range(n):
@@ -523,7 +531,7 @@ def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS,
 @njit(cache=True)
 def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS, sW,
               wt, wv, woff, bp, samp, P, Pbase, na, vbi, rg, fg, table, rv, pmf,
-              ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf):
+              ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win):
     """Advance the transient from sf[SF_T] to sf[SF_TSTOP] (or until a budget is hit).
     All state is kept in the arrays; returns the status code (also stored in si[SI_STATUS])."""
     nn = ci[CI_NN]
@@ -571,6 +579,9 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
     dq = np.zeros(ns)
     ls_new = np.zeros((ns, 2))
     pk = np.zeros(pmf.shape[1])
+    reg = np.zeros(ns, np.int64)
+    tha = np.ones(ns)
+    ldnoise = ci[CI_LDNOISE] == 1
     si[SI_CHUNKSTEPS] = 0
     t = sf[SF_T]
     # current element outputs at the accepted state
@@ -600,31 +611,36 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
         while si[SI_BP] < nb and bp[si[SI_BP]] <= t + 1e-12 * max(1e-9, abs(t)):
             si[SI_BP] += 1
         h = min(sf[SF_HNEXT], dt_max)
-        resolved = False
-        regime = 0
+        sreg = 0
         if carrier:
-            taumin = 1e300
-            rate_max = 0.0
-            hdrift = 1e300
+            sreg = 4
             for k in range(ns):
-                taumin = min(taumin, ss[k, SS_TAU])
-                rate_max = max(rate_max, total_event_rate(ss[k, SS_UNIT], ss[k, SS_G], ss[k, SS_L],
-                                                         ss[k, SS_R], rv, pmf, pk))
-                fk = abs(ss[k, SS_FN])
-                if fk > 0.0:
-                    hdrift = min(hdrift, du_max * abs(part[k, P_QU]) / fk)
-            if tau_frac * taumin >= h_noise_min:
-                resolved = True
-                regime = 1
-                h = min(h, tau_frac * taumin, hdrift)
-                if rate_max > 0.0:
-                    h = min(h, nev_max / rate_max)
-            elif taumin >= cf[CF_GTAUMIN]:
-                resolved = True
-                regime = 2
-                h = min(h, cf[CF_GTAUFRAC] * taumin, hdrift)
-            else:
-                regime = 3
+                reg[k] = 4
+                if not (ldnoise or ss[k, SS_LAT] < 0.5):
+                    continue
+                tk = ss[k, SS_TAU]
+                vdsk = _nv(x, sD[k]) - _nv(x, sS[k])
+                if cf[CF_MONOFRAC] > 0.0 and (vdsk < win[k, 0] or vdsk > win[k, 1]):
+                    # outside the bistable window: monostable, no escape possible -> Gaussian tier
+                    # with h <= mono_tau_frac * tau (stationary variance still exact)
+                    reg[k] = 2
+                    h = min(h, cf[CF_MONOFRAC] * tk)
+                elif tau_frac * tk >= h_noise_min:
+                    reg[k] = 1
+                    h = min(h, tau_frac * tk)
+                    rate = total_event_rate(ss[k, SS_UNIT], ss[k, SS_G], ss[k, SS_L], ss[k, SS_R], rv, pmf, pk)
+                    if rate > 0.0:
+                        h = min(h, nev_max / rate)
+                elif tk >= cf[CF_GTAUMIN]:
+                    reg[k] = 2
+                    h = min(h, cf[CF_GTAUFRAC] * tk)
+                else:
+                    reg[k] = 3
+                if reg[k] <= 2:
+                    fk = abs(ss[k, SS_FN])
+                    if fk > 0.0:
+                        h = min(h, du_max * abs(part[k, P_QU]) / fk)
+                sreg = min(sreg, reg[k])
         hit = False
         if si[SI_BP] < nb:
             tb = bp[si[SI_BP]]
@@ -644,8 +660,8 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
         # ---- attempts ------------------------------------------------------------------
         accepted = False
         err = 0.0
-        th = 1.0
         use_trap = False
+        iters = 0
         for att in range(40):
             t1 = t + h
             sources_at(t1, vW, iW, sW, wt, wv, woff, vval, ival, P, Pbase)
@@ -663,27 +679,25 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                 for k in range(ns):
                     P[k, lsidx] = Pbase[k, lsidx] + ls_new[k, 0]
                     P[k, 10] = Pbase[k, 10] + ls_new[k, 1]
-            # charge-equation mode for this step
+            # charge-equation mode for this step (per element)
             use_trap = False
             if carrier:
-                if regime == 1:
-                    th = 0.0
-                    for k in range(ns):
+                for k in range(ns):
+                    if reg[k] == 1:
+                        # event-level explicit tau-leap (Eq. 2): Q_{n+1} = Q_n + q (N_unit + sum k_i - N_loss)
+                        tha[k] = 0.0
                         dq[k] = draw_dq(h, ss[k, SS_UNIT], ss[k, SS_G], ss[k, SS_L], ss[k, SS_R], rv, pmf, pk, gth)
                         qc[k] = ss[k, SS_QN] + dq[k]
-                elif regime == 2:
-                    # Gaussian limit, drift-implicit, variance-corrected (exact stationary variance
-                    # of the linearised OU process for any h/tau): eta ~ N(0, D h (1 + h/(2 tau)))
-                    th = 1.0
-                    for k in range(ns):
+                    elif reg[k] == 2:
+                        # Gaussian limit, drift-implicit, variance-corrected (exact stationary variance
+                        # of the linearised OU process): eta ~ N(0, D h (1 + h/(2 tau)))
+                        tha[k] = 1.0
                         dvar = noise_var_rate(ss[k, SS_UNIT], ss[k, SS_G], ss[k, SS_L], ss[k, SS_R], rv, pmf, pk)
-                        tk = ss[k, SS_TAU]
-                        dq[k] = np.sqrt(dvar * h * (1.0 + 0.5 * h / tk)) * np.random.normal()
+                        dq[k] = np.sqrt(dvar * h * (1.0 + 0.5 * h / ss[k, SS_TAU])) * np.random.normal()
                         qc[k] = ss[k, SS_QN] + dq[k]
-                else:
-                    # fast-relaxing state (tau_frac*tau_rel < noise_dt_min): drift only (implicit BE)
-                    th = 1.0
-                    for k in range(ns):
+                    else:
+                        # drift only (implicit BE)
+                        tha[k] = 1.0
                         qc[k] = ss[k, SS_QN]
                 cap_companion(ci, 0, h, cA, cB, cC, cv, cI, cGeq, cIeq)
             else:
@@ -692,22 +706,27 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                     taumin = min(taumin, ss[k, SS_TAU])
                 if method == 1 and h < 2.0 * taumin:
                     use_trap = True
-                    th = 0.5
                     for k in range(ns):
+                        tha[k] = 0.5
                         qc[k] = ss[k, SS_QN] + 0.5 * h * ss[k, SS_FN]
                     cap_companion(ci, 1, h, cA, cB, cC, cv, cI, cGeq, cIeq)
                 else:
-                    th = 1.0
                     for k in range(ns):
+                        tha[k] = 1.0
                         qc[k] = ss[k, SS_QN]
                     cap_companion(ci, 0, h, cA, cB, cC, cv, cI, cGeq, cIeq)
             # predictor
             for i in range(n):
                 x0[i] = x[i]
-            if carrier and resolved:
+            if carrier:
+                # linear response of the charge-fixed solution: dQ = (Qc - Q_n + th h F_n)/(1 - th h dF/dQ)
                 for k in range(ns):
+                    den = 1.0 - tha[k] * h * ss[k, SS_DQ]
+                    if den < 0.2:
+                        den = 0.2
+                    dqp = (qc[k] - ss[k, SS_QN] + tha[k] * h * ss[k, SS_FN]) / den
                     for i in range(n):
-                        x0[i] += sens[k, i] * (qc[k] - ss[k, SS_QN] + th * h * ss[k, SS_FN])
+                        x0[i] += sens[k, i] * dqp
             elif si[SI_HAVEPREV] == 1 and sf[SF_HPREV] > 0:
                 ratio = h / sf[SF_HPREV]
                 for i in range(n):
@@ -721,10 +740,12 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                     x0[ku] = x[ku] - 0.02
             refresh = si[SI_REFRESH] == 1 or att > 0
             ok, iters = newton(x0, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                               sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 0, qc, th, h,
+                               sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 0, qc, tha, h,
                                refresh, 14, J, f, xt, evt)
             si[SI_NEWT] += iters
+            si[SI_DIAG + 3 * sreg + 1] += iters
             if not ok:
+                si[SI_DIAG + 3 * sreg + 2] += 1
                 si[SI_REJ] += 1
                 si[SI_FAILNEWTON] += 1
                 si[SI_REFRESH] = 1
@@ -734,27 +755,24 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                     break
                 continue
             # ---- error control ---------------------------------------------------------
-            du = 0.0
-            dl = 0.0
-            lte = 0.0
-            for k in range(ns):
-                ku = nn - 1 + nv + 2 * k
-                du = max(du, abs(x0[ku] - x[ku]))
-                dl = max(dl, abs(np.log(abs(ev[k, 1]) + i_floor) - np.log(abs(ev0[k, 1]) + i_floor)))
-                qu = abs(part[k, P_QU])
-                if qu > 0:
-                    lte = max(lte, 0.5 * h * abs(ev[k, 2] - ev0[k, 2]) / qu)
             dvm = 0.0
             for i in range(nn - 1):
                 dvm = max(dvm, abs(x0[i] - x[i]))
-            if carrier and resolved:
-                err = dvm / dv_max
-                hard = du > 20.0 * du_max
-                if hard:
-                    err = 10.0
-            else:
-                err = max(du / du_max, dl / dlni_max, dvm / dv_max, lte / lte_u)
+            err = dvm / dv_max
+            for k in range(ns):
+                ku = nn - 1 + nv + 2 * k
+                duk = abs(x0[ku] - x[ku])
+                if carrier and reg[k] <= 2:
+                    # noise-driven moves are not step-controlled (a priori step rules instead)
+                    if duk > 20.0 * du_max:
+                        err = max(err, 10.0)
+                    continue
+                dlk = abs(np.log(abs(ev[k, 1]) + i_floor) - np.log(abs(ev0[k, 1]) + i_floor))
+                qu = abs(part[k, P_QU])
+                ltek = 0.5 * h * abs(ev[k, 2] - ev0[k, 2]) / qu if qu > 0 else 0.0
+                err = max(err, duk / du_max, dlk / dlni_max, ltek / lte_u)
             if err > 1.5 and h > dt_min * 1.01:
+                si[SI_DIAG + 3 * sreg + 2] += 1
                 si[SI_REJ] += 1
                 h = max(h * max(0.1, 0.7 / err), dt_min)
                 hit = False
@@ -769,15 +787,29 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
         t = t + h
         sf[SF_T] = t
         si[SI_STEPS] += 1
+        si[SI_DIAG + 3 * sreg] += 1
         si[SI_CHUNKSTEPS] += 1
         if method == 1 and not carrier and not use_trap:
             si[SI_TRAPBE] += 1
-        if carrier and regime == 3:
-            si[SI_UNRES] += 1
-            sf[SF_TUNRES] += h
-        if carrier and regime == 2:
-            si[SI_GAUSS] += 1
-            sf[SF_TGAUSS] += h
+        if carrier:
+            f3 = False
+            f2 = False
+            f4 = False
+            for k in range(ns):
+                if reg[k] == 3:
+                    f3 = True
+                elif reg[k] == 2:
+                    f2 = True
+                elif reg[k] == 4:
+                    f4 = True
+            if f3:
+                si[SI_UNRES] += 1
+                sf[SF_TUNRES] += h
+            if f2:
+                si[SI_GAUSS] += 1
+                sf[SF_TGAUSS] += h
+            if f4:
+                sf[SF_TLRS] += h
         # capacitor state
         for e in range(nc):
             vnew = _nv(x0, cA[e]) - _nv(x0, cB[e])
@@ -793,7 +825,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             ls[k, 1] = ls_new[k, 1]
         # refresh partials for the next step if the state moved a lot
         si[SI_REFRESH] = 1 if (err > 0.3 or iters > 2) else 0
-        if carrier and resolved:
+        if carrier and sreg <= 2:
             si[SI_REFRESH] = 1 if iters > 2 else 0
         # per-element state
         for k in range(ns):

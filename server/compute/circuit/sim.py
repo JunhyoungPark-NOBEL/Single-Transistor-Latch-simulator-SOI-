@@ -45,6 +45,8 @@ class SolverConfig:
     lsE_tau: float = 1.0
     h_init: float = 1e-9
     newton_tol: float = 1e-7
+    ld_noise: bool = False
+    mono_tau_frac: float = 20.0
 
     def arrays(self, net: dict, t_end: float, main_wave: int, main_stl: int = 0):
         ci = np.zeros(K.N_CI, np.int64)
@@ -63,6 +65,7 @@ class SolverConfig:
         ci[K.CI_LSIDX] = self.ls_idx
         ci[K.CI_CHUNK] = CHUNK_STEPS
         ci[K.CI_MAIN_STL] = main_stl
+        ci[K.CI_LDNOISE] = int(self.ld_noise)
         sc = self.reltol / 1e-3
         cf = np.zeros(K.N_CF)
         cf[K.CF_TEND] = t_end
@@ -90,6 +93,7 @@ class SolverConfig:
         cf[K.CF_ITHDN] = self.i_threshold_down
         cf[K.CF_GTAUMIN] = self.gauss_tau_min
         cf[K.CF_GTAUFRAC] = self.gauss_tau_frac
+        cf[K.CF_MONOFRAC] = self.mono_tau_frac
         return ci, cf
 
 
@@ -107,6 +111,7 @@ class RunOutput:
     t_unresolved: float
     gauss_steps: int
     t_gauss: float
+    t_lrs_drift: float
     min_u: float
     min_r: float
     t_neg_u: float
@@ -114,6 +119,7 @@ class RunOutput:
     trap_be: int
     runtime_s: float
     warnings: list[str] = field(default_factory=list)
+    diag: list[int] = field(default_factory=list)
 
 
 def _tables():
@@ -123,7 +129,7 @@ def _tables():
 
 
 def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wave: int, seed: int,
-             ls_init: np.ndarray | None = None, progress=None) -> RunOutput:
+             ls_init: np.ndarray | None = None, progress=None, window: np.ndarray | None = None) -> RunOutput:
     """One transient run.  ``progress(fraction_of_run)`` is called between chunks (it may raise
     JobCancelled)."""
     tic = time.perf_counter()
@@ -153,6 +159,11 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
     nsamp = len(net["samp"])
     sbuf = np.full((max(nsamp, 1), 1 + 2 * ns), np.nan)
     a = net
+    win = np.empty((ns, 2))
+    win[:, 0] = -np.inf
+    win[:, 1] = np.inf
+    if window is not None:
+        win[:] = np.asarray(window, float).reshape(ns, 2)
     K.seed_rng(int(seed) % (2 ** 32 - 1))
     # local states enter p before the DC point
     Pdc = P.copy()
@@ -201,7 +212,7 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
         status = K.run_chunk(x, xp, ci, cf, a["rA"], a["rB"], a["rG"], a["cA"], a["cB"], a["cC"], a["vA"], a["vB"],
                              a["vW"], a["iA"], a["iB"], a["iW"], a["sD"], a["sG"], a["sS"], a["sW"], a["wt"], a["wv"],
                              a["woff"], a["bp"], a["samp"] if nsamp else np.zeros(0), P, Pbase, na, vbi, rg, fg, table,
-                             rv, pmf, ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf)
+                             rv, pmf, ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win)
         nr = int(si[K.SI_NREC])
         if nr:
             recs.append(rec[:nr].copy())
@@ -227,6 +238,7 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
                      rejected=int(si[K.SI_REJ]), newton_iters=int(si[K.SI_NEWT]), status=int(status),
                      t_reached=float(sf[K.SF_T]), unresolved_steps=int(si[K.SI_UNRES]),
                      t_unresolved=float(sf[K.SF_TUNRES]), gauss_steps=int(si[K.SI_GAUSS]),
-                     t_gauss=float(sf[K.SF_TGAUSS]), min_u=float(sf[K.SF_MINU]), min_r=float(sf[K.SF_MINR]),
+                     t_gauss=float(sf[K.SF_TGAUSS]), t_lrs_drift=float(sf[K.SF_TLRS]), min_u=float(sf[K.SF_MINU]), min_r=float(sf[K.SF_MINR]),
                      t_neg_u=float(sf[K.SF_TNEGU]), t_neg_r=float(sf[K.SF_TNEGR]), trap_be=int(si[K.SI_TRAPBE]),
-                     runtime_s=time.perf_counter() - tic, warnings=warnings)
+                     runtime_s=time.perf_counter() - tic, warnings=warnings,
+                     diag=[int(v) for v in si[K.SI_DIAG:K.SI_DIAG + 15]])

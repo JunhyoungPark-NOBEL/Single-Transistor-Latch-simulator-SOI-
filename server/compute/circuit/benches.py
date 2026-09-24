@@ -57,8 +57,8 @@ BENCH_DEFAULTS: dict[str, dict[str, Any]] = {
         v_amp_V=None,           # auto: deterministic latch-up fold V_LU of the device + 0.10 V
         width_s=200e-6,         # flat top
         period_s=1e-3,
-        rise_s=1e-6,
-        fall_s=1e-6,
+        rise_s=10e-6,           # edges faster than the body relaxation (~µs) kick the floating body through the
+        fall_s=10e-6,           # drain-depletion coupling (du/dr|Q ~ 0.03) and trigger latch-up below the fold
         n_pulses=10,            # <= 2000
         delay_s=0.0,            # start of the first pulse
         R_s_ohm=1e3,
@@ -71,8 +71,8 @@ BENCH_DEFAULTS: dict[str, dict[str, Any]] = {
         v_high_V=None,          # auto: fold V_LU - 0.02 V (stochastic switching regime)
         clock_period_s=1e-3,
         clock_width_s=200e-6,   # flat top of the clock
-        rise_s=1e-6,
-        fall_s=1e-6,
+        rise_s=20e-6,
+        fall_s=20e-6,
         n_clocks=50,            # <= 5000
         R_L_ohm=100e3,
         C_d_F=2e-15,
@@ -84,8 +84,8 @@ BENCH_DEFAULTS: dict[str, dict[str, Any]] = {
     "coupled": dict(
         source="ramp",          # "ramp" | "pulse"
         v_min_V=0.0, v_max_V=None, rate_V_per_s=None, n_cycles=1,               # ramp source
-        v_base_V=0.0, v_amp_V=None, width_s=200e-6, period_s=1e-3, rise_s=1e-6,  # pulse source
-        fall_s=1e-6, n_pulses=10, delay_s=0.0,
+        v_base_V=0.0, v_amp_V=None, width_s=200e-6, period_s=1e-3, rise_s=10e-6,  # pulse source
+        fall_s=10e-6, n_pulses=10, delay_s=0.0,
         R_s1_ohm=100e3, R_s2_ohm=100e3,     # series resistors of cell 1 / cell 2
         R_c_ohm=1e6,                        # coupling resistor between the drains
         C_d_F=2e-15,                        # each drain node
@@ -104,11 +104,17 @@ SOLVER_DEFAULTS = dict(
     max_steps=1_000_000,        # per run (cap 2e6)
     tau_frac=0.05,              # stochastic: h <= tau_frac * tau_rel
     max_events_per_step=200,    # stochastic: expected events per step
-    noise_dt_min_s=2e-9,        # stochastic: carrier noise resolved where tau_frac*tau_rel >= this; drift-only elsewhere
+    noise_dt_min_s=2e-9,        # stochastic: event-level carrier noise where tau_frac*tau_rel >= this
+    gauss_tau_min_s=2e-9,       # stochastic: Gaussian (drift-implicit) noise tier for gauss_tau_min <= tau_rel;
+                                #             drift only below (and in a latched cell unless ld_carrier_noise)
+    gauss_tau_frac=0.5,         # stochastic: h <= gauss_tau_frac * tau_rel in the Gaussian tier
+    mono_tau_frac=20.0,         # stochastic: outside the bistable window [V_LD - 0.25 V, V_LU + 0.25 V] (monostable,
+                                #             no escape possible) Gaussian tier with h <= mono_tau_frac * tau_rel; 0 disables
     gauss_threshold=100,        # stochastic: Poisson counts with mean > this use the Gaussian limit
 )
 
-STOCHASTIC_DEFAULTS = dict(seed=2026092920, n_runs=20, carrier_noise=True, local_state=dict(mode="none"))
+STOCHASTIC_DEFAULTS = dict(seed=2026092920, n_runs=20, carrier_noise=True, ld_carrier_noise=False,
+                           local_state=dict(mode="none"))
 
 CAPS = dict(max_steps=2_000_000, n_runs=200, n_cycles=50, n_pulses=2000, n_clocks=5000, sweep_points=25,
             v_abs_max=8.0)

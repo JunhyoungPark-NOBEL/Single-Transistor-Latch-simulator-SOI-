@@ -100,6 +100,10 @@ def branch_profile(p: np.ndarray, grid: int = 301) -> dict | None:
         if len(part) == 0:
             out[name] = dict(V=np.array([0.0]), tau=np.array([1.0]), rate=np.array([0.0]), F=np.array([0.0]), Qu=np.array([m.COX_F]))
             continue
+        # drop rows that are not steady states (curve_grid always inserts the u = 0 row, which
+        # is not a steady state under illumination)
+        steady = np.abs(part[:, 2]) <= 1e-4 * np.maximum(np.abs(part[:, 1]), 1e-18) + 1e-22
+        part = part[steady] if steady.sum() >= 2 else part
         sel = np.unique(np.linspace(0, len(part) - 1, min(len(part), 90)).astype(int))
         V, T, R = [], [], []
         for row in part[sel]:
@@ -140,7 +144,9 @@ def _interp_log(v, V, Y):
 
 def estimate_steps(wave_t: np.ndarray, wave_v: np.ndarray, t_end: float, profile: dict, stochastic: bool,
                    carrier: bool, dt_max: float, dv_max: float, tau_frac: float, n_ev: float,
-                   noise_dt_min: float, n_breakpoints: int) -> float:
+                   noise_dt_min: float, n_breakpoints: int, ld_noise: bool = False,
+                   gauss_tau_min: float = 2e-9, gauss_tau_frac: float = 0.5, mono_tau_frac: float = 20.0,
+                   window: tuple[float, float] = (-np.inf, np.inf)) -> float:
     """Rough number of accepted steps for one run (drain voltage ~ source voltage)."""
     V_LU, V_LD = profile["folds"]
     latch = profile["latch"]
@@ -166,14 +172,33 @@ def estimate_steps(wave_t: np.ndarray, wave_v: np.ndarray, t_end: float, profile
         h = dt_max
         if slope > 0:
             h = min(h, dv_max / slope)
-        if stochastic and carrier:
+        if stochastic and carrier and (ld_noise or not state_lrs):
             prof = profile["LRS" if state_lrs else "HRS"]
             tau = _interp_log(v, prof["V"], prof["tau"])
             rate = _interp_log(v, prof["V"], prof["rate"] + 1e-300)
-            if tau_frac * tau >= noise_dt_min:
+            if mono_tau_frac > 0 and (v < window[0] or v > window[1]):
+                h = min(h, mono_tau_frac * tau)
+            elif tau_frac * tau >= noise_dt_min:
                 h = min(h, tau_frac * tau)
                 if rate > 0:
                     h = min(h, n_ev / rate)
+            elif tau >= gauss_tau_min:
+                h = min(h, gauss_tau_frac * tau)
         steps += dt / max(h, 1e-18)
     steps += 250 * transitions + 6 * n_breakpoints
     return float(steps)
+
+
+def bistable_window(profile: dict, ls_cfg: "LocalStateConfig | None", stochastic: bool, margin: float = 0.25) -> tuple[float, float]:
+    """V_DS range in which the element may be bistable (noise must be resolved there):
+    [V_LD - margin, V_LU + margin], widened by 4 sigma of the local-state fold shift
+    (|dV/d phi_G| <= 1 V/V for the GIDL action).  Unknown sensitivities -> whole axis."""
+    V_LU, V_LD = profile["folds"]
+    if not profile["latch"] or not np.isfinite(V_LU) or not np.isfinite(V_LD):
+        return (-np.inf, np.inf)
+    extra = 0.0
+    if stochastic and ls_cfg is not None and ls_cfg.mode != "none":
+        if ls_cfg.action != "gidl" or ls_cfg.sigma_E_V > 0.002:
+            return (-np.inf, np.inf)
+        extra = 4.0 * ls_cfg.sigma * 1.0 + 4.0 * ls_cfg.sigma_E_V * 50.0
+    return (V_LD - margin - extra, V_LU + margin + extra)
