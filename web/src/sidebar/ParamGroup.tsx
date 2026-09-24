@@ -7,6 +7,7 @@ import { IconAlert, IconChevron } from "../components/icons";
 import { useT } from "../i18n";
 import { BENCHES } from "../params/benches";
 import { groupPaths, type Ctx, type FieldDef, type GroupDef } from "../params/schema";
+import { parseOpenState } from "../state/persist";
 import { presetDefaults, useStore } from "../state/store";
 import { fmtSig } from "../utils/format";
 import { deepEqual, getPath, type Path } from "../utils/object";
@@ -16,7 +17,7 @@ import { Field } from "./Field";
 const GROUP_STATE_KEY = "stl-websim:groups";
 function loadOpen(): Record<string, boolean> {
   try {
-    return JSON.parse(localStorage.getItem(GROUP_STATE_KEY) || "{}") as Record<string, boolean>;
+    return parseOpenState(localStorage.getItem(GROUP_STATE_KEY));
   } catch {
     return {};
   }

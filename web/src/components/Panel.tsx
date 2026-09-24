@@ -10,7 +10,8 @@ import { downloadText, tracesToCsv } from "../utils/csv";
 import { fmtDuration } from "../utils/format";
 import { DetailsButton } from "./DetailsButton";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { IconChart, IconDownload, IconImage } from "./icons";
+import { IconChart, IconDownload, IconImage, IconPlay } from "./icons";
+import { runCurrent } from "../state/runner";
 import { exportPlotPng, Plot } from "./Plot";
 
 export interface PanelProps {
@@ -30,6 +31,8 @@ export interface PanelProps {
   wide?: boolean;
   warnings?: string[];
   error?: string | null;
+  /** Force the "parameters changed" badge (for panels that render a result owned by another panel's entry). */
+  stale?: boolean;
 }
 
 export function Progress({ value, indeterminate }: { value: number; indeterminate?: boolean }) {
@@ -65,7 +68,7 @@ export function Panel(p: PanelProps) {
   const gdRef = useRef<HTMLElement | null>(null);
   const e = p.entry;
   const running = !!e && (e.status === "running" || e.status === "queued");
-  const stale = !!(p.hasData && p.currentKey && e && "dataKey" in e && e.dataKey && e.dataKey !== p.currentKey && !running);
+  const stale = p.stale ?? !!(p.hasData && p.currentKey && e && "dataKey" in e && e.dataKey && e.dataKey !== p.currentKey && !running);
   const err = p.error ?? (e?.status === "error" ? e.error : null);
   const progress = e?.progress ?? 0;
   const elapsed = e && "elapsed" in e ? (e as ResultEntry).elapsed : undefined;
@@ -128,7 +131,15 @@ export function Panel(p: PanelProps) {
             <div className="empty">
               <div className="empty-inner">
                 <IconChart size={28} className="empty-icon" />
-                {p.empty ?? <span>{t("empty.run")}</span>}
+                {p.empty ?? (
+                  <>
+                    <span>{t("empty.run")}</span>
+                    {/* the sidebar Run button lives in a drawer below 1100 px — offer it here too */}
+                    <button type="button" className="btn primary sm" onClick={() => void runCurrent()} data-testid={`empty-run-${p.id}`}>
+                      <IconPlay size={11} /> {t("run")}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )

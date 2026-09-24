@@ -15,6 +15,13 @@ export function useCurrentKey(kind: Kind, payload: unknown): string {
   return useMemo(() => canonical({ kind, payload }), [kind, payload]);
 }
 
+/** True when `entry` holds data computed from a different payload than `currentKey` (and is not re-running). */
+export function isStale(entry: ResultEntry | undefined, currentKey: string): boolean {
+  if (!entry?.dataKey || entry.data === undefined) return false;
+  if (entry.status === "running" || entry.status === "queued") return false;
+  return entry.dataKey !== currentKey;
+}
+
 export function usePalette() {
   const theme = useStore((s) => s.theme);
   return palette(theme);

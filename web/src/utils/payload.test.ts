@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BENCHES } from "../params/benches";
 import { BUILTIN_META, PHOTO_GAMMA } from "../state/presets";
 import {
   applyChannelSeed, branchesPayload, channelSeedOf, circuitPayload, iphPA, midFold, photoConditionPayload, powerMW, presetRoot,
@@ -53,7 +54,7 @@ describe("payload builders", () => {
     const det = circuitPayload(p, "deterministic");
     expect(det.stochastic).toBeUndefined();
     expect(det.bench).toBe("load_line");
-    expect(det.bench_params).toEqual(p.circuit.bench_params.load_line);
+    expect(det.bench_params).toEqual({ v_min_V: 0, n_cycles: 1, R_s_ohm: 1e3, C_d_F: 2e-15 }); // auto (null) keys omitted
     const sto = circuitPayload(p, "stochastic");
     expect((sto.stochastic as { n_runs: number }).n_runs).toBeGreaterThan(0);
     expect(sto.mode).toBe("stochastic");
@@ -108,14 +109,36 @@ describe("object helpers", () => {
 });
 
 describe("circuit defaults mirror server/compute/circuit/benches.py", () => {
-  it("auto values are sent as null; lists as arrays", () => {
+  it("auto (null) bench values are omitted so the server defaults apply; lists stay arrays", () => {
     const p = paper();
     const ll = circuitPayload(p, "deterministic");
-    expect(ll.bench_params).toMatchObject({ v_min_V: 0, v_max_V: null, rate_V_per_s: null, n_cycles: 1, R_s_ohm: 1e3, C_d_F: 2e-15, vg_V: null });
-    expect((ll.solver as { dt_min_s: unknown }).dt_min_s).toBeNull();
+    const llp = ll.bench_params as Record<string, unknown>;
+    expect(llp).toMatchObject({ v_min_V: 0, n_cycles: 1, R_s_ohm: 1e3, C_d_F: 2e-15 });
+    for (const k of ["v_max_V", "rate_V_per_s", "vg_V"]) expect(k in llp).toBe(false);
+    expect((ll.solver as { dt_min_s: unknown }).dt_min_s).toBeNull(); // solver: server default is None too
     const pulse = circuitPayload({ ...p, circuit: { ...p.circuit, bench: "pulse" } }, "stochastic");
-    expect(pulse.bench_params).toMatchObject({ v_amp_V: null, amplitudes_V: [], n_pulses: 10 });
+    const pp = pulse.bench_params as Record<string, unknown>;
+    expect(pp).toMatchObject({ amplitudes_V: [], n_pulses: 10, width_s: 200e-6 });
+    expect("v_amp_V" in pp).toBe(false);
     expect((pulse.stochastic as { seed: number }).seed).toBe(2026092920);
+  });
+  it("rise/fall edges default to auto (server: pulse/coupled 10 µs, p-bit 20 µs) and stay overridable", () => {
+    const p = paper();
+    for (const b of ["pulse", "pbit", "coupled"] as const) {
+      expect(p.circuit.bench_params[b].rise_s).toBeNull();
+      expect(p.circuit.bench_params[b].fall_s).toBeNull();
+      const pl = circuitPayload({ ...p, circuit: { ...p.circuit, bench: b } }, "deterministic").bench_params as Record<string, unknown>;
+      expect("rise_s" in pl || "fall_s" in pl).toBe(false);
+    }
+    const over = setPath(setPath(p, ["circuit", "bench"], "pbit"), ["circuit", "bench_params", "pbit", "rise_s"], 5e-6);
+    expect((circuitPayload(over, "deterministic").bench_params as Record<string, unknown>).rise_s).toBe(5e-6);
+  });
+  it("unit conversions of bench fields: stored SI, displayed kΩ / fF / µs", () => {
+    const f = (b: keyof typeof BENCHES, k: string) => BENCHES[b].fields.find((x) => x.key === k)!;
+    expect(1e3 * f("load_line", "R_s_ohm").scale!).toBe(1); // 1 kΩ
+    expect(2e-15 * f("load_line", "C_d_F").scale!).toBeCloseTo(2, 12); // 2 fF
+    expect(200e-6 * f("pulse", "width_s").scale!).toBeCloseTo(200, 9); // 200 µs
+    expect(100e3 * f("pbit", "R_L_ohm").scale!).toBe(100); // 100 kΩ
   });
   it("persisted auto fields survive mergeDefaults (null ↔ number, arrays)", () => {
     const base = paper().circuit.bench_params.pulse;

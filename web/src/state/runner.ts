@@ -1,6 +1,7 @@
 // Job orchestration: backend selection (HTTP or mock), compute jobs per result key, run groups for the
 // Run button, auto-run, and lazy loading of measured data / design map.
-import { httpBackend, JobAborted, runJob, type Backend } from "../api/client";
+import { ApiError, httpBackend, JobAborted, runJob, type Backend } from "../api/client";
+import { translate } from "../i18n";
 import { checkResult } from "../api/guards";
 import { normalizeDesignMap, normalizeMeasured } from "../api/measured";
 import { createMockBackend } from "../api/mock";
@@ -105,6 +106,11 @@ export async function runKey<T = unknown>(key: string, kind: Kind, payload: unkn
   try {
     const data = await runJob<T>(backend, kind, payload, {
       isAborted: () => tokens.get(key) !== token,
+      // HTTP 429: the server queue is full — say so and retry once after Retry-After instead of failing
+      onBusy: (sec) => {
+        if (tokens.get(key) !== token) return;
+        useStore.getState().patchResult(key, { status: "queued", progress: 0, message: translate(useStore.getState().lang, "busy.retry", { s: Math.ceil(sec) }) });
+      },
       onStatus: (js) => {
         if (tokens.get(key) !== token) return;
         useStore.getState().patchResult(key, {
@@ -132,7 +138,9 @@ export async function runKey<T = unknown>(key: string, kind: Kind, payload: unkn
       return { ok: false };
     }
     if (tokens.get(key) !== token) return { ok: false };
-    useStore.getState().patchResult(key, { status: "error", error: (e as Error).message || String(e), progress: 0 });
+    const busy = e instanceof ApiError && e.status === 429;
+    const msg = busy ? translate(useStore.getState().lang, "busy.failed") : (e as Error).message || String(e);
+    useStore.getState().patchResult(key, { status: "error", error: msg, progress: 0, message: "" });
     return { ok: false };
   }
 }
@@ -144,12 +152,23 @@ export function cancelKey(key: string) {
 }
 
 // ---------------------------------------------------------------- run groups (Run button)
-function beginGroup(keys: string[], label: string) {
-  useStore.setState({ activeRun: { keys, label, startedAt: performance.now() } });
+/** Start a run group (Run bar progress). Returns its identity for endGroup. */
+function beginGroup(keys: string[], label: string): number {
+  const startedAt = performance.now();
+  useStore.setState({ activeRun: { keys, label, startedAt } });
+  return startedAt;
 }
-function endGroup(keys: string[]) {
+/** Finish a run group — only if it is still the active one (a newer run of the same keys may have replaced it). */
+function endGroup(id: number) {
   const ar = useStore.getState().activeRun;
-  if (ar && ar.keys.join() === keys.join()) useStore.setState({ activeRun: { ...ar, finishedAt: performance.now() } });
+  if (ar && ar.startedAt === id && ar.finishedAt === undefined) useStore.setState({ activeRun: { ...ar, finishedAt: performance.now() } });
+}
+
+/** Run-group label for the Run bar of a tab/mode (the bar only reports runs of its own context). */
+export function runContext(tab: string, mode: string): string | null {
+  if (tab === "circuit") return `circuit ${mode}`;
+  if (tab === "device") return mode;
+  return null;
 }
 
 export function cancelActive() {
@@ -163,7 +182,7 @@ export async function runDeterministic() {
   const s = useStore.getState();
   const p = s.params;
   const keys = ["branches", "charge_balance", "vg_curve"];
-  beginGroup(keys, "deterministic");
+  const gid = beginGroup(keys, "deterministic");
   const cbFixed = s.cbVd;
   const jobs: Promise<unknown>[] = [
     runKey<BranchesResult>("branches", "branches", branchesPayload(p)).then((r) => {
@@ -178,20 +197,20 @@ export async function runDeterministic() {
   ];
   if (cbFixed != null) jobs.push(runKey("charge_balance", "charge_balance", chargeBalancePayload(p, cbFixed)));
   await Promise.all(jobs);
-  endGroup(keys);
+  endGroup(gid);
 }
 
 export async function runStochastic() {
   const s = useStore.getState();
   const p = s.params;
   const keys = ["sweep_mc", "hazard", "branches"];
-  beginGroup(keys, "stochastic");
+  const gid = beginGroup(keys, "stochastic");
   await Promise.all([
     runKey("sweep_mc", "sweep_mc", sweepMcPayload(p)),
     runKey("hazard", "hazard", hazardPayload(p)),
     runKey("branches", "branches", branchesPayload(p)),
   ]);
-  endGroup(keys);
+  endGroup(gid);
 }
 
 export async function runChargeBalance(vd: number) {
@@ -212,19 +231,19 @@ export async function runVgStochastic() {
 export async function runCircuit() {
   const s = useStore.getState();
   const keys = ["circuit", "circuit_branches"];
-  beginGroup(keys, "circuit");
+  const gid = beginGroup(keys, runContext("circuit", s.mode) ?? "circuit");
   await Promise.all([
     runKey("circuit", "circuit", circuitPayload(s.params, s.mode)),
     runKey("circuit_branches", "branches", { device: s.params.device, sweep: s.params.sweep }),
   ]);
-  endGroup(keys);
+  endGroup(gid);
 }
 
 export async function runValidation(level: "fast" | "full") {
   const keys = ["validation"];
-  beginGroup(keys, `validation ${level}`);
+  const gid = beginGroup(keys, `validation ${level}`);
   await runKey("validation", "validation", validationPayload(level));
-  endGroup(keys);
+  endGroup(gid);
 }
 
 export async function runValidationIV() {
@@ -238,13 +257,13 @@ export async function runValidationPhoto() {
   const meta = useStore.getState().meta;
   const conds = meta.measured_photo_conditions ?? [];
   const keys = conds.map((_, k) => `val_photo_${k}`);
-  beginGroup(keys, "photo conditions");
+  const gid = beginGroup(keys, "photo conditions");
   for (let k = 0; k < conds.length; k++) {
     const c = conds[k];
     const r = await runKey(keys[k], "sweep_mc", photoConditionPayload(meta.presets.photo, c.vg, c.power_mW));
     if (!r.ok && useStore.getState().results[keys[k]]?.status === "cancelled") break;
   }
-  endGroup(keys);
+  endGroup(gid);
 }
 
 export async function runValidationVg() {

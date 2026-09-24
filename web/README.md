@@ -131,10 +131,17 @@ Link it from the UI with `<DetailsButton topic="<id>" />`, `GroupDef.topic` or `
 
 ### Backend assumptions
 - Jobs: `POST /api/compute/{kind}?wait=1.5`, poll `GET /api/jobs/{id}` every 400 ms, `DELETE` to cancel; a
-  newer run of the same panel supersedes (and cancels) the older job.
+  newer run of the same panel supersedes (and cancels) the older job. HTTP 429 (server queue full): the panel
+  shows “server busy — retrying in N s” and the submit is retried once after `Retry-After` (bounded 0.2–60 s);
+  a second 429 shows a friendly error. Error bodies are `{"detail": "<string>"}`.
 - Result shapes per `docs/WEB_CONTRACT.md` §2/§4; extra keys are ignored, missing required keys show an
   “unexpected result shape” message in the panel. Warnings are shown as a collapsible notice.
 - `GET /api/data/measured` and `/api/data/design_map` are normalised in `src/api/measured.ts`
   (`photo.conditions/V_LU`, `light_iv`, `paper_idvd.up/down.{median,p10,p90}`; design map `arrays`/`scalars`).
 - `device.preset` is sent as the preset the values were loaded from (paper / photo / custom) together with
   every field, so the server-side resolution is a no-op.
+- Circuit `bench_params`: fields left on “auto” (`null`) are omitted from the request, so the server's
+  `BENCH_DEFAULTS` apply (auto-resolved values such as `v_max_V`, or documented defaults such as
+  `rise_s`/`fall_s` = 10 µs, p-bit 20 µs); the resolved values come back in `result.bench_params` (chips).
+- Persisted UI state (`localStorage["stl-websim:v1"]`, schema version `v`) is validated field by field on
+  load (`src/state/persist.ts`); junk or older data falls back to defaults instead of breaking the app.

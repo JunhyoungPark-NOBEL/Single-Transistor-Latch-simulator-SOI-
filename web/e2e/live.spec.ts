@@ -88,3 +88,62 @@ test("live: circuit load-line bench reproduces the folds", async ({ page, reques
   await page.waitForTimeout(800);
   await page.screenshot({ path: "e2e/screenshots/live-circuit.png", fullPage: true });
 });
+
+test("live: pulse bench uses the server's rise/fall default (auto → 10 µs)", async ({ page, request }) => {
+  let ok = false;
+  try {
+    const r = await request.get("http://127.0.0.1:8000/api/health", { timeout: 3000 });
+    ok = r.ok() && (await r.json()).ok === true;
+  } catch {
+    ok = false;
+  }
+  test.skip(!ok, "backend not running on :8000");
+  test.setTimeout(300_000);
+  await page.addInitScript(() => {
+    try {
+      localStorage.clear();
+    } catch {
+      /* ignore */
+    }
+  });
+  await page.goto("/#tab=circuit&mode=deterministic");
+  await expect(page.getByTestId("backend-status")).toContainText("API", { timeout: 15_000 });
+  await page.getByTestId("bench-pulse").click();
+  await page.getByTestId("run-button").click();
+  const chips = page.getByTestId("resolved-params");
+  await expect(chips).toContainText("rise_s = 1.000e-5", { timeout: 240_000 });
+  await expect(chips).toContainText("fall_s = 1.000e-5");
+});
+
+test("live: HTTP 429 (queue full) shows 'server busy' and retries once after Retry-After", async ({ page, request }) => {
+  let ok = false;
+  try {
+    const r = await request.get("http://127.0.0.1:8000/api/health", { timeout: 3000 });
+    ok = r.ok() && (await r.json()).ok === true;
+  } catch {
+    ok = false;
+  }
+  test.skip(!ok, "backend not running on :8000");
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    try {
+      localStorage.clear();
+    } catch {
+      /* ignore */
+    }
+  });
+  let rejected = 0;
+  await page.route("**/api/compute/branches*", async (route) => {
+    if (rejected === 0) {
+      rejected++;
+      await route.fulfill({ status: 429, headers: { "Retry-After": "2", "Content-Type": "application/json" }, body: JSON.stringify({ detail: "job queue full" }) });
+    } else await route.continue();
+  });
+  await page.goto("/#tab=device&mode=deterministic");
+  await expect(page.getByTestId("backend-status")).toContainText("API", { timeout: 15_000 });
+  await page.getByTestId("run-button").click();
+  await expect(page.getByTestId("panel-iv")).toContainText("서버가 바쁩니다", { timeout: 10_000 });
+  await expect(page.getByTestId("kpi-vlu-value")).toContainText("3.70", { timeout: 60_000 });
+  expect(rejected).toBe(1);
+  await expect(page.getByTestId("panel-iv").locator(".err-box")).toHaveCount(0);
+});

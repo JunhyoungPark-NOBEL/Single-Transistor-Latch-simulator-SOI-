@@ -51,12 +51,21 @@ export function circuitPayload(p: ParamRoot, mode: Mode) {
     bench: c.bench,
     mode,
     device: device(p),
-    bench_params: clone(c.bench_params[c.bench] ?? {}),
+    bench_params: benchParamsPayload(c.bench_params[c.bench]),
     solver: clone(c.solver),
     detect: clone(c.detect),
   };
   if (mode === "stochastic") out.stochastic = clone(c.stochastic);
   return out;
+}
+
+/**
+ * Bench parameters for the request: `null` ("auto") keys are omitted so the server's BENCH_DEFAULTS apply
+ * (None there = resolved from the device; a number = documented default, e.g. rise_s 10 µs). The server's
+ * merge would otherwise copy an explicit null over its default.
+ */
+export function benchParamsPayload(bp: Record<string, unknown> | undefined): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(clone(bp ?? {})).filter(([, v]) => v !== null && v !== undefined));
 }
 
 export const validationPayload = (level: "fast" | "full") => ({ level });

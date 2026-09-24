@@ -54,10 +54,16 @@ export default function App() {
       }
     };
     window.addEventListener("keydown", onKey);
+    // crossing the drawer breakpoint: the sidebar is inline (open) when wide, a closed drawer when narrow
+    // (otherwise shrinking the window leaves the drawer + scrim covering the results)
+    const mq = window.matchMedia?.("(max-width: 1100px)");
+    const onMq = (e: MediaQueryListEvent) => useStore.getState().setSidebar(!e.matches);
+    mq?.addEventListener?.("change", onMq);
     return () => {
       stopHealth();
       stopAuto();
       window.removeEventListener("keydown", onKey);
+      mq?.removeEventListener?.("change", onMq);
     };
   }, []);
 

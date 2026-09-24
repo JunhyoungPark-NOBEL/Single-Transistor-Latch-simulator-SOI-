@@ -6,7 +6,7 @@ import { IconPlay, IconStop, IconX } from "../components/icons";
 import { useT } from "../i18n";
 import { GROUPS, groupVisible, type Ctx } from "../params/schema";
 import { PRESET_IDS } from "../state/presets";
-import { cancelActive, runCurrent } from "../state/runner";
+import { cancelActive, runContext, runCurrent } from "../state/runner";
 import { presetDefaults, useStore } from "../state/store";
 import { fmtDuration } from "../utils/format";
 import { deepEqual } from "../utils/object";
@@ -64,8 +64,11 @@ export function RunBar() {
   const mode = useStore((s) => s.mode);
   const autoRun = useStore((s) => s.autoRun);
   const setAutoRun = useStore((s) => s.setAutoRun);
-  const active = useStore((s) => s.activeRun);
+  const lastRun = useStore((s) => s.activeRun);
   const results = useStore((s) => s.results);
+  const anyRunning = (lastRun?.keys ?? []).some((k) => results[k]?.status === "running" || results[k]?.status === "queued");
+  // report a finished run only in its own context (tab + mode); a running one is always shown (cancellable)
+  const active = lastRun && (anyRunning || lastRun.label === runContext(tab, mode)) ? lastRun : null;
   const entries = useMemo(() => (active?.keys ?? []).map((k) => results[k]).filter(Boolean), [active, results]);
   const running = entries.some((e) => e.status === "running" || e.status === "queued");
   useTick(running);

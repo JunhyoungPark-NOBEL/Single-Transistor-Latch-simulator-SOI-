@@ -6,9 +6,10 @@ import type { ParamRoot, Tab } from "../params/schema";
 import { BUILTIN_META } from "./presets";
 import { clone, getPath, mergeDefaults, setPath, type Path } from "../utils/object";
 import { presetRoot, type VgRange } from "../utils/payload";
+import { parsePersisted, PERSIST_VERSION, restoreParams, restoreRange, TABS, type Persisted } from "./persist";
 
-export type Lang = "ko" | "en";
-export type Theme = "light" | "dark";
+export type { Lang, Theme } from "./persist";
+import type { Lang, Theme } from "./persist";
 export type BackendState = "checking" | "online" | "offline" | "mock";
 export type EntryStatus = "idle" | "queued" | "running" | "done" | "error" | "cancelled";
 
@@ -100,29 +101,19 @@ export interface State {
 }
 
 // ---------------------------------------------------------------- persistence
+// Same key since v1 (keeps users' settings); the stored object carries a schema version `v` and every
+// field is validated on load (state/persist.ts) so junk or older data never crashes the app.
 const STORAGE_KEY = "stl-websim:v1";
-interface Persisted {
-  mode: Mode;
-  lang: Lang;
-  theme: Theme;
-  autoRun: boolean;
-  preset: PresetId;
-  params: ParamRoot;
-  vgRange: VgRange;
-  vgsRange: VgRange;
-  tab: Tab;
-}
 function loadPersisted(): Partial<Persisted> {
   try {
-    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-    return raw ? (JSON.parse(raw) as Partial<Persisted>) : {};
+    return parsePersisted(typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null);
   } catch {
     return {};
   }
 }
 export function savePersisted(s: State) {
   try {
-    const p: Persisted = { mode: s.mode, lang: s.lang, theme: s.theme, autoRun: s.autoRun, preset: s.preset, params: s.params, vgRange: s.vgRange, vgsRange: s.vgsRange, tab: s.tab };
+    const p: Persisted = { v: PERSIST_VERSION, mode: s.mode, lang: s.lang, theme: s.theme, autoRun: s.autoRun, preset: s.preset, params: s.params, vgRange: s.vgRange, vgsRange: s.vgsRange, tab: s.tab };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
   } catch {
     /* storage unavailable (private mode, blocked) — ignore */
@@ -135,7 +126,7 @@ function readHash(): { tab?: Tab; mode?: Mode } {
     const tab = h.get("tab") as Tab | null;
     const mode = h.get("mode") as Mode | null;
     return {
-      tab: tab && ["device", "circuit", "validation", "physics"].includes(tab) ? tab : undefined,
+      tab: tab && TABS.includes(tab) ? tab : undefined,
       mode: mode === "deterministic" || mode === "stochastic" ? mode : undefined,
     };
   } catch {
@@ -153,9 +144,9 @@ function systemTheme(): Theme {
 
 const P = loadPersisted();
 const H = typeof window !== "undefined" ? readHash() : {};
-const initialPreset: PresetId = P.preset && ["paper", "photo", "custom"].includes(P.preset) ? P.preset : "paper";
+const initialPreset: PresetId = P.preset ?? "paper";
 const baseRoot = presetRoot(BUILTIN_META, initialPreset);
-const initialParams = P.params ? mergeDefaults(baseRoot, P.params) : baseRoot;
+const initialParams = P.params ? restoreParams(baseRoot, P.params, P.v) : baseRoot;
 const WIN_W = 560;
 const WIN_H = 620;
 
@@ -167,7 +158,7 @@ export const useStore = create<State>((set) => ({
   mode: H.mode ?? P.mode ?? "deterministic",
   lang: P.lang ?? "ko",
   theme: P.theme ?? systemTheme(),
-  sidebarOpen: typeof window !== "undefined" ? window.innerWidth >= 1100 : true,
+  sidebarOpen: typeof window !== "undefined" ? !window.matchMedia?.("(max-width: 1100px)").matches : true, // same breakpoint as the CSS drawer
   autoRun: P.autoRun ?? false,
   backend: "checking",
   forcedMock: false,
@@ -176,8 +167,8 @@ export const useStore = create<State>((set) => ({
   preset: initialPreset,
   params: initialParams,
   cbVd: null,
-  vgRange: P.vgRange ? mergeDefaults(DEFAULT_VG_RANGE, P.vgRange) : DEFAULT_VG_RANGE,
-  vgsRange: P.vgsRange ? mergeDefaults(DEFAULT_VGS_RANGE, P.vgsRange) : DEFAULT_VGS_RANGE,
+  vgRange: P.vgRange ? restoreRange(DEFAULT_VG_RANGE, P.vgRange) : DEFAULT_VG_RANGE,
+  vgsRange: P.vgsRange ? restoreRange(DEFAULT_VGS_RANGE, P.vgsRange) : DEFAULT_VGS_RANGE,
   results: {},
   activeRun: null,
   physics: { open: false, topic: "overview", history: [], x: 80, y: 80, w: WIN_W, h: WIN_H },

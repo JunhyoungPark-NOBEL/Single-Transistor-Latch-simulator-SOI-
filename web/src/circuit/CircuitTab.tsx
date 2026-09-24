@@ -14,7 +14,7 @@ import { useStore } from "../state/store";
 import { fmtDuration, fmtInt, fmtSig, isNum, siPrefix } from "../utils/format";
 import { circuitPayload } from "../utils/payload";
 import { Kpi } from "../device/KpiStrip";
-import { logRange, nums, pos, useCurrentKey, useEntry, usePalette } from "../device/common";
+import { isStale, logRange, nums, pos, useCurrentKey, useEntry, usePalette } from "../device/common";
 import { Check, Seg } from "../device/DetPanels";
 import { BenchIcon } from "./BenchIcons";
 import { Schematic } from "./Schematic";
@@ -212,7 +212,7 @@ function TrajectoryPanel({ res, entry, currentKey }: { res: CircuitResult | unde
   return <Panel id="trajectory" title={t("c.traj")} desc={t("c.traj.desc")} topic="circuit-element" entry={entry} hasData={!!plot} currentKey={currentKey} csvName="trajectory" plot={plot ?? { data: [], layout: {} }} />;
 }
 
-function DistributionsPanel({ res }: { res: CircuitResult }) {
+function DistributionsPanel({ res, stale }: { res: CircuitResult; stale: boolean }) {
   const t = useT();
   const c = usePalette();
   const [k, setK] = useState(0);
@@ -227,7 +227,7 @@ function DistributionsPanel({ res }: { res: CircuitResult }) {
   }, [d, c, t]);
   if (!dists.length) return null;
   return (
-    <Panel id="c-dist" title={t("c.dist")} topic="stochastic-events" hasData={!!plot} csvName="circuit_distribution" plot={plot}
+    <Panel id="c-dist" title={t("c.dist")} topic="stochastic-events" hasData={!!plot} stale={stale} csvName="circuit_distribution" plot={plot}
       toolbar={dists.length > 1 ? (
         <select className="select" style={{ width: 200, height: 26 }} value={k} onChange={(e) => setK(Number(e.target.value))} aria-label={t("c.dist")}>
           {dists.map((x, i) => <option key={x.key} value={i}>{t.l(x.label)}</option>)}
@@ -237,7 +237,7 @@ function DistributionsPanel({ res }: { res: CircuitResult }) {
   );
 }
 
-function SweepsPanel({ res }: { res: CircuitResult }) {
+function SweepsPanel({ res, stale }: { res: CircuitResult; stale: boolean }) {
   const t = useT();
   const c = usePalette();
   const [k, setK] = useState(0);
@@ -256,7 +256,7 @@ function SweepsPanel({ res }: { res: CircuitResult }) {
   }, [s, c, t]);
   if (!sw.length) return null;
   return (
-    <Panel id="c-sweeps" title={s ? t.l(s.label) : t("c.sweeps")} topic="circuit-element" hasData={!!plot} csvName="circuit_sweep" plot={plot}
+    <Panel id="c-sweeps" title={s ? t.l(s.label) : t("c.sweeps")} topic="circuit-element" hasData={!!plot} stale={stale} csvName="circuit_sweep" plot={plot}
       toolbar={sw.length > 1 ? (
         <select className="select" style={{ width: 220, height: 26 }} value={k} onChange={(e) => setK(Number(e.target.value))} aria-label={t("c.sweeps")}>
           {sw.map((x, i) => <option key={x.key} value={i}>{t.l(x.label)}</option>)}
@@ -266,12 +266,12 @@ function SweepsPanel({ res }: { res: CircuitResult }) {
   );
 }
 
-function EventsPanel({ res }: { res: CircuitResult }) {
+function EventsPanel({ res, stale }: { res: CircuitResult; stale: boolean }) {
   const t = useT();
   const [ts, tu] = timeScale(res.runs[0]?.t ?? []);
   const ss = res.solver_stats;
   return (
-    <Panel id="c-events" title={`${t("c.events")} · ${t("c.solver")}`} topic="numerics" hasData>
+    <Panel id="c-events" title={`${t("c.events")} · ${t("c.solver")}`} topic="numerics" hasData stale={stale}>
       <div className="panel-foot">
         <div className="row small mono" style={{ flexWrap: "wrap", gap: 12 }} data-testid="solver-stats">
           <span>{t("c.steps")}: <strong>{fmtInt(ss?.steps)}</strong></span>
@@ -324,11 +324,12 @@ export function CircuitTab() {
   const bench = params.circuit.bench;
   const sch = res && res.bench === bench ? res.schematic : defaultSchematic(bench, params.device.vg);
   const running = entry?.status === "running" || entry?.status === "queued";
+  const stale = isStale(entry, key);
   return (
     <>
       <BenchPicker />
       {res && res.bench === bench && res.summary.length > 0 && (
-        <div className="kpis wrap" data-testid="circuit-summary">
+        <div className={`kpis wrap${stale ? " stale" : ""}`} data-testid="circuit-summary" title={stale ? t("stale") : undefined}>
           {res.summary.map((s, i) => {
             const v = splitUnit(s.value, s.unit);
             const sp = isNum(s.spread) ? splitUnit(s.spread, s.unit, s.unit === "V" ? "mV" : undefined) : null;
@@ -360,9 +361,9 @@ export function CircuitTab() {
         </Panel>
         <WaveformPanel res={res} entry={entry} currentKey={key} />
         <TrajectoryPanel res={res} entry={entry} currentKey={key} />
-        {res && <DistributionsPanel res={res} />}
-        {res && <SweepsPanel res={res} />}
-        {res && <EventsPanel res={res} />}
+        {res && <DistributionsPanel res={res} stale={stale} />}
+        {res && <SweepsPanel res={res} stale={stale} />}
+        {res && <EventsPanel res={res} stale={stale} />}
       </div>
     </>
   );

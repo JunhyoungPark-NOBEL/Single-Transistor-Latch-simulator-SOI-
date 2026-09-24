@@ -15,11 +15,23 @@ export interface Backend {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** Seconds from a Retry-After header (HTTP 429 "queue full"), when given. */
+  retryAfter?: number;
+  constructor(message: string, status: number, retryAfter?: number) {
     super(message);
     this.status = status;
+    this.retryAfter = retryAfter;
     this.name = "ApiError";
   }
+}
+
+/** Retry-After header → seconds (delta-seconds or an HTTP date); undefined when absent/invalid. */
+export function parseRetryAfter(h: string | null | undefined, now = Date.now()): number | undefined {
+  if (!h) return undefined;
+  const t = h.trim();
+  if (/^\d+(\.\d+)?$/.test(t)) return Number(t);
+  const d = Date.parse(t);
+  return Number.isFinite(d) ? Math.max(0, (d - now) / 1000) : undefined;
 }
 
 /** Extracts a human-readable message from a FastAPI error body ({detail: string | [{msg, loc}]}). */
@@ -61,7 +73,7 @@ async function request<T>(method: string, url: string, body?: unknown, timeoutMs
     } catch {
       data = text;
     }
-    if (!res.ok) throw new ApiError(errorMessage(data, `${res.status} ${res.statusText || "HTTP error"}`), res.status);
+    if (!res.ok) throw new ApiError(errorMessage(data, `${res.status} ${res.statusText || "HTTP error"}`), res.status, parseRetryAfter(res.headers.get("Retry-After")));
     return data as T;
   } catch (e) {
     if (e instanceof ApiError) throw e;
@@ -94,6 +106,8 @@ export class JobAborted extends Error {
 
 export interface RunOptions {
   onStatus?: (s: JobStatus) => void;
+  /** HTTP 429 (server queue full): called with the wait in seconds before the single automatic retry. */
+  onBusy?: (seconds: number) => void;
   /** Resolves true when the caller wants the job abandoned (checked between polls). */
   isAborted?: () => boolean;
   pollMs?: number;
@@ -102,10 +116,31 @@ export interface RunOptions {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Default / bounds of the wait before retrying a submit rejected with HTTP 429. */
+export const BUSY_RETRY = { defaultS: 5, minS: 0.2, maxS: 60 };
+
+/** Submit; on HTTP 429 (queue full) wait Retry-After (bounded) and retry exactly once. */
+async function submitWithRetry(backend: Backend, kind: Kind, payload: unknown, opt: RunOptions): Promise<JobStatus> {
+  try {
+    return await backend.submit(kind, payload, opt.wait ?? 1.5);
+  } catch (e) {
+    if (!(e instanceof ApiError) || e.status !== 429) throw e;
+    const waitS = Math.min(BUSY_RETRY.maxS, Math.max(BUSY_RETRY.minS, e.retryAfter ?? BUSY_RETRY.defaultS));
+    opt.onBusy?.(waitS);
+    const until = Date.now() + waitS * 1000;
+    while (Date.now() < until) {
+      if (opt.isAborted?.()) throw new JobAborted();
+      await sleep(Math.min(200, until - Date.now()));
+    }
+    if (opt.isAborted?.()) throw new JobAborted();
+    return backend.submit(kind, payload, opt.wait ?? 1.5); // a second 429 propagates to the caller
+  }
+}
+
 /** Submit a job and poll until it finishes. Resolves the result, rejects with ApiError / JobAborted. */
 export async function runJob<T>(backend: Backend, kind: Kind, payload: unknown, opt: RunOptions = {}): Promise<T> {
   const pollMs = opt.pollMs ?? 400;
-  let st = await backend.submit(kind, payload, opt.wait ?? 1.5);
+  let st = await submitWithRetry(backend, kind, payload, opt);
   opt.onStatus?.(st);
   let failures = 0;
   while (st.status === "queued" || st.status === "running") {

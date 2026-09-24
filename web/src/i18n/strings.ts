@@ -18,6 +18,16 @@ export const STRINGS = {
   "mode.stochastic.sub": { ko: "확률", en: "Monte Carlo" },
   "mode.deterministic.hint": { ko: "평균 모델: 정상상태 branch와 fold (V_LU, V_LD), 전하 균형", en: "Mean model: steady-state branches, folds (V_LU, V_LD), charge balance" },
   "mode.stochastic.hint": { ko: "Eq. 2 사건 잡음 + local state: MC 스윕, hazard, V_LU/V_LD 분포", en: "Eq. 2 event noise + local states: MC sweeps, hazard, V_LU/V_LD distributions" },
+  "mode.circuit.deterministic.hint": {
+    ko: "결정론 과도해석: STL 상태공간 소자(Q_B) + MNA, 암시적 {method} 적분 + Newton, 적응 Δt — 잡음 없는 평균 궤적",
+    en: "Deterministic transient: STL state-space element (Q_B) in MNA, implicit {method} + Newton, adaptive Δt — noise-free mean trajectory",
+  },
+  "mode.circuit.stochastic.hint": {
+    ko: "확률 과도해석: 매 스텝 Q_B에 Eq. 2 사건 증분 (Poisson unit 사건 + II 클러스터 + 손실, 큰 수는 Gauss 극한) + local state, run별 통계",
+    en: "Stochastic transient: Eq. 2 event increments of Q_B each step (Poisson unit events + II clusters + losses, Gaussian limit for large counts) + local states, statistics over runs",
+  },
+  "mode.validation.hint": { ko: "검증은 결정론·확률 기준 수치를 모두 확인합니다 — 모드 선택은 소자·회로 탭에 적용", en: "Validation checks both deterministic and stochastic reference numbers — the mode choice applies to the Device and Circuit tabs" },
+  "mode.physics.hint": { ko: "결정론(평균 모델)과 확률(Eq. 2 사건 잡음 + local state) 모델의 식 전체 — 모드 선택은 소자·회로 탭에 적용", en: "Equations of both the deterministic (mean) and stochastic (Eq. 2 event noise + local states) models — the mode choice applies to the Device and Circuit tabs" },
   "lang.toggle": { ko: "Switch to English", en: "한국어로 전환" },
   "theme.toggle.dark": { ko: "어두운 테마로 전환", en: "Switch to dark theme" },
   "theme.toggle.light": { ko: "밝은 테마로 전환", en: "Switch to light theme" },
@@ -54,7 +64,7 @@ export const STRINGS = {
   "uncalibrated": { ko: "보정되지 않은 가설 경로입니다. 결과는 정성적 탐색용입니다.", en: "Uncalibrated hypothesis path — results are for qualitative exploration only." },
   "on": { ko: "켜짐", en: "on" },
   "auto": { ko: "자동", en: "auto" },
-  "auto.hint": { ko: "서버가 소자/프리셋에서 결정", en: "chosen by the server from the device/preset" },
+  "auto.hint": { ko: "서버가 결정 (소자/프리셋 또는 서버 기본값)", en: "chosen by the server (from the device/preset or its default)" },
   "list.placeholder": { ko: "예: 3.6, 3.8, 4.0 (비우면 없음)", en: "e.g. 3.6, 3.8, 4.0 (empty = none)" },
   "off": { ko: "꺼짐", en: "off" },
   "close": { ko: "닫기", en: "Close" },
@@ -82,6 +92,8 @@ export const STRINGS = {
   "warnings": { ko: "경고", en: "Warnings" },
   "stale": { ko: "파라미터가 바뀌었습니다 — 다시 실행하면 갱신됩니다", en: "Parameters changed — run again to update" },
   "cached": { ko: "캐시", en: "cached" },
+  "busy.retry": { ko: "서버가 바쁩니다 — {s}초 후 다시 시도합니다", en: "Server busy — retrying in {s} s" },
+  "busy.failed": { ko: "서버 작업 대기열이 가득 찼습니다. 잠시 후 다시 실행하세요.", en: "The server job queue is full. Please run again in a moment." },
   "demo": { ko: "데모", en: "demo" },
 
   // ---------------------------------------------------------------- run bar
@@ -134,7 +146,7 @@ export const STRINGS = {
   "g.bench": { ko: "벤치 파라미터", en: "Bench parameters" },
   "g.bench.desc": { ko: "선택한 테스트 벤치의 소스와 수동 소자", en: "Sources and passives of the selected test bench" },
   "g.solver": { ko: "솔버", en: "Solver" },
-  "g.solver.desc": { ko: "MNA 과도해석: 적분법, 적응 Δt, Newton 허용오차", en: "MNA transient: integrator, adaptive Δt, Newton tolerance" },
+  "g.solver.desc": { ko: "MNA 과도해석: 적분법, 적응 Δt, Newton 허용오차, latch 사건 판정", en: "MNA transient: integrator, adaptive Δt, Newton tolerance, latch-event detection" },
   "g.cstoch": { ko: "회로 확률 설정", en: "Circuit stochastic" },
   "g.cstoch.desc": { ko: "사건 증분 잡음, run 수, local state", en: "Event-increment noise, runs, local states" },
 
@@ -324,6 +336,7 @@ export const STRINGS = {
   "ph.sections": { ko: "섹션", en: "Sections" },
   "ph.sources": { ko: "출처 코드", en: "Source files" },
   "ph.eq": { ko: "식", en: "Eq." },
+  "ph.scroll": { ko: "가로로 스크롤", en: "scroll horizontally" },
 } satisfies Record<string, L10n>;
 
 export type StrKey = keyof typeof STRINGS;

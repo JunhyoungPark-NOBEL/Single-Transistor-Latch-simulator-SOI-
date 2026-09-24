@@ -1,7 +1,7 @@
 // App header: brand, primary tabs, Deterministic | Stochastic toggle, backend status, KO/EN, theme.
 import type { KeyboardEvent } from "react";
 import type { Mode } from "../api/types";
-import { useT } from "../i18n";
+import { useT, type T } from "../i18n";
 import type { StrKey } from "../i18n/strings";
 import type { Tab } from "../params/schema";
 import { initBackend } from "../state/runner";
@@ -14,6 +14,14 @@ const TABS: { id: Tab; key: StrKey; en: string }[] = [
   { id: "validation", key: "tab.validation", en: "Validation" },
   { id: "physics", key: "tab.physics", en: "Physics" },
 ];
+
+/** Mode-banner / toggle hint: what the selected mode means on the current tab. */
+export function modeHint(t: T, tab: Tab, mode: Mode, method: string): string {
+  if (tab === "circuit") return t(mode === "deterministic" ? "mode.circuit.deterministic.hint" : "mode.circuit.stochastic.hint", { method });
+  if (tab === "validation") return t("mode.validation.hint");
+  if (tab === "physics") return t("mode.physics.hint");
+  return t(mode === "deterministic" ? "mode.deterministic.hint" : "mode.stochastic.hint");
+}
 
 function arrowNav<T>(e: KeyboardEvent, items: T[], cur: T, set: (v: T) => void) {
   const i = items.indexOf(cur);
@@ -33,6 +41,8 @@ export function ModeToggle() {
   const t = useT();
   const mode = useStore((s) => s.mode);
   const setMode = useStore((s) => s.setMode);
+  const tab = useStore((s) => s.tab);
+  const method = useStore((s) => s.params.circuit.solver.method);
   const modes: Mode[] = ["deterministic", "stochastic"];
   return (
     <div className="mode-toggle" role="radiogroup" aria-label={t("mode.aria")} data-testid="mode-toggle" onKeyDown={(e) => arrowNav(e, modes, mode, setMode)}>
@@ -45,7 +55,7 @@ export function ModeToggle() {
           tabIndex={mode === m ? 0 : -1}
           className={`mode-btn ${m === "deterministic" ? "det" : "sto"}`}
           onClick={() => setMode(m)}
-          title={t(m === "deterministic" ? "mode.deterministic.hint" : "mode.stochastic.hint")}
+          title={modeHint(t, tab === "circuit" ? "circuit" : "device", m, method)}
           data-testid={`mode-${m}`}
         >
           <span className="mode-dot" aria-hidden />
@@ -125,11 +135,14 @@ export function Header() {
 export function ModeBar() {
   const t = useT();
   const mode = useStore((s) => s.mode);
+  const tab = useStore((s) => s.tab);
+  const method = useStore((s) => s.params.circuit.solver.method);
+  const hint = modeHint(t, tab, mode, method);
   return (
     <div className="modestrip" data-testid="modebar">
       <span className="modestrip-tag">{t(mode === "deterministic" ? "mode.deterministic" : "mode.stochastic")}</span>
       <span className="sep" aria-hidden />
-      <span className="hint" data-testid="mode-hint">{t(mode === "deterministic" ? "mode.deterministic.hint" : "mode.stochastic.hint")}</span>
+      <span className="hint" data-testid="mode-hint" title={hint}>{hint}</span>
     </div>
   );
 }

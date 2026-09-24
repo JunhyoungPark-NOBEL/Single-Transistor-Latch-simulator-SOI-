@@ -179,12 +179,16 @@ export const COMPONENTS: { key: keyof BranchesResult["HRS"]["comp"]; loss: boole
 export function ComponentsPanel() {
   const t = useT();
   const c = usePalette();
+  const params = useStore((s) => s.params);
   const { entry, data } = useEntry<BranchesResult>("branches");
+  const key = useCurrentKey("branches", useMemo(() => branchesPayload(params), [params]));
   const [branch, setBranch] = useState<"HRS" | "LRS" | "full">("HRS");
   const [log, setLog] = useState(true);
   const plot = useMemo(() => {
     if (!data) return undefined;
-    const cv = data[branch] ?? data.full;
+    // no latch (or an empty branch): HRS/LRS are empty — show the whole traced locus instead of a blank plot
+    const used = branch !== "full" && data.latch && (data[branch]?.vd?.length ?? 0) > 0 ? branch : "full";
+    const cv = data[used] ?? data.full;
     const traces: Data[] = COMPONENTS.map((k, i) => {
       const name = t(`comp.${k.key}` as never);
       return {
@@ -194,7 +198,7 @@ export function ComponentsPanel() {
       } as Data;
     });
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: `V<sub>D</sub> (V) — ${branch === "full" ? t("all") : branch}` } },
+      xaxis: { title: { text: `V<sub>D</sub> (V) — ${used === "full" ? t("all") : used}` } },
       yaxis: { ...currentAxis(log, "|I| (A)"), ...(log ? { range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y), 1e-18, 12) } : {}) },
       legend: { orientation: "h", y: 1.01, yanchor: "bottom", x: 0, font: { size: 11 } },
       margin: { l: 64, r: 16, t: 62, b: 46 },
@@ -209,6 +213,7 @@ export function ComponentsPanel() {
       topic="impact-ionization"
       entry={entry}
       hasData={!!data}
+      currentKey={key}
       csvName="current_components"
       plot={plot}
       toolbar={

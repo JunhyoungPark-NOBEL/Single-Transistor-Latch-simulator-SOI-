@@ -4,7 +4,7 @@ import { useState } from "react";
 import { PHYSICS_TOPICS, type Equation, type PhysicsTopic, type TopicId } from "../content/physics";
 import { IconCheck, IconCopy } from "../components/icons";
 import { RichText } from "../components/RichText";
-import { Tex } from "../components/Tex";
+import { FitTex, Tex } from "../components/Tex";
 import { useT } from "../i18n";
 
 export async function copyText(text: string): Promise<boolean> {
@@ -51,7 +51,7 @@ function EquationBlock({ eq, n }: { eq: Equation; n: number }) {
         </button>
       </div>
       <div className="eq-row">
-        <Tex tex={eq.tex} display className="eq-tex" />
+        <FitTex tex={eq.tex} className="eq-tex" label={`${t("ph.eq")} (${n}) — ${t("ph.scroll")}`} />
         <span className="eq-num" aria-label={`${t("ph.eq")} ${n}`}>({n})</span>
       </div>
       {eq.note && <RichText text={t.l(eq.note)} className="eq-note" />}

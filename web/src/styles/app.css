@@ -123,8 +123,8 @@ a { color: var(--accent-strong); }
   height: var(--header-h);
   display: flex; align-items: center; gap: var(--s4);
   padding: 0 var(--s4);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: saturate(1.4) blur(10px);
+  /* opaque: plot legends/annotations scrolling underneath must never show through */
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -168,12 +168,15 @@ a { color: var(--accent-strong); }
   display: flex; align-items: center; gap: var(--s3);
   padding: 0 var(--s4);
   font-size: 12.5px; color: var(--text-2);
-  background: var(--accent-soft);
+  /* accent tint over an opaque surface (the soft accent alone is ~90 % transparent) */
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--surface);
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
   position: sticky; top: var(--header-h); z-index: 40;
 }
 .modestrip-tag { font-weight: 700; color: var(--accent-strong); display: inline-flex; align-items: center; gap: 6px; }
 .modestrip-tag::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+.modestrip .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modestrip-tag, .modestrip .sep { flex: none; }
 .modestrip .sep { width: 1px; height: 16px; background: color-mix(in srgb, var(--accent) 30%, var(--border)); }
 
 .banner { display: flex; align-items: center; gap: var(--s2); padding: 8px var(--s4); font-size: 13px; background: var(--warn-soft); color: var(--text); border-bottom: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
@@ -303,6 +306,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .kpi-value { font-family: var(--mono); font-size: 20px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .kpi-value .u { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 3px; }
 .kpi-sub { font-size: 11.5px; color: var(--muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpis.stale .kpi-value { opacity: .5; }
+.kpi-sub .badge { font-family: var(--font); }
 .kpi.skeleton .kpi-value { color: transparent; background: var(--surface-3); border-radius: 6px; width: 70%; }
 
 /* ------------------------------------------------------------------ panels */
@@ -316,7 +321,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .panel-toolbar .tb-label { font-size: 11.5px; color: var(--muted); }
 .panel-body { position: relative; padding: 0 8px 8px; min-height: 120px; }
 .panel-foot { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 6px; }
-.plot { width: 100%; height: 340px; }
+/* isolation: Plotly's modebar/tooltips use z-index 1001+; keep them inside the plot's own stacking
+   context so they scroll *under* the sticky header and mode strip */
+.plot { width: 100%; height: 340px; isolation: isolate; position: relative; z-index: 0; }
 .plot.tall { height: 420px; }
 .plot.short { height: 260px; }
 .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--surface-3); color: var(--muted); white-space: nowrap; }
@@ -415,7 +422,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .eq-copy { opacity: .5; transition: opacity .15s; }
 .eq:hover .eq-copy, .eq-copy:focus-visible { opacity: 1; }
 .eq-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 2px 10px 4px 12px; }
-.eq-tex { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.eq-tex { overflow-x: auto; overflow-y: hidden; padding: 4px 0; min-width: 0; }
+/* too wide even at 80 %: scroll inside the equation box, with a visible scrollbar and a right-edge fade */
+.eq-tex.scroll { padding-bottom: 6px; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); }
+.eq-tex.scroll:hover, .eq-tex.scroll:focus-visible { -webkit-mask-image: none; mask-image: none; }
+.eq-tex.scroll::-webkit-scrollbar { height: 6px; }
+.eq-tex.scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+.eq-tex.scroll::-webkit-scrollbar-track { background: transparent; }
 .eq-tex .katex-display { margin: 4px 0; text-align: left; }
 .eq-tex .katex-display > .katex { text-align: left; }
 .eq-num { font-family: var(--mono); font-size: 12px; color: var(--muted); }

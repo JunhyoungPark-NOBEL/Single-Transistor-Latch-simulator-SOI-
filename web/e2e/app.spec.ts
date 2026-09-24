@@ -188,11 +188,146 @@ test.describe("STL simulator (mock mode)", () => {
     await page.screenshot({ path: `${SHOTS}/dark-stochastic.png` });
   });
 
-  test("narrow screen: sidebar becomes a drawer", async ({ page }) => {
+  test("narrow screen: sidebar becomes a drawer; empty panels still offer Run", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await fresh(page);
     const toggle = page.getByRole("button", { name: /파라미터 패널|Parameter panel/ });
     await expect(toggle).toBeVisible();
     await page.screenshot({ path: `${SHOTS}/tablet-1024.png` });
+    await page.getByTestId("empty-run-iv").click();
+    await expect(page.getByTestId("kpi-vlu-value")).toContainText("3.70", { timeout: 15_000 });
   });
+});
+
+test.describe("UX regressions", () => {
+  // alpha of a computed colour: rgba(r, g, b, a) or modern syntax such as color(srgb r g b / a)
+  const alpha = (c: string) => {
+    if (c === "transparent") return 0;
+    const slash = c.match(/\/\s*([\d.]+%?)\s*\)/);
+    if (slash) return slash[1].endsWith("%") ? Number(slash[1].slice(0, -1)) / 100 : Number(slash[1]);
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (!m) return 1;
+    const parts = m[1].split(",").map((x) => x.trim());
+    return parts.length === 4 ? Number(parts[3]) : 1;
+  };
+
+  test("sticky header and mode strip are opaque and stay above scrolled plots", async ({ page }) => {
+    await fresh(page);
+    await page.getByTestId("run-button").click();
+    await expect(page.getByTestId("panel-iv").locator(".js-plotly-plot")).toBeVisible({ timeout: 15_000 });
+    for (const sel of ["header.header", '[data-testid="modebar"]']) {
+      const bg = await page.locator(sel).evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(alpha(bg), `${sel} background ${bg}`).toBe(1);
+    }
+    // Plotly's own z-indices (modebar 1001) are contained in the plot's stacking context
+    const iso = await page.locator(".plot").first().evaluate((el) => getComputedStyle(el).isolation);
+    expect(iso).toBe("isolate");
+    // scroll the I–V legend under the mode strip: the strip still wins the hit test
+    const strip = (await page.getByTestId("modebar").boundingBox())!;
+    const legend = (await page.getByTestId("panel-iv").locator(".legend").boundingBox())!;
+    await page.mouse.wheel(0, legend.y - strip.y - 4);
+    await page.waitForTimeout(300);
+    const hit = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('[data-testid="modebar"]'), { x: legend.x + 20, y: strip.y + strip.height / 2 });
+    expect(hit).toBe(true);
+  });
+
+  test("Details window: display equations are never clipped (fit or scroll in their own box)", async ({ page }) => {
+    await fresh(page);
+    await page.getByTestId("details-panel-charge-balance").click();
+    const win = page.getByTestId("physics-window");
+    await expect(win.locator(".katex").first()).toBeVisible();
+    const check = () =>
+      win.locator(".eq-tex").evaluateAll((els) =>
+        els.map((e) => ({ fit: (e as HTMLElement).dataset.fit, sw: e.scrollWidth, cw: e.clientWidth, ox: getComputedStyle(e).overflowX, tab: (e as HTMLElement).tabIndex })),
+      );
+    await expect.poll(async () => (await check()).filter((x) => x.fit !== "scroll" && x.sw > x.cw + 1).length).toBe(0);
+    for (const x of await check()) {
+      expect(x.ox).toBe("auto");
+      if (x.fit === "scroll") expect(x.tab).toBe(0);
+    }
+    // a narrow window forces the scroll path: still reachable, never cut off
+    await page.setViewportSize({ width: 420, height: 800 });
+    await page.getByTestId("physics-close").click();
+    await page.getByTestId("details-panel-charge-balance").click();
+    await expect.poll(async () => (await check()).filter((x) => x.fit !== "scroll" && x.sw > x.cw + 1).length).toBe(0);
+    expect((await check()).some((x) => x.fit !== "fits")).toBe(true);
+  });
+
+  test("mode banner describes the circuit meaning of each mode on the Circuit tab", async ({ page }) => {
+    await fresh(page, "#tab=circuit&mode=deterministic");
+    const hint = page.getByTestId("mode-hint");
+    await expect(hint).toContainText("MNA");
+    await expect(hint).toContainText("BE");
+    await expect(hint).not.toContainText("branch와 fold");
+    await page.getByTestId("field-method").getByRole("radio", { name: "TRAP" }).click();
+    await expect(hint).toContainText("TRAP");
+    await page.getByTestId("mode-stochastic").click();
+    await expect(hint).toContainText("Eq. 2");
+    await expect(hint).toContainText("Q_B");
+    await page.getByTestId("tab-device").click();
+    await expect(hint).toContainText("MC");
+  });
+
+  test("rise/fall edges default to auto (server default) on the pulse bench", async ({ page }) => {
+    await fresh(page, "#tab=circuit&mode=deterministic");
+    await page.getByTestId("bench-pulse").click();
+    await expect(page.getByTestId("auto-bench_rise_s")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("auto-bench_fall_s")).toHaveAttribute("aria-pressed", "true");
+    const rise = page.getByTestId("field-bench_rise_s").locator("input.input");
+    await rise.fill("5");
+    await rise.press("Enter");
+    await expect(page.getByTestId("auto-bench_rise_s")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  test("l_GIDL help describes the effective GIDL field length", async ({ page }) => {
+    await fresh(page);
+    await page.getByTestId("group-calib").locator(".group-toggle").click();
+    await page.getByTestId("tip-l_gidl").hover();
+    await expect(page.getByRole("tooltip")).toContainText("E_G");
+    await expect(page.getByRole("tooltip")).not.toContainText("BTBT 영역 길이");
+  });
+
+  test("run bar reports only runs of the current tab/mode; KPIs dim when parameters change", async ({ page }) => {
+    await fresh(page);
+    await page.getByTestId("run-button").click();
+    await expect(page.getByTestId("kpi-vlu-value")).toContainText("3.70", { timeout: 15_000 });
+    await expect(page.getByTestId("run-status")).toContainText("완료");
+    await page.getByTestId("mode-stochastic").click();
+    await expect(page.getByTestId("run-status")).toHaveText("대기");
+    await page.getByTestId("mode-deterministic").click();
+    await expect(page.getByTestId("run-status")).toContainText("완료");
+    const input = page.getByTestId("field-vg").locator("input.input");
+    await input.fill("-1.9");
+    await input.press("Enter");
+    await expect(page.getByTestId("kpis")).toHaveClass(/stale/);
+    await expect(page.getByTestId("panel-components").locator(".badge.stale")).toBeVisible();
+  });
+
+  for (const [name, raw] of [
+    ["null", "null"],
+    ["not JSON", "{oops"],
+    ["wrong types", JSON.stringify({ tab: "zzz", mode: "foo", lang: "fr", theme: 7, preset: "weird", params: { device: "x", circuit: { bench: "nope", bench_params: 5 } } })],
+  ] as const) {
+    test(`junk persisted state (${name}) falls back to defaults`, async ({ page }) => {
+      await page.addInitScript((v) => {
+        try {
+          if (!sessionStorage.getItem("e2e-junk")) {
+            localStorage.clear();
+            localStorage.setItem("stl-websim:v1", v);
+            localStorage.setItem("stl-websim:groups", "null");
+            sessionStorage.setItem("e2e-junk", "1");
+          }
+        } catch {
+          /* ignore */
+        }
+      }, raw);
+      await page.goto("/?mock=1");
+      await expect(page.getByTestId("mode-toggle")).toBeVisible();
+      await expect(page.getByTestId("tab-device")).toContainText("소자");
+      await expect(page.getByTestId("tab-device")).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByTestId("group-bias")).toBeVisible();
+      await page.getByTestId("tab-circuit").click();
+      await expect(page.getByTestId("bench-load_line")).toHaveAttribute("aria-checked", "true");
+    });
+  }
 });

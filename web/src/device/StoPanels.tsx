@@ -169,7 +169,9 @@ function StatsTable({ rows }: { rows: { label: string; st: Stats | null | undefi
 export function DistPanel() {
   const t = useT();
   const c = usePalette();
+  const params = useStore((s) => s.params);
   const { entry, data } = useEntry<SweepMCResult>("sweep_mc");
+  const key = useCurrentKey("sweep_mc", useMemo(() => sweepMcPayload(params), [params]));
   const [view, setView] = useState<"hist" | "cdf">("hist");
   const [showMeas, setShowMeas] = useState(true);
   const [which, setWhich] = useState<"both" | "LU" | "LD">("both");
@@ -220,6 +222,7 @@ export function DistPanel() {
       topic="sweep-mc"
       entry={entry}
       hasData={!!data}
+      currentKey={key}
       csvName={`vlu_vld_${view}`}
       plot={plot}
       toolbar={
@@ -358,7 +361,9 @@ export function VgStochPanel() {
 export function CyclePanel() {
   const t = useT();
   const c = usePalette();
+  const params = useStore((s) => s.params);
   const { entry, data } = useEntry<SweepMCResult>("sweep_mc");
+  const key = useCurrentKey("sweep_mc", useMemo(() => sweepMcPayload(params), [params]));
   const plot = useMemo(() => {
     if (!data) return undefined;
     const idx = data.V_LU.map((_, i) => i + 1);
@@ -383,7 +388,7 @@ export function CyclePanel() {
   }, [data, c, t]);
   const ax = data?.state_axis;
   return (
-    <Panel id="cycles" title={t("p.cycles")} desc={t("p.cycles.desc")} topic="local-states" entry={entry} hasData={!!data} csvName="cycle_series" plot={plot}>
+    <Panel id="cycles" title={t("p.cycles")} desc={t("p.cycles.desc")} topic="local-states" entry={entry} hasData={!!data} currentKey={key} csvName="cycle_series" plot={plot}>
       {ax && (
         <div className="panel-foot small muted">
           {t("cyc.state")}: {ax.label} · {ax.mode} · σ = {ax.unit === "V" ? `${(ax.sigma * 1e3).toFixed(1)} mV` : `${ax.sigma.toFixed(3)} ${ax.unit}`}

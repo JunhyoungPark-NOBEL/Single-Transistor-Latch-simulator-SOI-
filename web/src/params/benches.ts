@@ -1,6 +1,8 @@
 // Circuit test benches (docs/WEB_CONTRACT.md §4). Keys and defaults mirror
 // server/compute/circuit/benches.py (BENCH_DEFAULTS, SOLVER_DEFAULTS, STOCHASTIC_DEFAULTS).
-// `null` = "auto" (resolved server-side from the device, e.g. v_max from the preset sweep, v_amp from V_LU).
+// `null` = "auto" (resolved server-side from the device, e.g. v_max from the preset sweep, v_amp from V_LU, or
+// the server's documented default such as rise_s/fall_s). Null keys are omitted from the payload
+// (utils/payload.ts circuitPayload) so server/compute/circuit/benches.py BENCH_DEFAULTS applies.
 import type { L10n } from "../content/physics/types";
 import type { BenchId, CircuitStochBlock, SolverBlock } from "../api/types";
 import type { StrKey } from "../i18n/strings";
@@ -48,8 +50,18 @@ const f = {
   vAmp: { key: "v_amp_V", sym: "V_{\\mathrm{amp}}", label: L("펄스 진폭", "Pulse amplitude"), help: L("자동: 결정론 V_LU + 0.10 V", "auto: deterministic V_LU + 0.10 V"), unit: "V", min: -8, max: 8, step: 0.01, auto: true },
   width: { key: "width_s", sym: "t_w", label: L("펄스 폭 (평탄부)", "Pulse width (flat top)"), help: L("high 구간", "High-level duration"), unit: "µs", scale: 1e6, min: 1e-6, max: 1e12, slider: "log" as const },
   period: { key: "period_s", sym: "T", label: L("펄스 주기", "Pulse period"), help: L("펄스 반복 주기", "Repetition period"), unit: "µs", scale: 1e6, min: 1e-6, max: 1e12, slider: "log" as const },
-  rise: { key: "rise_s", sym: "t_r", label: L("상승 시간", "Rise time"), help: L("에지 상승 시간", "Edge rise time"), unit: "µs", scale: 1e6, min: 0, max: 1e9, slider: "log" as const },
-  fall: { key: "fall_s", sym: "t_f", label: L("하강 시간", "Fall time"), help: L("에지 하강 시간", "Edge fall time"), unit: "µs", scale: 1e6, min: 0, max: 1e9, slider: "log" as const },
+  // rise/fall default to the server's values (pulse/coupled 10 µs, p-bit 20 µs): edges faster than ~1 µs kick
+  // the floating body through the drain-depletion charge and trigger latch-up below the static fold.
+  rise: {
+    key: "rise_s", sym: "t_r", label: L("상승 시간", "Rise time"),
+    help: L("자동: 서버 기본값 (펄스·결합 10 µs, p-bit 20 µs). ~1 µs보다 빠른 에지는 드레인 공핍 전하를 통해 floating body를 차서 정적 fold 아래에서도 래치업을 일으킨다", "auto: server default (pulse/coupled 10 µs, p-bit 20 µs). Edges faster than ~1 µs kick the floating body through the drain-depletion charge and trigger latch-up below the static fold"),
+    unit: "µs", scale: 1e6, min: 0, max: 1e9, slider: "log" as const, auto: true,
+  },
+  fall: {
+    key: "fall_s", sym: "t_f", label: L("하강 시간", "Fall time"),
+    help: L("자동: 서버 기본값 (펄스·결합 10 µs, p-bit 20 µs). 빠른 에지는 드레인 공핍 결합으로 body 전하를 흔든다", "auto: server default (pulse/coupled 10 µs, p-bit 20 µs). Fast edges disturb the body charge through the drain-depletion coupling"),
+    unit: "µs", scale: 1e6, min: 0, max: 1e9, slider: "log" as const, auto: true,
+  },
   nPulses: { key: "n_pulses", sym: "N_p", label: L("펄스 수", "Pulses"), help: L("≤ 2000", "≤ 2000"), unit: "", min: 1, max: 2000, step: 1, int: true },
   delay: { key: "delay_s", sym: "t_0", label: L("첫 펄스 지연", "First-pulse delay"), help: L("첫 펄스 시작 시각", "Start of the first pulse"), unit: "µs", scale: 1e6, min: 0, max: 1e12 },
 };
@@ -66,7 +78,7 @@ export const BENCHES: Record<BenchId, BenchDef> = {
     id: "pulse",
     title: "c.bench.pulse",
     desc: "c.bench.pulse.desc",
-    defaults: { v_base_V: 0, v_amp_V: null, width_s: 200e-6, period_s: 1e-3, rise_s: 1e-6, fall_s: 1e-6, n_pulses: 10, delay_s: 0, R_s_ohm: 1e3, C_d_F: 2e-15, vg_V: null, amplitudes_V: [] },
+    defaults: { v_base_V: 0, v_amp_V: null, width_s: 200e-6, period_s: 1e-3, rise_s: null, fall_s: null, n_pulses: 10, delay_s: 0, R_s_ohm: 1e3, C_d_F: 2e-15, vg_V: null, amplitudes_V: [] },
     fields: [
       f.vBase, f.vAmp, f.width, f.period, f.rise, f.fall, f.nPulses, f.delay, f.Rs, f.Cd, f.vg,
       { key: "amplitudes_V", sym: "\\{V_{\\mathrm{amp}}\\}", label: L("진폭 스윕 (선택)", "Amplitude sweep (optional)"), help: L("쉼표로 구분한 진폭 목록 → P_sw vs 진폭 (≤ 25개)", "Comma-separated amplitudes → P_sw vs amplitude (≤ 25)"), unit: "V", type: "list", min: -8, max: 8 },
@@ -76,7 +88,7 @@ export const BENCHES: Record<BenchId, BenchDef> = {
     id: "pbit",
     title: "c.bench.pbit",
     desc: "c.bench.pbit.desc",
-    defaults: { v_low_V: 0, v_high_V: null, clock_period_s: 1e-3, clock_width_s: 200e-6, rise_s: 1e-6, fall_s: 1e-6, n_clocks: 50, R_L_ohm: 100e3, C_d_F: 2e-15, cmp_threshold_V: null, vg_V: null, vg_list_V: [], light_list_pA: [] },
+    defaults: { v_low_V: 0, v_high_V: null, clock_period_s: 1e-3, clock_width_s: 200e-6, rise_s: null, fall_s: null, n_clocks: 50, R_L_ohm: 100e3, C_d_F: 2e-15, cmp_threshold_V: null, vg_V: null, vg_list_V: [], light_list_pA: [] },
     fields: [
       { key: "v_low_V", sym: "V_{\\mathrm{low}}", label: L("클럭 low", "Clock low"), help: L("클럭 low 전압", "Clock low level"), unit: "V", min: -8, max: 8, step: 0.05 },
       { key: "v_high_V", sym: "V_{\\mathrm{high}}", label: L("클럭 high", "Clock high"), help: L("자동: V_LU − 0.02 V (확률 스위칭 영역)", "auto: V_LU − 0.02 V (stochastic switching regime)"), unit: "V", min: -8, max: 8, step: 0.01, auto: true },
@@ -97,7 +109,7 @@ export const BENCHES: Record<BenchId, BenchDef> = {
     title: "c.bench.coupled",
     desc: "c.bench.coupled.desc",
     defaults: {
-      source: "ramp", v_min_V: 0, v_max_V: null, rate_V_per_s: null, n_cycles: 1, v_base_V: 0, v_amp_V: null, width_s: 200e-6, period_s: 1e-3, rise_s: 1e-6, fall_s: 1e-6,
+      source: "ramp", v_min_V: 0, v_max_V: null, rate_V_per_s: null, n_cycles: 1, v_base_V: 0, v_amp_V: null, width_s: 200e-6, period_s: 1e-3, rise_s: null, fall_s: null,
       n_pulses: 10, delay_s: 0, R_s1_ohm: 100e3, R_s2_ohm: 100e3, R_c_ohm: 1e6, C_d_F: 2e-15, vg_V: null, vg2_V: null, iph2_pA: null,
     },
     fields: [
