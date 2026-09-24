@@ -1,19 +1,131 @@
-// Stochastic device panels: (a) I–V + MC traces, (b) V_LU/V_LD histogram ⇄ CDF + stats, (c) hazard and
-// survival, (d) V_G curve mean ± σ (explicit Compute), (e) cycle series, (f) design map.
+// Stochastic device panels: statistics summary (full width, rendered under the KPI strip), (a) I–V + MC
+// traces, (b) V_LU/V_LD histogram ⇄ CDF, (c) hazard and survival, (d) V_G curve mean ± σ (explicit Compute),
+// (e) cycle series, (f) design map.
 import type { Data, Layout, Shape } from "plotly.js";
 import { useEffect, useMemo, useState } from "react";
 import { finite } from "../api/guards";
-import type { BranchesResult, HazardResult, Stats, SweepMCResult, VgCurveStochasticResult } from "../api/types";
+import type { Arr, BranchesResult, Cdf, HazardResult, SweepMCResult, VgCurveStochasticResult } from "../api/types";
 import { Panel } from "../components/Panel";
-import { useT } from "../i18n";
+import { useT, type T } from "../i18n";
 import type { StrKey } from "../i18n/strings";
 import { currentAxis, HOVER_IV } from "../plots/theme";
 import { loadDesignMap, loadMeasured, runVgStochastic } from "../state/runner";
 import { useStore } from "../state/store";
-import { DASH, fmtInt, isNum } from "../utils/format";
+import { describe, diffSeries, ecdf, ks2, meanCI } from "../stats/describe";
+import { fmtP, fmtShare } from "../stats/format";
+import { StatsTable, type StatsRow } from "../stats/StatsTable";
+import { isNum } from "../utils/format";
 import { hazardPayload, powerMW, sweepMcPayload, vgStochPayload } from "../utils/payload";
-import { isPaperReference, logRange, nums, pos, useCurrentKey, useEntry, usePalette } from "./common";
+import { isPaperReference, isStale, logRange, nums, pos, useCurrentKey, useEntry, usePalette } from "./common";
 import { Check, insideLegend, measuredIvTraces, RangeInputs, Seg } from "./DetPanels";
+
+// ---------------------------------------------------------------- statistics summary
+/** Linear interpolation of a quantile function (prob ascending) at probability p. */
+function quantileAt(prob: Arr, v: Arr, p: number): number | null {
+  let prev: [number, number] | null = null;
+  for (let i = 0; i < prob.length; i++) {
+    const a = prob[i];
+    const b = v[i];
+    if (!isNum(a) || !isNum(b)) continue;
+    if (a >= p) {
+      if (!prev) return b;
+      const [pa, pb] = prev;
+      return a === pa ? b : pb + ((b - pb) * (p - pa)) / (a - pa);
+    }
+    prev = [a, b];
+  }
+  return prev ? prev[1] : null;
+}
+
+/** "Measured record: 400 cycles at V_G = −1.8 V, 1.15 mW" (built from the run, not the server's label). */
+function measuredCaption(t: T, n: number, vg: number, powerMw: number): string {
+  const light = powerMw > 0 ? `${powerMw.toFixed(2)} mW` : t("stats.meas.dark");
+  return t("stats.meas.caption", { n, vg: vg.toFixed(1).replace("-", "−"), light });
+}
+
+export function StatsPanel() {
+  const t = useT();
+  const c = usePalette();
+  const params = useStore((s) => s.params);
+  const { entry, data } = useEntry<SweepMCResult>("sweep_mc");
+  const { entry: he, data: hz } = useEntry<HazardResult>("hazard");
+  const key = useCurrentKey("sweep_mc", useMemo(() => sweepMcPayload(params), [params]));
+  const hKey = useCurrentKey("hazard", useMemo(() => hazardPayload(params), [params]));
+  // show the analytic (hazard) row only when it belongs to the same parameter set as the MC result
+  const hazardOk = !!hz && hz.fold_V !== null && isStale(he, hKey) === isStale(entry, key);
+  const rows = useMemo<StatsRow[]>(() => {
+    if (!data) return [];
+    const m = data.measured;
+    const out: StatsRow[] = [
+      { key: "V_LU", label: <>V<sub>LU</sub></>, labelText: "V_LU", sub: t("stats.row.vlu"), unit: "V", values: data.V_LU, measured: m?.V_LU ?? null, color: c.sto },
+      { key: "V_LD", label: <>V<sub>LD</sub></>, labelText: "V_LD", sub: t("stats.row.vld"), unit: "V", values: data.V_LD, measured: m?.V_LD ?? null, color: c.down },
+      {
+        key: "window", label: <>V<sub>LU</sub> − V<sub>LD</sub></>, labelText: "V_LU - V_LD", sub: t("stats.row.window"), unit: "V",
+        values: diffSeries(data.V_LU, data.V_LD), measured: m?.V_LD ? diffSeries(m.V_LU, m.V_LD) : null, color: c.det, tip: t("stats.row.window.tip"),
+      },
+    ];
+    if (hazardOk && hz) {
+      const st = hz.stats;
+      const q = hz.quantiles;
+      const atom = isNum(hz.fold_atom) && hz.fold_atom > 0.005 ? ` · ${t("stats.row.hazard.atom", { pct: fmtShare(hz.fold_atom) })}` : "";
+      out.push({
+        key: "hazard", label: <>V<sub>LU</sub></>, labelText: "V_LU (carrier noise only, hazard)", sub: `${t("stats.row.hazard")}${atom}`, unit: "V",
+        secondary: true, color: c.unstable, tip: t("stats.row.hazard.tip"),
+        stats: {
+          mean: st.mean, sd: st.sd, median: st.median, p05: st.p05, p95: st.p95, min: st.min, max: st.max,
+          q1: quantileAt(q.prob, q.v, 0.25), q3: quantileAt(q.prob, q.v, 0.75),
+        },
+      });
+    }
+    return out;
+  }, [data, hz, hazardOk, c, t]);
+
+  const lu = useMemo(() => (data ? describe(data.V_LU) : null), [data]);
+  const ci = lu ? meanCI(lu) : null;
+  const m = data?.measured;
+  const seed = data?.seed ?? params.stochastic.seed;
+  const nTot = lu?.n_total ?? 0;
+  // re-running with a result on screen: dim the table instead of the Panel's 120 px progress overlay
+  const running = entry?.status === "running" || entry?.status === "queued";
+  return (
+    <Panel
+      id="stats"
+      title={t("stats.panel.title")}
+      desc={t("stats.panel.desc")}
+      topic="sweep-mc"
+      entry={running && data && entry ? { ...entry, status: "done" } : entry}
+      hasData={!!data}
+      currentKey={key}
+      wide
+      empty={t("stats.empty")}
+      badges={data ? <span className="badge sto">{data.engine}</span> : undefined}
+    >
+      {data && lu && (
+        <div className={`stats-panel${running ? " dim" : ""}`} aria-busy={running}>
+          <div className="stats-meta" data-testid="stats-meta">
+            <span className="stats-chip">{t("stats.meta.engine")} <b>{t(`stats.engine.${data.engine}` as StrKey)}</b></span>
+            <span className="stats-chip"><b>{t("stats.meta.cycles", { n: nTot })}</b></span>
+            <span className="stats-chip">{t("stats.meta.seed")} <b>{seed}</b></span>
+            <span className="stats-chip">{t("stats.meta.sweep", { v: data.vd_max_V ?? params.sweep.vd_max_V, rate: data.rate_V_per_s ?? params.sweep.rate_V_per_s })}</span>
+            <span className={`stats-chip${lu.censored > 0 ? " warn" : ""}`} data-testid="stats-censored">
+              {t("stats.meta.censored", { n: lu.censored, pct: fmtShare(nTot ? lu.censored / nTot : 0) })}
+            </span>
+            {ci && (
+              <span className="stats-chip" data-testid="stats-ci">
+                {t("stats.meta.ci", { lo: ci.lo.toFixed(4), hi: ci.hi.toFixed(4) })}
+              </span>
+            )}
+          </div>
+          <StatsTable rows={rows} csvName="statistics_vlu_vld" />
+          <div className="stats-foot small muted">
+            {t("stats.foot.censoring")}
+            {m && m.V_LU.length > 0 && <> {measuredCaption(t, m.V_LU.length, params.device.vg, powerMW(params.device))}</>}
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
+}
 
 // ---------------------------------------------------------------- (a) I–V + MC sweeps
 export function McIvPanel() {
@@ -111,10 +223,6 @@ function histFromEdges(values: number[], edges: number[]): number[] {
   }
   return counts;
 }
-function ecdf(values: number[]) {
-  const s = [...values].sort((a, b) => a - b);
-  return { v: s, p: s.map((_, i) => (i + 1) / s.length) };
-}
 /** Equal-width edges covering both samples (so model and measured share bins). */
 function commonEdges(a: number[], b: number[], base: number[]): number[] {
   const all = [...a, ...b];
@@ -125,45 +233,14 @@ function commonEdges(a: number[], b: number[], base: number[]): number[] {
   const n = Math.min(200, Math.max(5, Math.ceil((hi - lo) / w) + 1));
   return Array.from({ length: n + 1 }, (_, i) => lo - w / 2 + i * w);
 }
-
-function StatsTable({ rows }: { rows: { label: string; st: Stats | null | undefined; color: string }[] }) {
-  const t = useT();
-  const v = (x: number | null | undefined, d = 3) => (isNum(x) ? x.toFixed(d) : DASH);
-  return (
-    <div className="table-wrap" style={{ margin: "0 14px 12px" }}>
-      <table className="table compact" data-testid="stats-table">
-        <thead>
-          <tr>
-            <th />
-            <th className="num">{t("stats.n")}</th>
-            <th className="num">{t("stats.mean")} (V)</th>
-            <th className="num">{t("stats.sd")} (mV)</th>
-            <th className="num">{t("stats.median")}</th>
-            <th className="num">p05 – p95</th>
-            <th className="num">{t("stats.lag1")}</th>
-            <th className="num" title="censored (no latch within the sweep)">{t("stats.censored")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.filter((r) => r.st).map((r) => (
-            <tr key={r.label}>
-              <td style={{ whiteSpace: "nowrap" }}>
-                <span aria-hidden style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: r.color, marginRight: 6 }} />
-                {r.label}
-              </td>
-              <td className="num">{fmtInt(r.st!.n)}</td>
-              <td className="num">{v(r.st!.mean, 4)}</td>
-              <td className="num">{isNum(r.st!.sd) ? (r.st!.sd * 1e3).toFixed(1) : DASH}</td>
-              <td className="num">{v(r.st!.median)}</td>
-              <td className="num">{v(r.st!.p05)}–{v(r.st!.p95)}</td>
-              <td className="num">{v(r.st!.lag1, 2)}</td>
-              <td className="num">{fmtInt(r.st!.censored)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+/**
+ * Model CDF normalised to all cycles: the server's `cdf` block when it is well formed (it also handles latch-downs
+ * not reached by 0 V), else the ECDF of the values over every cycle (censored cycles keep it below 1).
+ */
+function modelCdf(block: Cdf | undefined, values: Arr): { v: number[]; p: number[] } {
+  if (block && Array.isArray(block.v) && Array.isArray(block.p) && block.v.length === block.p.length && block.v.length > 0) return { v: block.v, p: block.p };
+  const e = ecdf(values);
+  return { v: e.v, p: e.p };
 }
 
 export function DistPanel() {
@@ -180,8 +257,8 @@ export function DistPanel() {
     const traces: Data[] = [];
     const meas = showMeas ? data.measured : null;
     const series = [
-      { k: "LU" as const, color: c.sto, label: "V<sub>LU</sub>", model: finite(data.V_LU), meas: finite(meas?.V_LU) },
-      { k: "LD" as const, color: c.down, label: "V<sub>LD</sub>", model: finite(data.V_LD), meas: finite(meas?.V_LD) },
+      { k: "LU" as const, color: c.sto, label: "V<sub>LU</sub>", raw: data.V_LU, model: finite(data.V_LU), meas: finite(meas?.V_LU) },
+      { k: "LD" as const, color: c.down, label: "V<sub>LD</sub>", raw: data.V_LD, model: finite(data.V_LD), meas: finite(meas?.V_LD) },
     ].filter((s) => which === "both" || which === s.k);
     for (const s of series) {
       if (view === "hist") {
@@ -196,7 +273,7 @@ export function DistPanel() {
           traces.push({ x: centers, y: mc.map((v) => v * scale), type: "scatter", mode: "lines", line: { shape: "hvh", color: c.meas, width: 1.6 }, name: `${s.label} ${t("measured")}${Math.abs(scale - 1) > 1e-9 ? ` (×${scale.toFixed(2)})` : ""}`, hovertemplate: `${t("measured")} %{x:.3f} V<br>%{y:.1f}<extra></extra>` });
         }
       } else {
-        const cm = ecdf(s.model);
+        const cm = modelCdf(data.cdf?.[s.k], s.raw);
         traces.push({ x: cm.v, y: cm.p, type: "scatter", mode: "lines", line: { shape: "hv", color: s.color, width: 2 }, name: `${s.label} ${t("model")}`, hovertemplate: `%{x:.3f} V<br>P = %{y:.3f}<extra></extra>` });
         if (s.meas.length) {
           const mm = ecdf(s.meas);
@@ -214,6 +291,25 @@ export function DistPanel() {
     return { data: traces, layout };
   }, [data, view, showMeas, which, c, t]);
   const m = data?.measured;
+  // two-sample KS of the model vs the measured record (finite values), shown under the plot
+  // censored cycles: the (all-cycle) CDF plateaus at the fraction that switched within the sweep
+  const plateau = useMemo(() => {
+    if (!data || view !== "cdf") return [];
+    return (["LU", "LD"] as const)
+      .filter((k) => which === "both" || which === k)
+      .map((k) => ({ k, top: modelCdf(data.cdf?.[k], k === "LU" ? data.V_LU : data.V_LD).p.at(-1) ?? 1 }))
+      .filter((x) => x.top < 0.9995);
+  }, [data, view, which]);
+  const ksLine = useMemo(() => {
+    if (!data?.measured || !showMeas) return [];
+    const out: { k: string; D: number; p: number | null }[] = [];
+    for (const k of ["LU", "LD"] as const) {
+      if (which !== "both" && which !== k) continue;
+      const r = ks2(k === "LU" ? data.V_LU : data.V_LD, k === "LU" ? data.measured.V_LU : data.measured.V_LD);
+      if (r.D !== null) out.push({ k, D: r.D, p: r.p });
+    }
+    return out;
+  }, [data, showMeas, which]);
   return (
     <Panel
       id="dist"
@@ -233,18 +329,30 @@ export function DistPanel() {
         </>
       }
     >
-      {data && (
-        <>
-          <StatsTable
-            rows={[
-              { label: `LU · ${t("model")}`, st: data.stats.LU, color: c.sto },
-              { label: `LD · ${t("model")}`, st: data.stats.LD, color: c.down },
-              { label: `LU · ${t("measured")}`, st: m?.stats.LU, color: c.meas },
-              { label: `LD · ${t("measured")}`, st: m?.stats.LD, color: c.meas },
-            ]}
-          />
-          {m && <div className="panel-foot small muted">{t("measured")}: {m.label}</div>}
-        </>
+      {plateau.length > 0 && (
+        <div className="panel-foot small muted" data-testid="dist-plateau">
+          <span>
+            {plateau.map((x, i) => (
+              <span key={x.k}>
+                {i > 0 && " · "}V<sub>{x.k}</sub> {t("stats.dist.plateau", { pct: fmtShare(x.top) })}
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+      {m && m.V_LU.length > 0 && (
+        <div className="panel-foot small muted">
+          {ksLine.length > 0 && (
+            <span data-testid="dist-ks">
+              {ksLine.map((x, i) => (
+                <span key={x.k}>
+                  {i > 0 && " · "}V<sub>{x.k}</sub> {t("stats.dist.ks", { d: x.D.toFixed(3), p: fmtP(x.p) })}
+                </span>
+              ))}
+            </span>
+          )}
+          <span>{measuredCaption(t, m.V_LU.length, params.device.vg, powerMW(params.device))}</span>
+        </div>
       )}
     </Panel>
   );
@@ -322,15 +430,29 @@ export function VgStochPanel() {
         { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.sd_mV), yaxis: "y2", type: "scatter", mode: "markers", name: `σ ${t("measured")}`, marker: { color: c.meas, size: 8, symbol: "square-open" }, hovertemplate: "σ = %{y:.1f} mV<extra>measured</extra>" },
       );
     }
+    // censoring at the sweep maximum (engines fix): stacked bars on a right-hand % axis of the σ strip
+    const cens = censoredShares(data);
+    if (cens) {
+      traces.push(
+        { x: vg, y: cens.noLatch.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("stats.vgs.noLatch"), marker: { color: c.unstable }, opacity: 0.35, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>${t("stats.vgs.noLatch")}: %{y:.1f} %<extra></extra>` },
+        { x: vg, y: cens.beyond.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("stats.vgs.beyond", { v: cens.vdMax }), marker: { color: c.warn }, opacity: 0.35, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>${t("stats.vgs.beyond", { v: cens.vdMax })}: %{y:.1f} %<extra></extra>` },
+      );
+    }
     const layout: Partial<Layout> = {
       xaxis: { title: { text: "V<sub>G</sub> (V)" }, anchor: "y2" },
       yaxis: { title: { text: "V<sub>LU</sub> (V)" }, domain: [0.45, 1] },
       yaxis2: { title: { text: "σ (mV)" }, domain: [0, 0.37], rangemode: "tozero" },
-      margin: { l: 58, r: 16, t: 58, b: 46 },
+      margin: { l: 58, r: cens ? 50 : 16, t: 58, b: 46 },
       legend: { font: { size: 10.5 } },
     };
+    if (cens) {
+      layout.yaxis3 = { title: { text: t("stats.vgs.axis"), font: { size: 11 } }, overlaying: "y2", side: "right", range: [0, 100], showgrid: false, zeroline: false, ticksuffix: "", fixedrange: true };
+      layout.barmode = "stack";
+      layout.bargap = 0.35;
+    }
     return { data: traces, layout, className: "plot tall" };
   }, [data, c, t]);
+  const cens = data ? censoredShares(data) : null;
   const running = entry?.status === "running" || entry?.status === "queued";
   return (
     <Panel
@@ -353,8 +475,36 @@ export function VgStochPanel() {
         </>
       }
       toolbar={<RangeInputs range={range} setRange={setRange} onRun={() => void runVgStochastic()} maxN={61} label={running ? t("loading") : data ? t("recompute") : t("compute")} />}
-    />
+    >
+      {cens && cens.peak && (
+        <div className="panel-foot small muted" data-testid="vgs-censored">
+          {t("stats.vgs.foot", { max: fmtShare(cens.peak.total), vg: cens.peak.vg.toFixed(2).replace("-", "−"), nl: fmtShare(cens.peak.noLatch), bs: fmtShare(cens.peak.beyond) })}
+        </div>
+      )}
+    </Panel>
   );
+}
+
+/**
+ * Censored share per V_G of the stochastic V_G curve: no_latch_weight (no fold) + beyond_sweep_weight (V_LU above
+ * the sweep maximum) = censored_weight. Null when the result carries no censoring or none exceeds 0.1 %.
+ */
+function censoredShares(d: VgCurveStochasticResult) {
+  const nl = nums(d.no_latch_weight);
+  const bs = d.beyond_sweep_weight ? nums(d.beyond_sweep_weight) : nl.map(() => 0);
+  const tot = d.censored_weight ? nums(d.censored_weight) : nl.map((v, i) => (v == null ? null : v + (bs[i] ?? 0)));
+  // only V_G values with a fold count (no_latch = 1 outside the latch window is shown by the fold curve)
+  let peak: { vg: number; total: number; noLatch: number; beyond: number } | null = null;
+  const vg = nums(d.vg);
+  const inWindow = (i: number) => (nl[i] ?? 0) < 0.999;
+  tot.forEach((v, i) => {
+    const g = vg[i];
+    if (v == null || g == null || !inWindow(i)) return;
+    if (!peak || v > peak.total) peak = { vg: g, total: v, noLatch: nl[i] ?? 0, beyond: bs[i] ?? 0 };
+  });
+  const any = tot.some((v, i) => v != null && v > 1e-3 && inWindow(i));
+  if (!any) return null;
+  return { noLatch: nl, beyond: bs, total: tot, vdMax: d.vd_max_V ?? 0, peak: peak as { vg: number; total: number; noLatch: number; beyond: number } | null };
 }
 
 // ---------------------------------------------------------------- (e) cycle series

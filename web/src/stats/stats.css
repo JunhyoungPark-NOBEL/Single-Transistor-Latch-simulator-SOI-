@@ -1,0 +1,92 @@
+/* Statistics table (StatsTable.tsx) and the device-tab statistics panel. Uses the app's design tokens, so it
+   follows the light/dark theme. The table scrolls horizontally inside its card with a sticky label column. */
+
+.stats-block { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.stats-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 26px; }
+.stats-bar-note { min-width: 0; flex: 1 1 200px; }
+.stats-actions { display: flex; gap: 2px; margin-left: auto; }
+
+.stats-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+}
+.stats-scroll:focus-visible { box-shadow: var(--focus); }
+
+.stats-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; line-height: 1.35; }
+.stats-table th, .stats-table td { padding: 6px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.stats-table thead th { font-weight: 600; color: var(--text-2); font-size: 11.5px; background: var(--surface-2); vertical-align: bottom; }
+.stats-table thead tr.stats-groups th {
+  font-size: 11px; font-weight: 700; letter-spacing: .01em; color: var(--muted);
+  text-align: center; padding: 6px 6px 3px; border-bottom: 1px solid var(--border);
+}
+.stats-table .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.stats-table thead th.num { font-family: var(--font); }
+.stats-unit { display: block; font-family: var(--mono); font-size: 10.5px; font-weight: 500; color: var(--muted); margin-top: 1px; }
+.stats-table .g-start { border-left: 1px solid var(--border); }
+
+.stats-label-col {
+  position: sticky; left: 0; z-index: 1;
+  background: var(--surface);
+  text-align: left; font-weight: 400;
+  min-width: 116px;
+  box-shadow: 1px 0 0 var(--border);
+}
+.stats-table thead .stats-label-col { background: var(--surface-2); z-index: 2; vertical-align: bottom; color: var(--muted); font-size: 11px; }
+.stats-label { display: flex; align-items: center; gap: 6px; font-weight: 650; color: var(--text); }
+.stats-name sub { font-size: 0.75em; }
+.stats-swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.stats-swatch.hollow { border: 1.5px solid var(--meas); background: transparent; }
+.stats-series {
+  font-size: 10.5px; font-weight: 600; color: var(--muted);
+  padding: 0 6px; border-radius: 999px; background: var(--surface-3); white-space: nowrap;
+}
+.stats-sub { font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 1px; padding-left: 15px; white-space: normal; max-width: 220px; }
+
+.stats-table tbody tr.has-meas > * { border-bottom-color: color-mix(in srgb, var(--border) 45%, transparent); }
+.stats-table tbody tr.meas > * { background: var(--surface-2); color: var(--text-2); }
+.stats-table tbody tr.meas .stats-label { padding-left: 15px; font-weight: 500; }
+.stats-table tbody tr.secondary td, .stats-table tbody tr.secondary .stats-name { color: var(--muted); }
+.stats-table tbody tr.secondary .stats-label { font-weight: 550; }
+.stats-table tbody tr:last-child > * { border-bottom: 0; }
+.stats-table tbody tr:hover > * { background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+.stats-table tbody tr.meas:hover > * { background: color-mix(in srgb, var(--accent) 5%, var(--surface-2)); }
+.stats-table td.cmp { color: var(--text); }
+.stats-table tbody tr:not(.meas) td.cmp { background: color-mix(in srgb, var(--meas) 3%, var(--surface)); }
+.stats-frac { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.2; }
+
+.hovertip {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  border-radius: 3px;
+}
+.hovertip:hover { text-decoration-color: var(--accent); }
+.hovertip:focus-visible { outline: none; box-shadow: var(--focus); }
+.tip.stats-tip { max-width: 330px; white-space: normal; }
+
+/* device-tab statistics panel */
+.stats-panel .panel-foot { gap: 4px; }
+.stats-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 14px 8px; }
+.stats-chip {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  font-size: 11.5px; color: var(--text-2);
+  padding: 2px 9px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.stats-chip b { font-weight: 650; color: var(--text); font-family: var(--mono); font-size: 11.5px; }
+.stats-chip.warn { background: var(--warn-soft); border-color: transparent; color: var(--warn); }
+.stats-chip.warn b { color: var(--warn); }
+.stats-panel .stats-block { padding: 0 14px 12px; }
+.stats-foot { padding: 0 14px 12px; margin-top: -4px; }
+
+@media (max-width: 760px) {
+  .stats-table th, .stats-table td { padding: 5px 6px; }
+  .stats-label-col { min-width: 108px; }
+  .stats-sub { max-width: 150px; }
+}

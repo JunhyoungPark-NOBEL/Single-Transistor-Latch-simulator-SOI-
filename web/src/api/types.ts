@@ -112,6 +112,10 @@ export interface BranchesResult extends Common {
   folds: Folds;
   double_sweep: { up: XY; down: XY };
   iph_A: number; p: number[];
+  // optional extras (engines fix): display step of the double sweep, sweep maximum, classify grid
+  sweep_dv_V?: number;
+  vd_max_V?: number;
+  grid?: number;
 }
 export interface ChargeBalanceResult extends Common {
   vd: number; u: Arr; r: Arr; id: Arr; Q_C: Arr;
@@ -126,9 +130,12 @@ export interface HazardResult extends Common {
   fold_V: number | null; VLD_fold_V: number | null; voltage: Arr; hazard: Arr; survival: Arr;
   quantiles: { prob: Arr; v: Arr }; stats: Stats; rate_V_per_s: number;
   window_V?: number; fold_atom?: number; I_at_fold_A?: number | null;
+  // optional extras (engines fix): voltages below the fold tried / skipped (avalanche-kernel range)
+  n_voltages?: number | null; kernel_skipped?: number; skipped?: number; step_V?: number; dg?: number; de?: number;
 }
 export interface Hist { edges: number[]; counts: number[] }
-export interface Cdf { v: number[]; p: number[] }
+/** p = P(V ≤ v) normalised to all cycles (n finite of n_total; censored cycles keep it below 1). */
+export interface Cdf { v: number[]; p: number[]; n?: number; n_total?: number }
 export interface SweepTrace { cycle: number; V_LU: number | null; V_LD: number | null; up: XY; down: XY }
 export interface SweepMCResult extends Common {
   engine: "calibrated_lookup" | "general";
@@ -163,6 +170,10 @@ export interface VgCurveStochasticResult extends Common {
   latch?: boolean[];
   window?: { vg_low: number | null; vg_high: number | null };
   rate_V_per_s?: number;
+  // optional extras (engines fix): censoring at the sweep maximum (weights 0…1 per V_G)
+  beyond_sweep_weight?: Arr;
+  censored_weight?: Arr;
+  vd_max_V?: number;
 }
 export interface ValidationCheck {
   id: string; label: L10n; expected: string; computed: string; pass: boolean | null;

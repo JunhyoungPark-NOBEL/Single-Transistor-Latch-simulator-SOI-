@@ -1,5 +1,5 @@
 // KPI strip: folds (V_LU, V_LD, window, I at fold) in deterministic mode; mean ± σ of V_LU/V_LD,
-// cycles, censored, runtime in stochastic mode.
+// cycles, censored, runtime in stochastic mode, followed by the full-width statistics summary panel.
 import { useMemo, type ReactNode } from "react";
 import type { BranchesResult, SweepMCResult } from "../api/types";
 import { Tex } from "../components/Tex";
@@ -7,7 +7,9 @@ import { useT } from "../i18n";
 import { useStore } from "../state/store";
 import { fmtDuration, fmtSI, isNum } from "../utils/format";
 import { branchesPayload, sweepMcPayload } from "../utils/payload";
+import { fmtShare } from "../stats/format";
 import { isStale, useCurrentKey, useEntry } from "./common";
+import { StatsPanel } from "./StoPanels";
 
 export function Kpi({ id, label, sym, value, unit, sub, color, loading }: { id: string; label: string; sym?: string; value: ReactNode; unit?: string; sub?: ReactNode; color?: string; loading?: boolean }) {
   return (
@@ -60,13 +62,17 @@ export function KpiStrip() {
   const lu = mc?.stats.LU;
   const ld = mc?.stats.LD;
   const stoWin = isNum(lu?.mean) && isNum(ld?.mean) ? lu!.mean! - ld!.mean! : null;
+  const nCyc = mc ? mc.V_LU.length : 0;
   return (
+    <>
     <div className={cls} data-testid="kpis" title={stale ? t("stale") : undefined}>
       <Kpi id="vlu" label={`${t.lang === "ko" ? "래치업" : t("kpi.vlu")} · ${t("kpi.mean")}`} sym="V_{\mathrm{LU}}" value={mc ? <>{v3(lu?.mean)}<span className="u">± {mV(lu?.sd)} mV</span></> : "—"} color="var(--sto)" loading={mLoading} sub={mc || f ? `${t("kpi.fold")}: ${v3(mc?.centre.V_LU ?? f?.V_LU)} V` : undefined} />
       <Kpi id="vld" label={`${t.lang === "ko" ? "래치다운" : t("kpi.vld")} · ${t("kpi.mean")}`} sym="V_{\mathrm{LD}}" value={mc ? <>{v3(ld?.mean)}<span className="u">± {mV(ld?.sd)} mV</span></> : "—"} color="var(--lrs)" loading={mLoading} sub={mc || f ? `${t("kpi.fold")}: ${v3(mc?.centre.V_LD ?? f?.V_LD)} V` : undefined} />
       <Kpi id="window" label={t("kpi.window")} sym="\Delta V" value={mV(stoWin)} unit={isNum(stoWin) ? "mV" : undefined} color="var(--det)" loading={mLoading} sub="⟨V_LU⟩ − ⟨V_LD⟩" />
-      <Kpi id="cycles" label={t("kpi.cycles")} value={mc ? String(mc.V_LU.length) : "—"} color="var(--border-strong)" loading={mLoading} sub={mc ? `${t("kpi.censored")}: ${lu?.censored ?? 0}` : undefined} />
+      <Kpi id="cycles" label={t("kpi.cycles")} value={mc ? String(nCyc) : "—"} color="var(--border-strong)" loading={mLoading} sub={mc ? `${t("kpi.censored")}: ${lu?.censored ?? 0} (${fmtShare(nCyc ? (lu?.censored ?? 0) / nCyc : 0)})` : undefined} />
       <Kpi id="runtime" label={t("kpi.runtime")} value={fmtDuration(mc?.runtime_s)} color="var(--border-strong)" loading={mLoading} sub={staleSub ?? (mc ? `${t("kpi.engine")}: ${mc.engine}${me?.cached ? " · " + t("cached") : ""}` : undefined)} />
     </div>
+    <StatsPanel />
+    </>
   );
 }
