@@ -1,6 +1,9 @@
 // Typed UI dictionary (Korean default). Physics content has its own bilingual strings.
 // Placeholders: {name} are replaced by t(key, {name: value}).
 import type { L10n } from "../content/physics/types";
+import { SCHEMATIC_STRINGS } from "./strings.schematic";
+import { STATS_STRINGS } from "./strings.stats";
+import { BRAND_STRINGS } from "./strings.brand";
 
 export const STRINGS = {
   // ---------------------------------------------------------------- app shell
@@ -337,6 +340,9 @@ export const STRINGS = {
   "ph.sources": { ko: "출처 코드", en: "Source files" },
   "ph.eq": { ko: "식", en: "Eq." },
   "ph.scroll": { ko: "가로로 스크롤", en: "scroll horizontally" },
+  ...SCHEMATIC_STRINGS,
+  ...STATS_STRINGS,
+  ...BRAND_STRINGS,
 } satisfies Record<string, L10n>;
 
 export type StrKey = keyof typeof STRINGS;

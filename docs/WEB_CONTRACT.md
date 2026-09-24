@@ -313,3 +313,95 @@ Physics content API (`web/src/content/physics/index.ts`, owned by physics-conten
 `PHYSICS_TOPICS: Record<TopicId, PhysicsTopic>`, `TOPIC_ORDER: TopicId[]` and re-exports `types.ts`.
 Rich-text format is defined in `types.ts`. Every equation must be exact with respect to the code in
 `engine/` (constants included) and render with KaTeX `throwOnError: true`.
+
+---
+
+# Phase 2 addendum (owner requests, 2026-09-24)
+
+Owner's new requirements (verbatim intent): (1) logo built around the **biristor** symbol, colours
+harmonised with the page background, modern/trendy; (2) NOBEL lab info (Prof. Yang-Kyu Choi's lab;
+developed by Junhyoung Park) and KAIST info in a corner; (3) natural Korean and natural English
+everywhere; (4) the model is **not yet published** — never say "paper device/paper parameters";
+describe devices by technology and geometry, e.g. "FDSOI · L_g 500 nm · W 200 nm · T_Si 50 nm ·
+EOT 14.1 nm"; technology presets FDSOI (now), PDSOI and Bulk (later, shown as "coming soon");
+(5) LTspice-like circuit simulation: devices built in the Device tab are saved to a device library
+and "implanted" into user-drawn circuits; free voltage/current sources incl. pulses; user-set time
+step/stop time; node voltages and element terminal currents displayed; elements picked from the
+drawing; balance accuracy, run time and page weight; (6) stochastic mode shows statistics alongside
+results; stochastic devices usable in circuit simulation.
+
+Internal ids stay (`preset: "paper" | "photo" | "custom"`); only user-facing text changes.
+
+## 6. Custom circuits — `kind: "circuit"`, `bench: "custom"` (circuit-custom package)
+
+Request:
+```jsonc
+{ "bench": "custom", "mode": "deterministic" | "stochastic",
+  "netlist": {
+    "elements": [
+      { "type": "R", "name": "R1", "nodes": ["n1", "n2"], "value": 1000 },             // ohm
+      { "type": "C", "name": "C1", "nodes": ["d", "0"], "value": 2e-15 },              // F
+      { "type": "V", "name": "V1", "nodes": ["n+", "n-"], "wave": Wave },              // volts
+      { "type": "I", "name": "I1", "nodes": ["n+", "n-"], "wave": Wave },              // amperes; flows n+ → (through source) → n-,
+                                                                                       //   i.e. it is pushed OUT of n- into the circuit … see §6.1
+      { "type": "STL", "name": "X1", "nodes": { "d": "d", "g": "g", "s": "0" },
+        "device": { ...device block §1... }, "light_pA": Wave | null }                  // light waveform in pA (null = device light)
+    ] },
+  "tran": { "t_stop_s": 5e-3, "t_start_save_s": 0, "dt_max_s": 1e-5, "dt_min_s": 1e-12,
+            "method": "BE" | "TRAP", "reltol": 1e-4 },
+  "stochastic": { "seed", "n_runs", "carrier_noise", "ld_carrier_noise", "local_state": {...§1...} },
+  "detect": { "i_threshold_A": 1e-8, "hysteresis": 10 },
+  "probes": null | ["V(d)", "I(R1)", "I(X1.d)"] }        // null → all node voltages + all element currents
+```
+Node "0" (aliases "gnd", "GND") is ground; every other string is a node name.
+`Wave` = `{ "kind": "dc", "value" }` | `{ "kind": "pulse", "v1", "v2", "td", "tr", "tf", "pw", "per", "ncycles" }`
+(SPICE PULSE semantics; ncycles 0 = until t_stop) | `{ "kind": "pwl", "t": [...], "v": [...] }` |
+`{ "kind": "sine", "vo", "va", "freq", "td", "theta" }` (sampled to PWL server-side with a bounded point count).
+
+### 6.1 Sign conventions (document them in the UI)
+- `V(node)`: node voltage w.r.t. ground.
+- `I(R1)`, `I(C1)`: current through the element from its first node to its second node.
+- `I(V1)`, `I(I1)`: current through the source from its first (+) node to its second (−) node
+  (SPICE convention: a source delivering power has negative `I(V1)`). For `I` sources the `wave`
+  value is exactly that current.
+- `I(X1.d)`, `I(X1.s)`, `I(X1.g)`: currents INTO the STL terminals (drain, source, gate); gate current is 0 (ideal gate, documented).
+
+### 6.2 Response
+Same `CircuitResult` as §4 (generic signals/summary/events/distributions), with:
+- signals for every probe: key `V(n)` (unit V, axis voltage), `I(name)` / `I(X1.d)` (unit A, axis current), plus per STL `X1.u`, `X1.r` (V, axis state), `X1.q_b` (C, axis charge);
+- `nodes`: list of node names; `elements`: echo of the resolved netlist (names, nodes, values, resolved waves);
+- `op`: operating point at t = 0 (node voltages, element currents) and `at(t)` is done client-side by interpolation;
+- events per STL cell (`latch_up`/`latch_down`, with `cell` = element name, `t`, `v_d`);
+- summary: per STL: number of latch-ups/downs, first latch-up time and V_D, final state; stochastic: P(latched at end), P(≥1 latch-up), mean ± SD of first latch-up time and V_D;
+- stochastic `envelopes`: `{ key, t: Arr, mean: Arr, sd: Arr, p05: Arr, p95: Arr }[]` for every probed signal on a common time grid (≤ 1000 points), plus `distributions` of per-run scalar metrics (first latch-up time, V_D at latch-up, value of each probed signal at t_stop).
+Limits: ≤ 40 elements, ≤ 8 STL cells, ≤ 30 nodes, waves ≤ 2000 points, t_stop and steps checked by the feasibility estimate (refuse with an explanation instead of running for minutes).
+ERC errors (floating node, no ground reference, voltage-source loop, current source in series with nothing, unknown node in STL) → ValueError with a precise message naming the element/node.
+
+## 7. Device library (frontend, device-library package)
+
+A device = `{ id, name, technology: "FDSOI" | "PDSOI" | "Bulk", geometry: { Lg_nm, W_nm, Tsi_nm, EOT_nm },
+calibration_label, device: <device block §1>, created, notes }`. Built-in (read-only): FDSOI reference
+calibration (dark, V_G −2 V) and FDSOI illumination calibration (1200 V/s) — both L_g 500 nm, W 200 nm,
+T_Si 50 nm, EOT 14.1 nm (geometry is fixed by the model; editable only when a future model supports it).
+User devices: "Save as device" in the Device tab stores the current device block (+ stochastic local-state
+settings used when the device is simulated stochastically in a circuit) in localStorage; rename, delete,
+duplicate, export/import JSON. The circuit editor's STL palette lists library devices; each STL instance
+stores a snapshot of the device block (so later library edits don't silently change saved circuits; offer
+"update from library"). Technology selector shows FDSOI active, PDSOI/Bulk disabled "coming soon".
+
+## 8. Branding and wording (brand package)
+Logo: SVG built around a biristor-style two-terminal symbol (stylised: terminals + body with an
+S-shaped/hysteresis motif), gradient using the app's accent tokens so it matches both themes; used in
+the header, favicon and About. Credits corner: small unobtrusive block (e.g. bottom-left of the sidebar
+footer or a corner chip) — "NOBEL Lab · Prof. Yang-Kyu Choi · School of Electrical Engineering, KAIST ·
+Developed by Junhyoung Park" / "KAIST 전기및전자공학부 · NOBEL 연구실 (지도교수 최양규) · 개발 박준형",
+opening an About popover. No email addresses. Wording: replace every user-facing "논문/paper" with
+device/record descriptions; keep figure references descriptive ("V_G dependence of V_LU", not "Fig. 3(b)").
+
+## 9. Statistics module (stats package) — shared by device MC and circuit runs
+`web/src/stats/describe.ts`: `describe(values: (number|null|undefined)[]): Describe` with
+`{ n, n_total, censored, mean, sd, se, cv, median, q1, q3, iqr, p05, p95, min, max, skewness, kurtosis_excess, lag1 }`
+(null-safe; sd with ddof = 1; lag1 over consecutive finite pairs), `ks2(a, b)` (two-sample KS D and
+asymptotic p-value), `histogram(values, bins?)`.
+`web/src/stats/StatsTable.tsx`: `<StatsTable rows={{ key, label, unit, values, scale? }[]} measured?={...} />`
+compact, copyable (CSV), bilingual; used in the Device tab (stochastic) and by the circuit editor.
