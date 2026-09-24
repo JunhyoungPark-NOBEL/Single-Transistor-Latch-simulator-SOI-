@@ -7,7 +7,11 @@ engine's, generalised from a handful of keyword arguments to an arbitrary ``p``:
 * ``lu_hazard_curve``  = ``photo_fpt.hazard_curve`` (compound-jump first passage, II clusters + unit
   events incl. photogeneration, ``ct.cf.make_lattice(rows, 'LU', .06)`` + ``ct.cf.backward``).
 * ``ld_hazard_curve``  = the LD half of ``conditional_table.calculate`` with the photo ``S.state`` rows.
-* ``fold_node``        = ``MODEL.classify`` folds + the HRS/LRS branches (for traces).
+* ``fold_node``        = ``MODEL.classify`` folds (refined fold states as the deterministic ``folds``
+  readout; folds fitted across a gap of the traced locus rejected, deterministic.classify_checked) + the
+  HRS/LRS branches (for traces).
+* hazard rows use ``deterministic.state_row`` (= ``S.state``, with the r-bracket shrunk where ``S.state``
+  fails at V_D >~ 5 V, u >~ 0.9 V).
 * ``quantiles``        = ``photo_fpt.quantiles`` (identical fold-atom handling).
 
 Results are cached on disk under ``server/.cache/stochastic/`` keyed by sha256 of the rounded ``p``
@@ -28,7 +32,7 @@ from scipy.integrate import cumulative_trapezoid
 
 # fold/hazard node cache (override with STL_STOCH_CACHE_DIR, e.g. for cold-start timing)
 CACHE_DIR = Path(os.environ.get("STL_STOCH_CACHE_DIR") or Path(__file__).resolve().parents[1] / ".cache" / "stochastic")
-CACHE_VERSION = "stoch-1"
+CACHE_VERSION = "stoch-3"     # stoch-3: gap-rejected folds, refined fold states, state_row hazard rows, kernel-range skips
 PROB = (np.arange(10001) + 0.5) / 10001          # photo_fpt.PROB
 HAZARD_FLOOR = 1e-4                               # photo_fpt / compound_fpt resolved-hazard cut (1/s)
 LOG_ZERO = -745.0                                 # log of a zero hazard (exp -> 0)
@@ -44,8 +48,20 @@ _ENGINE: dict[str, Any] = {}
 def engine():
     if not _ENGINE:
         from server import engine_bridge as eb
-        _ENGINE.update(S=eb.S, m=eb.m, MODEL=eb.MODEL, ct=eb.ct, eb=eb)
+        from server.compute import deterministic as D
+        _ENGINE.update(S=eb.S, m=eb.m, MODEL=eb.MODEL, ct=eb.ct, eb=eb, D=D)
     return _ENGINE
+
+
+def classify(p, grid: int):
+    """MODEL.classify with the deterministic package's gap check: (z or None, gap)."""
+    return engine()["D"].classify_checked(np.asarray(p, float), int(grid))
+
+
+def _state_rows(ug, vd: float, p) -> np.ndarray:
+    """S.state rows over the u grid (deterministic.state_row: identical to S.state where it succeeds)."""
+    D = engine()["D"]
+    return np.array([D.state_row(u, vd, p) for u in ug])
 
 
 # --------------------------------------------------------------------------------------------
@@ -103,16 +119,16 @@ def fold_node(p, grid: int = 601, with_branches: bool = True) -> dict:
     rec = cache_get("fold", key)
     if rec is not None:
         return rec
-    E = engine()
+    D = engine()["D"]
     tic = time.perf_counter()
-    z = E["MODEL"].classify(p, E["m"].state_grid(int(grid)))
+    z, gap = classify(p, grid)
     if z is None:
-        rec = dict(latch=False, V_LU=None, V_LD=None)
+        rec = dict(latch=False, V_LU=None, V_LD=None, locus_gap=bool(gap))
     else:
         b, i, j, fold = z
-        rec = dict(latch=True, V_LU=float(fold[0]), V_LD=float(fold[1]), I_LU=float(b[i, 1]),
-                   u_LU=float(b[i, 17]), u_LD=float(b[j, 17]), I_LD=float(b[j, 1]),
-                   HRS=_branch_part(b[:i + 1]), LRS=_branch_part(b[j:]))
+        f = D.folds_of(z)              # refined fold states, identical to the deterministic `folds` readout
+        rec = dict(latch=True, V_LU=f["V_LU"], V_LD=f["V_LD"], I_LU=f["I_LU"], u_LU=f["u_LU"], u_LD=f["u_LD"],
+                   I_LD=f["I_LD"], HRS=_branch_part(b[:i + 1]), LRS=_branch_part(b[j:]))
     rec["seconds"] = time.perf_counter() - tic
     cache_put("fold", key, rec)
     return rec
@@ -121,11 +137,25 @@ def fold_node(p, grid: int = 601, with_branches: bool = True) -> dict:
 # --------------------------------------------------------------------------------------------
 # first-passage hazard curves
 # --------------------------------------------------------------------------------------------
+class KernelRangeError(ValueError):
+    """Lattice reverse bias outside the avalanche cluster kernel ct.cf.rv (0.7 … 5.0 V): compound_fpt.backward
+    asserts on it.  args = (r_min, r_max) of the lattice."""
+
+
 def _lattice_hazard(rows, direction):
     ct = engine()["ct"]
     xx, ix, r, bt, ii, death = ct.cf.make_lattice(rows, direction, .06)
+    if r.min() < ct.cf.rv[0] or r.max() > ct.cf.rv[-1]:       # the same condition backward() asserts
+        raise KernelRangeError(float(r.min()), float(r.max()))
     tm, _A, _check = ct.cf.backward(r, bt, ii, death, direction)
     return 1 / tm[ix] if np.isfinite(tm[ix]) and tm[ix] > 0 else np.nan
+
+
+def _kernel_info(kern: list) -> dict:
+    """Voltages skipped because the lattice reverse bias left the avalanche kernel range."""
+    rv = engine()["ct"].cf.rv
+    return dict(kernel_skipped=len(kern), kernel_range_V=[float(rv[0]), float(rv[-1])],
+                kernel_r_V=[min(a for a, _ in kern), max(b for _, b in kern)] if kern else None)
 
 
 def lu_hazard_curve(p, window: float = .28, step: float = .004, grid: int = 601,
@@ -136,25 +166,27 @@ def lu_hazard_curve(p, window: float = .28, step: float = .004, grid: int = 601,
     rec = cache_get("hazard", key)
     if rec is not None:
         return rec
-    E = engine()
-    S, m, M = E["S"], E["m"], E["MODEL"]
     tic = time.perf_counter()
-    clas = M.classify(p, m.state_grid(int(grid)))
+    clas, gap = classify(p, grid)
     if clas is None:
-        rec = dict(direction="LU", fold_V=None, VLD_fold_V=None, voltage=[], hazard=[], skipped=0,
-                   window_V=window, step_V=step, seconds=time.perf_counter() - tic)
+        rec = dict(direction="LU", fold_V=None, VLD_fold_V=None, voltage=[], hazard=[], skipped=0, n_voltages=0,
+                   locus_gap=bool(gap), window_V=window, step_V=step, seconds=time.perf_counter() - tic)
         cache_put("hazard", key, rec)
         return rec
     b, i, j, fold = clas
     uf = b[i, 17]
     volts = np.arange(max(fold[0] - window, fold[1] + .001), fold[0] - .001, step)
     ug = np.unique(np.round(np.r_[np.linspace(.1, .9, 181), np.linspace(uf - .065, uf + .065, 61)], 12))
-    V, Hz, skipped = [], [], 0
+    V, Hz, skipped, kern = [], [], 0, []
     for k, vd in enumerate(volts):
         try:
-            rows = np.array([S.state(u, vd, p) for u in ug])
+            rows = _state_rows(ug, vd, p)
             h = _lattice_hazard(rows, "LU")
-        except (ValueError, IndexError, AssertionError, ZeroDivisionError, FloatingPointError):
+        except KernelRangeError as exc:
+            skipped += 1
+            kern.append(exc.args)
+            continue
+        except (ValueError, IndexError, AssertionError, ZeroDivisionError, FloatingPointError, RuntimeError):
             skipped += 1
             continue
         V.append(float(vd))
@@ -162,8 +194,8 @@ def lu_hazard_curve(p, window: float = .28, step: float = .004, grid: int = 601,
         if progress is not None and k % 8 == 0:
             progress((k + 1) / max(len(volts), 1))
     rec = dict(direction="LU", fold_V=float(fold[0]), VLD_fold_V=float(fold[1]), I_at_fold_A=float(b[i, 1]),
-               channel_at_fold_A=float(b[i, 16]), voltage=V, hazard=Hz, skipped=skipped, window_V=window,
-               step_V=step, seconds=time.perf_counter() - tic)
+               channel_at_fold_A=float(b[i, 16]), voltage=V, hazard=Hz, skipped=skipped, n_voltages=len(volts),
+               **_kernel_info(kern), window_V=window, step_V=step, seconds=time.perf_counter() - tic)
     cache_put("hazard", key, rec)
     return rec
 
@@ -176,13 +208,11 @@ def ld_hazard_curve(p, window: float = .30, step: float = .004, grid: int = 601,
     rec = cache_get("hazard", key)
     if rec is not None:
         return rec
-    E = engine()
-    S, m, M = E["S"], E["m"], E["MODEL"]
     tic = time.perf_counter()
-    clas = M.classify(p, m.state_grid(int(grid)))
+    clas, gap = classify(p, grid)
     if clas is None:
-        rec = dict(direction="LD", fold_V=None, VLU_fold_V=None, voltage=[], hazard=[], skipped=0,
-                   window_V=window, step_V=step, seconds=time.perf_counter() - tic)
+        rec = dict(direction="LD", fold_V=None, VLU_fold_V=None, voltage=[], hazard=[], skipped=0, n_voltages=0,
+                   locus_gap=bool(gap), window_V=window, step_V=step, seconds=time.perf_counter() - tic)
         cache_put("hazard", key, rec)
         return rec
     b, i, j, fold = clas
@@ -190,12 +220,16 @@ def ld_hazard_curve(p, window: float = .30, step: float = .004, grid: int = 601,
     volts = np.arange(fold[1] + window, fold[1] + .001, -step)
     volts = volts[volts < fold[0] - .001]
     ug = np.unique(np.round(np.r_[np.linspace(.55, 1.04, 181), np.linspace(uf - .065, uf + .065, 61)], 12))
-    V, Hz, skipped = [], [], 0
+    V, Hz, skipped, kern = [], [], 0, []
     for k, vd in enumerate(volts):
         try:
-            rows = np.array([S.state(u, vd, p) for u in ug])
+            rows = _state_rows(ug, vd, p)
             h = _lattice_hazard(rows, "LD")
-        except (ValueError, IndexError, AssertionError, ZeroDivisionError, FloatingPointError):
+        except KernelRangeError as exc:
+            skipped += 1
+            kern.append(exc.args)
+            continue
+        except (ValueError, IndexError, AssertionError, ZeroDivisionError, FloatingPointError, RuntimeError):
             skipped += 1
             continue
         V.append(float(vd))
@@ -203,7 +237,8 @@ def ld_hazard_curve(p, window: float = .30, step: float = .004, grid: int = 601,
         if progress is not None and k % 8 == 0:
             progress((k + 1) / max(len(volts), 1))
     rec = dict(direction="LD", fold_V=float(fold[1]), VLU_fold_V=float(fold[0]), voltage=V, hazard=Hz,
-               skipped=skipped, window_V=window, step_V=step, seconds=time.perf_counter() - tic)
+               skipped=skipped, n_voltages=len(volts), **_kernel_info(kern), window_V=window, step_V=step,
+               seconds=time.perf_counter() - tic)
     cache_put("hazard", key, rec)
     return rec
 
@@ -314,11 +349,15 @@ def histogram(v) -> dict:
     return dict(edges=_floats(edges), counts=[int(c) for c in counts])
 
 
-def ecdf(v) -> dict:
-    x = np.sort(np.asarray(v, float))
-    x = x[np.isfinite(x)]
+def ecdf(v, n_total: int | None = None) -> dict:
+    """Empirical CDF P(V <= x) of the finite values, normalised to n_total cycles (default: all entries of v,
+    so censored cycles keep the curve below 1 — it plateaus at the switched fraction)."""
+    v = np.asarray(v, float)
+    x = np.sort(v[np.isfinite(v)])
     n = len(x)
-    return dict(v=_floats(x), p=_floats(np.arange(1, n + 1) / n) if n else [])
+    total = len(v) if n_total is None else int(n_total)
+    total = max(total, n)
+    return dict(v=_floats(x), p=_floats(np.arange(1, n + 1) / total) if n else [], n=n, n_total=total)
 
 
 def gauss_hermite(k: int) -> tuple[np.ndarray, np.ndarray]:

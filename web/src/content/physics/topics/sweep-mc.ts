@@ -15,13 +15,17 @@ const topic: PhysicsTopic = {
     {
       heading: L("엔진 선택", "Engine selection"),
       body: L(
-        "`engine: auto`는 (논문 기준 소자: V_G = −2 V, 암조건, 확장 없음, 상태 중심 0) ∧ `action = gidl` ∧ $V_{D,\\max}=4$ V ∧ 캐리어 잡음 on일 때 `calibrated_lookup`, 아니면 `general`을 고른다. 모드 대응(보정 엔진): none → `fast_only`, frozen → `frozen`, evolving → `dynamic`(추세) 또는 `stationary`.",
-        "`engine: auto` picks `calibrated_lookup` when (paper reference device: V_G = −2 V, dark, no extensions, zero state centre) ∧ `action = gidl` ∧ $V_{D,\\max}=4$ V ∧ carrier noise on, otherwise `general`. Mode mapping (calibrated engine): none → `fast_only`, frozen → `frozen`, evolving → `dynamic` (trend) or `stationary`.",
+        "`engine: auto`는 (논문 기준 소자: V_G = −2 V, 암조건, 확장 없음, 상태 중심 0) ∧ `action = gidl` ∧ $V_{D,\\max}=4$ V ∧ 캐리어 잡음 on ∧ $\\Delta V = 10\\,\\mathrm{mV}/k$ ($k=1,2,\\dots$: 10, 5, 3.333, 2.5, 2, … mV)일 때 `calibrated_lookup`, 아니면 `general`을 고른다(ΔV 조건만 어긋나면 경고, `calibrated_lookup`을 직접 지정하면 오류). 모드 대응(보정 엔진): none → `fast_only`, frozen → `frozen`, evolving → `dynamic`(추세) 또는 `stationary`.",
+        "`engine: auto` picks `calibrated_lookup` when (paper reference device: V_G = −2 V, dark, no extensions, zero state centre) ∧ `action = gidl` ∧ $V_{D,\\max}=4$ V ∧ carrier noise on ∧ $\\Delta V = 10\\,\\mathrm{mV}/k$ ($k=1,2,\\dots$: 10, 5, 3.333, 2.5, 2, … mV), otherwise `general` (a warning when only the ΔV condition fails; an explicit `calibrated_lookup` request is an error). Mode mapping (calibrated engine): none → `fast_only`, frozen → `frozen`, evolving → `dynamic` (trend) or `stationary`.",
       ),
       notes: [
         L(
           "보정 엔진은 σ 비율 $\\sigma/\\sigma_{\\phi G}$ 하나로 두 상태 진폭을 함께 스케일하며 τ_E는 1.62 s로 고정된다(stochastic.py 경고).",
           "The calibrated engine scales both state amplitudes by one ratio $\\sigma/\\sigma_{\\phi G}$ and keeps τ_E = 1.62 s (stochastic.py warnings).",
+        ),
+        L(
+          "ΔV 조건: `gate_dynamic_compare.simulate`는 0 → 4 V를 round(4/ΔV) 스텝으로 가며 round(0.01/ΔV) 스텝마다 전류를 읽어 고정된 401점(10 mV) 축에 붙인다. 10 mV/k가 아닌 ΔV는 트레이스 길이가 어긋나고 ΔV > 20 mV는 0으로 나눈다(`stochastic.calibrated_dv_ok`).",
+          "ΔV condition: `gate_dynamic_compare.simulate` steps 0 → 4 V in round(4/ΔV) steps and reads the current every round(0.01/ΔV) steps onto a fixed 401-point (10 mV) axis. A ΔV that is not 10 mV/k gives traces of the wrong length and ΔV > 20 mV divides by zero (`stochastic.calibrated_dv_ok`).",
         ),
       ],
     },
@@ -90,11 +94,11 @@ const topic: PhysicsTopic = {
         },
         {
           id: "eq-mc-general-event",
-          label: L("사건 (사다리꼴 + 스텝 내 보간)", "event (trapezoid + in-step interpolation)"),
-          tex: r`\begin{aligned} &I_k = \sum_{m=1}^{k}\tfrac12\big(h_m+h_{m-1}\big)\Delta t,\qquad \mathcal E = -\ln(1-U)\\ &V_{LU} = V_{k-1} + \frac{\mathcal E - I_{k-1}}{I_k - I_{k-1}}\,\Delta v\end{aligned}`,
+          label: L("사건 (≤ 2 mV 부분 스텝의 사다리꼴 + 스텝 내 보간)", "event (trapezoid on ≤ 2 mV sub-steps + in-step interpolation)"),
+          tex: r`\begin{aligned} &I_k = \sum_{m=1}^{k}\tfrac12\big(h_m+h_{m-1}\big)\delta t,\qquad \mathcal E = -\ln(1-U)\\ &V_{LU} = V_{k-1} + \frac{\mathcal E - I_{k-1}}{I_k - I_{k-1}}\,\delta v,\qquad \delta v = \frac{\Delta v}{s},\ \ s = \Big\lceil \frac{\Delta v}{2\,\mathrm{mV}} \Big\rceil\end{aligned}`,
           note: L(
-            "fold 교차($d\\le0$)는 $d$의 선형 영점으로 두고 둘 중 먼저 오는 것을 택한다. 일반 엔진은 10 mV 판독 양자화를 하지 않는다. LD hazard는 중심 상태 곡선 하나(`ld_carrier_noise`), 끄면 LD는 fold에서 일어난다.",
-            "A fold crossing ($d\\le0$) is placed at the linear zero of $d$; the earlier of the two wins. The general engine does not quantise to 10 mV. The LD hazard is a single centre-state curve (`ld_carrier_noise`); when off, latch-down happens at the fold.",
+            "hazard 적분과 fold 교차는 ΔV와 무관하게 최대 2 mV의 부분 스텝($\\delta t=\\delta v/\\dot v$)에서 계산한다. hazard가 fold 근처에서 10 mV마다 몇 자릿수씩 커지므로 거친 사다리꼴은 치우친다(논문 소자 ΔV = 50 mV에서 $\\overline{V_{LU}}$ −34 mV, $\\sigma_{LD}$ 2.3배). ΔV는 상태 표본화(OU 스텝, 스텝 안에서는 유지)만 정하며 ΔV ≤ 2 mV이면 $s=1$. fold 교차($d\\le0$)는 $d$의 선형 영점으로 두고 둘 중 먼저 오는 것을 택한다. 일반 엔진은 10 mV 판독 양자화를 하지 않는다. LD hazard는 중심 상태 곡선 하나(`ld_carrier_noise`), 끄면 LD는 fold에서 일어난다.",
+            "The hazard integral and the fold crossing run on sub-steps of at most 2 mV ($\\delta t=\\delta v/\\dot v$) whatever ΔV: near the fold the hazard grows by orders of magnitude per 10 mV, so a coarse trapezoid is biased (paper device, ΔV = 50 mV: $\\overline{V_{LU}}$ −34 mV, $\\sigma_{LD}$ ×2.3). ΔV only sets the state sampling (OU step, held within a step); ΔV ≤ 2 mV gives $s=1$. A fold crossing ($d\\le0$) is placed at the linear zero of $d$; the earlier of the two wins. The general engine does not quantise to 10 mV. The LD hazard is a single centre-state curve (`ld_carrier_noise`); when off, latch-down happens at the fold.",
           ),
           code: "stoch_mc.py · _first_event()",
         },
@@ -111,8 +115,8 @@ const topic: PhysicsTopic = {
           "Both presets (paper, photo; custom copies paper) default to `ld_carrier_noise = true` (`server/params.py`). Turned off, the general engine places latch-down at the (state-dependent) fold and the mean $V_{LD}$ of the paper device at 0.4 V/s drops by about 0.10 V (keep it on to compare with the measured 2.7001 V). The calibrated engine always includes the LD first passage regardless of the switch (off only adds a warning). The circuit simulator's key of the same name has its own default (false; `circuit-element`).",
         ),
         L(
-          "구현 차이: 보정 엔진은 우측 합 $\\sum_{k\\ge1}h_k\\Delta t$와 격자 전압, 상승·하강에 독립 상태 경로(unpaired)를 쓴다. 일반 엔진은 사다리꼴과 스텝 내 보간, 한 사이클 안에서 상승→하강이 이어진 상태 경로(frozen: 같은 추출)를 쓴다.",
-          "Implementation difference: the calibrated engine uses the right sum $\\sum_{k\\ge1}h_k\\Delta t$, grid voltages and independent up/down state paths (unpaired). The general engine uses the trapezoid with in-step interpolation and one state path running up → down within a cycle (frozen: the same draw).",
+          "구현 차이: 보정 엔진은 우측 합 $\\sum_{k\\ge1}h_k\\Delta t$와 격자 전압, 상승·하강에 독립 상태 경로(unpaired)를 쓴다. 일반 엔진은 ≤ 2 mV 부분 스텝의 사다리꼴과 스텝 내 보간, 한 사이클 안에서 상승→하강이 이어진 상태 경로(frozen: 같은 추출)를 쓴다.",
+          "Implementation difference: the calibrated engine uses the right sum $\\sum_{k\\ge1}h_k\\Delta t$, grid voltages and independent up/down state paths (unpaired). The general engine uses the trapezoid on ≤ 2 mV sub-steps with in-step interpolation and one state path running up → down within a cycle (frozen: the same draw).",
         ),
         L(
           "획득 추세는 논문 기록 전용이라 일반 엔진에서는 무시된다. 트레이스는 가장 가까운 fold 노드의 준정적 HRS/LRS branch에 그 사이클의 전환 전압을 붙인 근사이다.",
@@ -138,8 +142,8 @@ const topic: PhysicsTopic = {
     {
       heading: L("V_G 곡선 (vg_sweep.py)", "V_G curve (vg_sweep.py)"),
       body: L(
-        "각 V_G에서 frozen 상태의 Gaussian fold 혼합에 first-passage 잡음을 제곱합으로 더한다. evolving 상태는 정상 Gaussian 분포로 취급; emitter 상태는 포함하지 않는다.",
-        "At each V_G the Gaussian fold mixture of frozen states is combined in quadrature with the first-passage noise. Evolving states are replaced by their stationary Gaussian; the emitter state is not included.",
+        "각 V_G에서 frozen 상태의 Gaussian fold 혼합에 first-passage 잡음을 제곱합으로 더한다. evolving 상태는 정상 Gaussian 분포로 취급; emitter 상태는 포함하지 않는다. `sweep_mc`처럼 $V_{LU} > V_{D,\\max}$인 사이클은 censored: 평균과 σ는 스윕 안에서 latch되는 사이클에 대한 조건부 값이고, 그 비중은 `beyond_sweep_weight`, `censored_weight` (= `no_latch_weight` + beyond)로 보고된다.",
+        "At each V_G the Gaussian fold mixture of frozen states is combined in quadrature with the first-passage noise. Evolving states are replaced by their stationary Gaussian; the emitter state is not included. As in `sweep_mc`, cycles with $V_{LU} > V_{D,\\max}$ are censored: mean and σ are conditional on latching within the sweep, and that weight is reported as `beyond_sweep_weight` and `censored_weight` (= `no_latch_weight` + beyond).",
       ),
       equations: [
         {
@@ -162,13 +166,23 @@ const topic: PhysicsTopic = {
           ),
           code: "vg_sweep.py; stochastic.py · _vg_point()",
         },
+        {
+          id: "eq-mc-vg-censored",
+          label: L("스윕 최대로 자른 혼합", "mixture censored at the sweep maximum"),
+          tex: r`\begin{aligned} &V = F + \varepsilon,\qquad \overline{V_{LU}} = \mathrm E\big[V \mid V\le V_{D,\max}\big]\\ &\sigma^2_{\mathrm{state}} = \mathrm{Var}_F\,\mathrm E\big[V\mid F,\,V\le V_{D,\max}\big],\qquad \sigma^2_{\mathrm{noise}} = \mathrm E_F\,\mathrm{Var}\big[V\mid F,\,V\le V_{D,\max}\big]\end{aligned}`,
+          note: L(
+            "$F$: 81점 fold 혼합, $\\varepsilon$: GH 노드의 분위수 $Q_i-\\overline{Q_i}$를 공통 평균 이동 $\\sum_i\\hat w_i(\\overline{Q_i}-f_i)$에 맞춘 합동 분포. 잘리는 질량이 없으면 위 식과 정확히 같다.",
+            "$F$: the 81-point fold mixture, $\\varepsilon$: pooled GH-node quantiles $Q_i-\\overline{Q_i}$ recentred on the common mean shift $\\sum_i\\hat w_i(\\overline{Q_i}-f_i)$. With nothing censored this equals the formula above exactly.",
+          ),
+          code: "stochastic.py · truncated_mixture()",
+        },
       ],
     },
     {
       heading: L("보고 통계", "Reported statistics"),
       body: L(
-        "- 평균, SD (ddof 1), 중앙값, 5/95 % 분위, min/max — 유한값만\n- censored: 스윕 안에서 전환하지 않은 사이클 수\n- lag-1: 연속 유한 쌍의 Pearson 상관\n- 히스토그램(Freedman–Diaconis, 10–80 bin), 경험적 CDF, 사이클별 상태(상승 스윕 중간)",
-        "- mean, SD (ddof 1), median, 5/95 % quantiles, min/max — finite values only\n- censored: cycles that did not switch within the sweep\n- lag-1: Pearson correlation of consecutive finite pairs\n- histogram (Freedman–Diaconis, 10–80 bins), empirical CDF, per-cycle state (middle of the up sweep)",
+        "- 평균, SD (ddof 1), 중앙값, 5/95 % 분위, min/max — 유한값만\n- censored: 스윕 안에서 전환하지 않은 사이클 수\n- lag-1: 연속 유한 쌍의 Pearson 상관\n- 히스토그램(Freedman–Diaconis, 10–80 bin), 경험적 CDF(모든 사이클로 정규화: censored가 있으면 LU CDF는 latch된 비율에서 멈추고, 0 V까지 latch-down하지 않은 사이클은 LD CDF의 시작값으로 들어간다), 사이클별 상태(상승 스윕 중간)",
+        "- mean, SD (ddof 1), median, 5/95 % quantiles, min/max — finite values only\n- censored: cycles that did not switch within the sweep\n- lag-1: Pearson correlation of consecutive finite pairs\n- histogram (Freedman–Diaconis, 10–80 bins), empirical CDF (normalised to all cycles: with censoring the LU CDF plateaus at the latched fraction, and cycles that never latch down by 0 V enter the LD CDF as its starting value), per-cycle state (middle of the up sweep)",
       ),
       notes: [
         L(

@@ -163,13 +163,24 @@ def _first_event(V, dv, sign, dist, h, dt, thr):
     return out, at_fold
 
 
+HAZARD_SUBSTEP_V = 0.002     # the escape integral runs on a grid of at most 2 mV whatever the sweep step ΔV
+
+
 def simulate_general(*, n, seed, vd_max, dv, rate, mode, x0, sigma, tau_s, sigma_e, tau_e, folds: FoldTable,
                      s_lu_e, s_ld_e, lu_haz: HazardField | None, ld_haz: HazardField | None, progress=None):
+    """ΔV sets the state sampling (OU step dt = ΔV/rate, sample-and-hold within a step); the hazard integral and
+    the fold crossing are evaluated on `sub` equal sub-steps of at most HAZARD_SUBSTEP_V per ΔV step, because h
+    rises by orders of magnitude per 10 mV near the fold (a coarse trapezoid biases V_LU/V_LD).  ΔV <= 2 mV:
+    sub = 1, identical to the plain per-step scheme."""
     steps = max(int(round(vd_max / dv)), 2)
     dvv = vd_max / steps
     dt = dvv / rate
-    Vup = np.linspace(0, vd_max, steps + 1)
+    sub = max(1, int(np.ceil(dvv / HAZARD_SUBSTEP_V - 1e-9)))
+    fine = steps * sub
+    Vup = np.linspace(0, vd_max, fine + 1)
     Vdn = Vup[::-1].copy()
+    dvf, dtf = dvv / sub, dt / sub
+    hold = np.arange(fine + 1) // sub                  # coarse state index of each fine point (sample-and-hold)
     rng = np.random.default_rng(seed)
     Z = rng.standard_normal(n)            # frozen drain-edge (action-point) state  [mc_cycles order]
     U = rng.random(n)                     # latch-up escape threshold (common random numbers)
@@ -181,7 +192,7 @@ def simulate_general(*, n, seed, vd_max, dv, rate, mode, x0, sigma, tau_s, sigma
     rho_e = np.exp(-dt / tau_e) if mode == "evolving" else 1.
     zx = np.array([Z[0]]) * rho_x; ze = np.array([ZE[0]]) * rho_e
     per = 2 * (steps + 1)
-    chunk = int(max(1, min(n, 600_000 // per)))
+    chunk = int(max(1, min(n, 600_000 // (2 * (fine + 1)))))
     VLU = np.full(n, np.nan); VLD = np.full(n, np.nan); XS = np.full(n, np.nan)
     ES = np.full(n, np.nan); ATOM = np.zeros(n, bool)
     for c0 in range(0, n, chunk):
@@ -196,29 +207,32 @@ def simulate_general(*, n, seed, vd_max, dv, rate, mode, x0, sigma, tau_s, sigma
             E = np.broadcast_to((sigma_e * ZE[c0:c1])[:, None, None], (nc, 2, 1))
         else:
             X = np.full((nc, 2, 1), float(x0)); E = np.zeros((nc, 2, 1))
+        Xf = X[:, :, hold] if X.shape[2] > 1 and sub > 1 else X
+        Ef = E[:, :, hold] if E.shape[2] > 1 and sub > 1 else E
         # --- latch-up (HRS -> LRS) ---
-        fu = folds.lu(X[:, 0]) + s_lu_e * E[:, 0]
-        dist = np.broadcast_to(fu - Vup[None, :], (nc, steps + 1))
+        fu = folds.lu(Xf[:, 0]) + s_lu_e * Ef[:, 0]
+        dist = np.broadcast_to(fu - Vup[None, :], (nc, fine + 1))
         if lu_haz is not None:
-            h = lu_haz(np.broadcast_to(X[:, 0], (nc, steps + 1)), dist)
+            h = lu_haz(np.broadcast_to(Xf[:, 0], (nc, fine + 1)), dist)
         else:
-            h = np.zeros((nc, steps + 1))
-        vlu, atom = _first_event(Vup, dvv, +1, dist, h, dt, thr_up[c0:c1])
+            h = np.zeros((nc, fine + 1))
+        vlu, atom = _first_event(Vup, dvf, +1, dist, h, dtf, thr_up[c0:c1])
         # --- latch-down (LRS -> HRS), only for cycles that latched up ---
-        fd = folds.ld(X[:, 1]) + s_ld_e * E[:, 1]
-        dist = np.broadcast_to(Vdn[None, :] - fd, (nc, steps + 1))
+        fd = folds.ld(Xf[:, 1]) + s_ld_e * Ef[:, 1]
+        dist = np.broadcast_to(Vdn[None, :] - fd, (nc, fine + 1))
         if ld_haz is not None:
-            h = ld_haz(np.zeros((nc, steps + 1)), dist)
+            h = ld_haz(np.zeros((nc, fine + 1)), dist)
         else:
-            h = np.zeros((nc, steps + 1))
-        vld, _ = _first_event(Vdn, dvv, -1, dist, h, dt, thr_dn[c0:c1])
+            h = np.zeros((nc, fine + 1))
+        vld, _ = _first_event(Vdn, dvf, -1, dist, h, dtf, thr_dn[c0:c1])
         vld[~np.isfinite(vlu)] = np.nan
         VLU[c0:c1] = vlu; VLD[c0:c1] = vld; ATOM[c0:c1] = atom
         XS[c0:c1] = X[:, 0, min(steps // 2, X.shape[2] - 1)]
         ES[c0:c1] = E[:, 0, min(steps // 2, E.shape[2] - 1)]
         if progress is not None:
             progress(c1 / n)
-    return dict(V_LU=VLU, V_LD=VLD, state=XS, emitter=ES, fold_atom=ATOM, steps=steps, dv=dvv, dt=dt)
+    return dict(V_LU=VLU, V_LD=VLD, state=XS, emitter=ES, fold_atom=ATOM, steps=steps, dv=dvv, dt=dt,
+                hazard_substeps=sub)
 
 
 # --------------------------------------------------------------------------------------------

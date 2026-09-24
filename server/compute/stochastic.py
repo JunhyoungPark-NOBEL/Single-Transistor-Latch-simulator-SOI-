@@ -139,7 +139,24 @@ class StateMap:
         return np.asarray(P.build_p(self.device, de=de, **{self.key: float(x)}, **self.over), float)
 
 
-def _lu_hazard(p, rate, grid, warnings, progress=None):
+KERNEL_NOTE = ("{d} first-passage hazard not computable where the drain-junction reverse bias of the lattice "
+               "exceeds the avalanche cluster kernel range (r ≤ {hi:.1f} V, V_D ≳ 5.1 V): escapes there are "
+               "placed at the fold (carrier noise underestimated)")
+
+
+def _hazard_notes(rec: dict, warnings: list, d: str = "LU") -> None:
+    """Warnings for hazard voltages that could not be computed (fold-independent text so that several
+    hazard nodes produce one deduplicated message)."""
+    if rec.get("fold_V") is None:
+        return
+    if rec.get("kernel_skipped"):
+        warnings.append(KERNEL_NOTE.format(d=d, hi=rec["kernel_range_V"][1]))
+    elif rec.get("n_voltages") and rec.get("skipped", 0) >= rec["n_voltages"]:
+        warnings.append(f"{d} first-passage lattice failed at every voltage below the fold: escape at the fold "
+                        "(no carrier noise)")
+
+
+def _lu_hazard(p, rate, grid, warnings, progress=None, notes=True):
     """photo_fpt window (0.28 V) extended to 0.5 / 0.8 V when the escape probability in the first
     10 mV of the window is not negligible at this ramp rate (gate_fpt uses 0.5 V near V_G = -1.1 V)."""
     rec = None
@@ -147,11 +164,14 @@ def _lu_hazard(p, rate, grid, warnings, progress=None):
         rec = C.lu_hazard_curve(p, window=window, grid=grid, progress=progress)
         V, h, begin = C.resolved_hazard(rec)
         if len(V) < 2 or begin > 0 or not np.isfinite(h[0]):
-            return rec
+            break
         if h[0] * .01 / rate < 1e-3 or V[0] <= (rec["VLD_fold_V"] or -np.inf) + .0015:
-            return rec
-    warnings.append(f"LU hazard still non-negligible {rec['window_V']:.2f} V below the fold at "
-                    f"{rate:g} V/s; earlier escapes are truncated")
+            break
+    else:
+        warnings.append(f"LU hazard still non-negligible {rec['window_V']:.2f} V below the fold at "
+                        f"{rate:g} V/s; earlier escapes are truncated")
+    if notes:
+        _hazard_notes(rec, warnings, "LU")
     return rec
 
 
@@ -222,11 +242,14 @@ def run_hazard(payload: dict, progress=None) -> dict:
     grid = int(device["numerics"]["grid"])
     p = np.asarray(P.build_p(device, dg=dg, de=de), float)
     progress(0.02, "first-passage hazard")
-    rec = _lu_hazard(p, rate, grid, warnings, progress=lambda f: progress(0.02 + 0.93 * f, "first-passage hazard"))
+    rec = _lu_hazard(p, rate, grid, warnings, progress=lambda f: progress(0.02 + 0.93 * f, "first-passage hazard"),
+                     notes=False)
     out = dict(fold_V=rec["fold_V"], VLD_fold_V=rec["VLD_fold_V"], rate_V_per_s=rate, dg=dg, de=de,
-               window_V=rec["window_V"], step_V=rec["step_V"], skipped=rec.get("skipped", 0))
+               window_V=rec["window_V"], step_V=rec["step_V"], skipped=rec.get("skipped", 0),
+               n_voltages=rec.get("n_voltages"), kernel_skipped=rec.get("kernel_skipped", 0))
     if rec["fold_V"] is None:
-        warnings.append("no latch (classify found no two-fold branch) for this device")
+        warnings.append("no latch: steady-state locus not traceable at the fold (gap in u)" if rec.get("locus_gap")
+                        else "no latch (classify found no two-fold branch) for this device")
         out.update(voltage=[], hazard=[], survival=[], quantiles=dict(prob=[], v=[]), stats=C.stats([]),
                    fold_atom=None)
     else:
@@ -239,9 +262,21 @@ def run_hazard(payload: dict, progress=None) -> dict:
         atom = float(surv[-1]) if len(surv) else 1.0
         out.update(voltage=V, hazard=np.asarray(rec["hazard"], float), survival=surv,
                    quantiles=dict(prob=C.PROB[sub], v=q[sub]), stats=st, fold_atom=atom,
-                   I_at_fold_A=rec.get("I_at_fold_A"))
+                   I_at_fold_A=C.fold_node(p, grid).get("I_LU"))       # refined, as the deterministic folds
+        n_v, ks = int(rec.get("n_voltages") or 0), int(rec.get("kernel_skipped") or 0)
+        if ks:
+            r0, r1 = rec["kernel_r_V"]
+            k0, k1 = rec["kernel_range_V"]
+            warnings.append(f"first-passage hazard not computable at {ks} of {n_v} voltages below the fold: the "
+                            f"lattice reverse bias ({r0:.2f} … {r1:.2f} V) leaves the avalanche cluster kernel range "
+                            f"({k0:.1f} … {k1:.1f} V); escapes there are placed at the fold")
         if len(V) < 2:
-            warnings.append("hazard window too narrow (fold close to V_LD): escape assumed at the fold")
+            if n_v >= 2 and rec.get("skipped", 0) >= n_v:
+                if not ks:
+                    warnings.append(f"first-passage lattice failed at all {n_v} voltages below the fold: escape "
+                                    "assumed at the fold")
+            else:
+                warnings.append("hazard window too narrow (fold close to V_LD): escape assumed at the fold")
         if atom > 0.01:
             warnings.append(f"{100 * atom:.1f} % of escapes reach the fold (deterministic fold atom)")
     progress(1.0, "done")
@@ -252,13 +287,25 @@ def run_hazard(payload: dict, progress=None) -> dict:
 # ============================================================================================
 # kind "sweep_mc"
 # ============================================================================================
-def _choose_engine(device, sweep, stoch) -> str:
+def calibrated_dv_ok(dv: float) -> bool:
+    """gate_dynamic_compare.simulate steps 0 → 4 V in round(4/ΔV) steps, reads the current every round(0.01/ΔV)
+    steps and pairs it with a fixed 401-point axis (0.01 V spacing): only ΔV = 10 mV / k (k = 1, 2, …) makes the
+    read-out grid that axis (ΔV > 20 mV divides by zero, other ΔV give traces of the wrong length)."""
+    k = int(round(0.01 / dv))
+    return k >= 1 and int(round(4.0 / dv)) == 400 * k
+
+
+def _choose_engine(device, sweep, stoch, warnings=None) -> str:
     eng = stoch.get("engine", "auto")
     ls = stoch["local_state"]
+    dv_ok = calibrated_dv_ok(sweep["dv_V"])
     if eng == "auto":
         ok = (P.is_paper_reference(device) and ls["action"] == "gidl" and abs(sweep["vd_max_V"] - 4.0) < 1e-9
               and stoch["carrier_noise"])
-        return "calibrated_lookup" if ok else "general"
+        if ok and not dv_ok and warnings is not None:
+            warnings.append(f"voltage step ΔV = {1e3 * sweep['dv_V']:.4g} mV is not 10 mV / k (10, 5, 3.333, 2.5, "
+                            "2, … mV), which the calibrated_lookup engine needs: using the general engine")
+        return "calibrated_lookup" if ok and dv_ok else "general"
     if eng == "calibrated_lookup":
         if not P.is_paper_reference(device):
             raise ValueError("calibrated_lookup covers only the calibrated paper device at V_G = -2 V, dark, no "
@@ -267,6 +314,9 @@ def _choose_engine(device, sweep, stoch) -> str:
             raise ValueError("calibrated_lookup supports only the GIDL action point; use engine 'general'")
         if abs(sweep["vd_max_V"] - 4.0) > 1e-9:
             raise ValueError("calibrated_lookup is tabulated for 0 → 4 V sweeps; use engine 'general'")
+        if not dv_ok:
+            raise ValueError(f"calibrated_lookup needs a voltage step ΔV = 10 mV / k (10, 5, 3.333, 2.5, 2, … mV); "
+                             f"got {1e3 * sweep['dv_V']:.4g} mV — use engine 'general' (or 'auto')")
     return eng
 
 
@@ -274,7 +324,14 @@ def _finish_mc(out, stoch, sweep, device, warnings):
     vlu = np.asarray(out["V_LU"], float); vld = np.asarray(out["V_LD"], float)
     out["stats"] = dict(LU=C.stats(vlu), LD=C.stats(vld))
     out["hist"] = dict(LU=C.histogram(vlu), LD=C.histogram(vld))
-    out["cdf"] = dict(LU=C.ecdf(vlu), LD=C.ecdf(vld))
+    # CDF over every cycle that ran the sweep direction: LU plateaus at the latched fraction; a latch-down never
+    # reached by 0 V lies below the sweep, so it enters LD as an offset.  LD population: every cycle for the
+    # calibrated engine (unpaired up/down records), the latched-up cycles for the general engine.
+    n_ld = len(vld) if out.get("engine") == "calibrated_lookup" else int(np.isfinite(vlu).sum())
+    ld_cdf = C.ecdf(vld, n_total=n_ld)
+    if ld_cdf["n"] and n_ld > ld_cdf["n"]:
+        ld_cdf["p"] = [float(x) for x in (np.asarray(ld_cdf["p"]) + (n_ld - ld_cdf["n"]) / n_ld)]
+    out["cdf"] = dict(LU=C.ecdf(vlu), LD=ld_cdf)
     out["measured"] = _measured(device, sweep, warnings)
     n_c = int((~np.isfinite(vlu)).sum())
     if n_c:
@@ -321,10 +378,16 @@ def _run_calibrated(device, sweep, stoch, progress, warnings):
                state_axis=dict(action="gidl", unit="V", label=ACTIONS["gidl"][2], centre=c0["j0"],
                                sigma=ls["sigma"], mode=ls["mode"], calibrated_mode=mode),
                lookup_outside_fraction=rep["outside_fraction"])
+    # the engine reads the current every k = round(0.01/ΔV) steps of its own grid (as gate_dynamic_compare)
+    k = int(round(0.01 / dv))
+    v_up = np.linspace(0, 4, steps + 1)[::k]
+    v_dn = np.linspace(4, 0, steps + 1)[::k]
+    if z["current"].shape[2] != len(v_up):
+        raise RuntimeError("calibrated_lookup current read-out does not match its voltage grid")
     traces = []
     for c in range(min(stoch["n_traces"], n)):
         traces.append(dict(cycle=c, V_LU=_fnum(tr[0, c, 1]), V_LD=_fnum(tr[1, c, 1]),
-                           up=dict(vd=z["Vup"], id=z["current"][0, c]), down=dict(vd=z["Vdown"], id=z["current"][1, c])))
+                           up=dict(vd=v_up, id=z["current"][0, c]), down=dict(vd=v_dn, id=z["current"][1, c])))
     out["traces"] = traces
     warnings.append("calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); "
                     "continuous values in V_LU_continuous/V_LD_continuous")
@@ -389,6 +452,7 @@ def _general_tables(device, sweep, stoch, progress, warnings, lo=0.0, hi=1.0):
     if stoch["ld_carrier_noise"]:
         progress(lo + span * 0.86, "latch-down hazard")
         rec = C.ld_hazard_curve(sm.p(sm.x0), grid=grid)
+        _hazard_notes(rec, warnings, "LD")
         ld_field = MC.build_hazard_field([sm.x0], [rec])
         if ld_field is None:
             warnings.append("no resolved LD hazard at the centre state: latch-down at the fold")
@@ -458,7 +522,7 @@ def run_sweep_mc(payload: dict, progress=None) -> dict:
     progress = _prog(progress)
     warnings: list[str] = []
     device, sweep, stoch = _resolve(payload, warnings)
-    engine = _choose_engine(device, sweep, stoch)
+    engine = _choose_engine(device, sweep, stoch, warnings)
     if engine == "calibrated_lookup":
         out = _run_calibrated(device, sweep, stoch, progress, warnings)
     else:
@@ -474,6 +538,37 @@ def run_sweep_mc(payload: dict, progress=None) -> dict:
 # ============================================================================================
 # kind "vg_curve_stochastic"
 # ============================================================================================
+def truncated_mixture(fl, wt, eps, weps, vd_max):
+    """Moments of V_LU = F + ε conditional on latching within the sweep (V_LU ≤ vd_max), as sweep_mc reports them.
+
+    F: fold states fl (finite) with weights wt; ε: carrier-noise offsets eps with weights weps, independent of F.
+    Returns (P_latched, mean, state_var, noise_var) with the law-of-total-variance split
+    state_var = Var_F(E[V | F, latched]) and noise_var = E_F[Var(V | F, latched)]; without truncation these are
+    exactly Σ wt·F + E[ε], Var(F) and Var(ε).  mean/vars are None when no weight latches within the sweep."""
+    fl = np.asarray(fl, float)
+    wt = np.asarray(wt, float) / np.sum(wt)
+    order = np.argsort(eps, kind="stable")
+    e = np.asarray(eps, float)[order]
+    w = np.asarray(weps, float)[order] / np.sum(weps)
+    e0 = float(np.sum(w * e))
+    ec = e - e0                                               # centred offsets (well-conditioned moments)
+    cw, c1, c2 = (np.r_[0., np.cumsum(x)] for x in (w, w * ec, w * ec * ec))
+    k = np.searchsorted(e, vd_max - fl, side="right")          # count of ε with F + ε <= vd_max
+    full = k == len(e)
+    pk = np.where(full, 1.0, cw[k])
+    safe = np.where(pk > 0, pk, 1.0)
+    m1 = np.where(full, 0.0, c1[k] / safe)                     # E[ε - e0 | F, latched]
+    m2 = np.where(full, float(np.sum(w * ec * ec)), c2[k] / safe)
+    W = wt * pk
+    P = float(W.sum())
+    if P <= 1e-12:
+        return P, None, None, None
+    mk = fl + e0 + m1                                          # E[V | F, latched]
+    vk = np.maximum(m2 - m1 * m1, 0.0)                         # Var(V | F, latched)
+    mean = float(np.sum(W * mk) / P)
+    return P, mean, float(np.sum(W * (mk - mean) ** 2) / P), float(np.sum(W * vk) / P)
+
+
 def _vg_point(device, sweep, stoch, progress, warnings, lo, hi):
     ls = stoch["local_state"]
     sm = StateMap(device, ls["action"], [])
@@ -497,13 +592,14 @@ def _vg_point(device, sweep, stoch, progress, warnings, lo, hi):
         t = np.array([0.]); wt = np.array([1.])
         fl = np.array([centre["V_LU"] if centre.get("latch") else np.nan])
     ok = np.isfinite(fl)
+    no_latch = float(1 - wt[ok].sum())
     row = dict(mean=None, sd=None, state_sd=None, noise_sd=None, fold_centre=_fnum(centre.get("V_LU") or np.nan),
-               vld=_fnum(centre.get("V_LD") or np.nan), no_latch=float(1 - wt[ok].sum()), latch=bool(centre.get("latch")))
+               vld=_fnum(centre.get("V_LD") or np.nan), no_latch=no_latch, beyond=0.0, censored=no_latch,
+               latch=bool(centre.get("latch")))
     if not ok.any():
         return row
     wk = wt[ok] / wt[ok].sum()
-    fmu = float(np.sum(wk * fl[ok])); fsd = float(np.sqrt(np.sum(wk * (fl[ok] - fmu) ** 2)))
-    nsd, msh = 0.0, 0.0
+    eps, weps = np.array([0.]), np.array([1.])
     if stoch["carrier_noise"]:
         if sigma > 0:
             tt, ww = C.gauss_hermite(stoch["hazard_nodes"])
@@ -518,11 +614,20 @@ def _vg_point(device, sweep, stoch, progress, warnings, lo, hi):
             q = C.quantiles(rec, rate)
             if q is None:
                 continue
-            noise.append(q.std()); shift.append(q.mean() - rec["fold_V"]); ws.append(wi)
+            noise.append(q - q.mean()); shift.append(q.mean() - rec["fold_V"]); ws.append(wi)
         if ws:
             ws = np.asarray(ws) / np.sum(ws)
-            nsd = float(np.sqrt(np.sum(ws * np.asarray(noise) ** 2))); msh = float(np.sum(ws * np.asarray(shift)))
-    row.update(mean=fmu + msh, sd=float(np.sqrt(fsd ** 2 + nsd ** 2)), state_sd=fsd, noise_sd=nsd)
+            msh = float(np.sum(ws * np.asarray(shift)))
+            # pooled noise offsets, each node centred on the common mean shift: mean msh, variance Σ w_i SD_i²
+            eps = np.concatenate(noise) + msh
+            weps = np.concatenate([np.full(len(q_), wi / len(q_)) for q_, wi in zip(noise, ws, strict=True)])
+    vd_max = float(sweep["vd_max_V"])
+    P, mean, svar, nvar = truncated_mixture(fl[ok], wk, eps, weps, vd_max)
+    beyond = float((1 - no_latch) * (1 - P))
+    row.update(beyond=beyond, censored=no_latch + beyond)
+    if mean is not None:
+        row.update(mean=mean, sd=float(np.sqrt(svar + nvar)), state_sd=float(np.sqrt(svar)),
+                   noise_sd=float(np.sqrt(nvar)))
     return row
 
 
@@ -568,7 +673,7 @@ def run_vg_curve_stochastic(payload: dict, progress=None) -> dict:
     if ls["mode"] != "none" and ls["sigma_E_V"] > 0:
         warnings.append("emitter state σ_E is not included in the V_LU curve (it mainly moves V_LD)")
     vgs = np.linspace(vg_min, vg_max, n)
-    keys = ("mean", "sd", "state_sd", "noise_sd", "fold_centre", "vld", "no_latch", "latch")
+    keys = ("mean", "sd", "state_sd", "noise_sd", "fold_centre", "vld", "no_latch", "beyond", "censored", "latch")
     rows = {k: [] for k in keys}
     for k, vg in enumerate(vgs):
         d = copy.deepcopy(device); d["vg"] = float(vg)
@@ -579,6 +684,13 @@ def run_vg_curve_stochastic(payload: dict, progress=None) -> dict:
             rows[key].append(row[key])
         progress(hi, msg)
     latch = np.array(rows["latch"], bool)
+    beyond = np.array(rows["beyond"], float)
+    if (beyond > 1e-3).any():
+        kb = np.flatnonzero(beyond > 1e-3)
+        warnings.append(f"V_LU beyond the sweep maximum {sweep['vd_max_V']:g} V for part of the cycles at {len(kb)} "
+                        f"V_G value(s) (up to {100 * beyond.max():.1f} %, {vgs[kb[0]]:+.3f} … {vgs[kb[-1]]:+.3f} V): "
+                        "mean and σ are over the cycles that latch within the sweep, as in sweep_mc "
+                        "(beyond_sweep_weight / censored_weight)")
     window = dict(vg_low=None, vg_high=None)
     grid = int(device["numerics"]["grid"])
     if latch.any():
@@ -601,7 +713,8 @@ def run_vg_curve_stochastic(payload: dict, progress=None) -> dict:
     progress(1.0, "done")
     return dict(vg=vgs, mean_VLU=arr("mean"), sd_VLU_mV=arr("sd", 1e3), state_sd_mV=arr("state_sd", 1e3),
                 noise_sd_mV=arr("noise_sd", 1e3), fold_centre_V=arr("fold_centre"), VLD_fold_V=arr("vld"),
-                no_latch_weight=arr("no_latch"), latch=latch, window=window, measured=measured,
+                no_latch_weight=arr("no_latch"), beyond_sweep_weight=arr("beyond"), censored_weight=arr("censored"),
+                latch=latch, window=window, measured=measured, vd_max_V=sweep["vd_max_V"],
                 rate_V_per_s=sweep["rate_V_per_s"], runtime_s=time.perf_counter() - tic, warnings=_dedup(warnings))
 
 

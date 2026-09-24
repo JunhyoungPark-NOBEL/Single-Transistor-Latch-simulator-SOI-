@@ -79,6 +79,42 @@ def test_engine_choice():
     assert ST._choose_engine(dev, sw, st2) == "general"
 
 
+def test_calibrated_dv_guard():
+    """Review finding 1: calibrated_lookup only for ΔV = 10 mV / k (else ZeroDivisionError / misaligned traces)."""
+    for dv in (0.01, 0.005, 0.01 / 3, 0.0025, 0.002, 0.001, 0.0005):
+        assert ST.calibrated_dv_ok(dv), dv
+    for dv in (0.1, 0.05, 0.02, 0.015, 0.004, 0.003, 0.0015):
+        assert not ST.calibrated_dv_ok(dv), dv
+    dev = P.resolve_device({"preset": "paper"})
+    st = P.resolve_section("paper", "stochastic", None)
+    w = []
+    assert ST._choose_engine(dev, dict(P.resolve_section("paper", "sweep", None), dv_V=0.004), st, w) == "general"
+    assert any("10 mV / k" in x for x in w)
+    with pytest.raises(ValueError, match="10 mV / k"):
+        ST.run_sweep_mc({"device": {"preset": "paper"}, "sweep": {"dv_V": 0.02},
+                         "stochastic": {"engine": "calibrated_lookup", "n_cycles": 3}})
+
+
+def test_calibrated_traces_aligned():
+    """Review finding 1: every calibrated trace has as many currents as voltages (ΔV = 2.5 mV → k = 4)."""
+    r = ST.run_sweep_mc({"device": {"preset": "paper"}, "sweep": {"dv_V": 0.0025}, "stochastic": {"n_cycles": 3}})
+    assert r["engine"] == "calibrated_lookup" and r["traces"]
+    for t in r["traces"]:
+        for d in ("up", "down"):
+            assert len(t[d]["vd"]) == len(t[d]["id"]) == 401
+        assert t["up"]["vd"][0] == 0 and t["up"]["vd"][-1] == pytest.approx(4.0)
+
+
+def test_auto_engine_coarse_dv_runs_general():
+    """Review finding 1: ΔV = 20 mV on the paper preset used to raise ZeroDivisionError."""
+    r = ST.run_sweep_mc({"device": {"preset": "paper"}, "sweep": {"dv_V": 0.02},
+                         "stochastic": {"n_cycles": 20, "local_state": {"mode": "none"}}})
+    assert r["engine"] == "general" and r["stats"]["LU"]["n"] == 20
+    assert any("10 mV / k" in x for x in r["warnings"])
+    for t in r["traces"]:
+        assert len(t["up"]["vd"]) == len(t["up"]["id"])
+
+
 # ------------------------------------------------------------------------------------------
 # synthetic general-engine checks (no engine, fast)
 # ------------------------------------------------------------------------------------------
@@ -115,6 +151,41 @@ def test_general_constant_hazard_is_exponential():
     assert abs(v.std() - 0.05) < 3e-3
 
 
+def _steep_field(lam=0.005, h0=5e3, dmax=0.3):
+    d = np.arange(0, dmax + 1e-9, C.DIST_STEP)
+    return MC.HazardField(np.array([0.]), (np.log(h0) - d / lam)[None, :])
+
+
+@pytest.mark.parametrize("mode", ["none", "evolving"])
+def test_general_event_independent_of_dv(mode):
+    """Review finding 5: a hazard rising e-fold per 5 mV towards the fold; the escape statistics must not depend
+    on the sweep step ΔV (0.5 → 50 mV) beyond MC noise.  (Before: mean shifted by ~-30 mV, σ ~ doubled.)"""
+    ft = MC.FoldTable(np.array([-1., 1.]), np.array([3.0, 3.0]), np.array([2.0, 2.0]), [dict(latch=False)] * 2)
+    hf = _steep_field()
+    res = {}
+    for dv in (0.0005, 0.002, 0.05, 0.1):
+        r = MC.simulate_general(n=3000, seed=5, vd_max=4.0, dv=dv, rate=1.0, mode=mode, x0=0., sigma=0.,
+                                tau_s=1., sigma_e=0., tau_e=1., folds=ft, s_lu_e=0., s_ld_e=0., lu_haz=hf, ld_haz=hf)
+        res[dv] = r
+        assert r["hazard_substeps"] == max(1, int(np.ceil(dv / 0.002 - 1e-9)))
+    ref = res[0.0005]
+    for dv in (0.002, 0.05, 0.1):
+        for key in ("V_LU", "V_LD"):
+            assert np.nanmean(res[dv][key]) == pytest.approx(np.nanmean(ref[key]), abs=0.6e-3), (dv, key)
+            assert np.nanstd(res[dv][key]) == pytest.approx(np.nanstd(ref[key]), rel=0.05), (dv, key)
+
+
+def test_general_dv_independent_engine():
+    """Review finding 5 on the real hazard node (paper device, centre state, ld_carrier_noise on)."""
+    base = {"device": {"preset": "paper"}, "stochastic": {"n_cycles": 400, "engine": "general",
+                                                          "local_state": {"mode": "none"}}}
+    a = ST.run_sweep_mc(dict(base, sweep={"dv_V": 0.002}))
+    b = ST.run_sweep_mc(dict(base, sweep={"dv_V": 0.05}))
+    for d in ("LU", "LD"):
+        assert b["stats"][d]["mean"] == pytest.approx(a["stats"][d]["mean"], abs=5e-4)
+        assert b["stats"][d]["sd"] == pytest.approx(a["stats"][d]["sd"], rel=0.05)
+
+
 def test_general_evolving_ou_correlation():
     ft = _synthetic_table()
     tau = 0.5
@@ -135,7 +206,9 @@ def test_stats_helpers():
     h = C.histogram(v)
     assert sum(h["counts"]) == 50 and len(h["edges"]) == len(h["counts"]) + 1
     c = C.ecdf(v)
-    assert len(c["v"]) == 50 and c["p"][-1] == 1.0
+    # normalised to every cycle: the censored one keeps the CDF below 1 (review finding 7)
+    assert len(c["v"]) == 50 and c["n"] == 50 and c["n_total"] == 51 and c["p"][-1] == pytest.approx(50 / 51)
+    assert C.ecdf(v[:-1])["p"][-1] == 1.0
 
 
 # ------------------------------------------------------------------------------------------
@@ -203,6 +276,105 @@ def test_photo_dark_calibration_point():
     _jsonable(r)
 
 
+def test_truncated_mixture_moments():
+    """Review finding 2: exact moments without truncation; conditional moments with it."""
+    rng = np.random.default_rng(0)
+    fl = np.linspace(3.5, 4.5, 41); wt = np.exp(-((fl - 4.0) / 0.2) ** 2 / 2)
+    eps = rng.normal(-0.05, 0.01, 2000); weps = np.ones_like(eps)
+    P1, mean, sv, nv = ST.truncated_mixture(fl, wt, eps, weps, 10.0)
+    w = wt / wt.sum()
+    fmu = np.sum(w * fl)
+    assert P1 == 1.0 and mean == pytest.approx(fmu + eps.mean(), abs=1e-12)
+    assert sv == pytest.approx(np.sum(w * (fl - fmu) ** 2), rel=1e-10) and nv == pytest.approx(eps.var(), rel=1e-10)
+    # brute force over the product grid, truncated at 4.0 V
+    V = fl[:, None] + eps[None, :]; W = w[:, None] * np.full(len(eps), 1 / len(eps))[None, :]
+    keep = V <= 4.0
+    P2, mean2, sv2, nv2 = ST.truncated_mixture(fl, wt, eps, weps, 4.0)
+    assert P2 == pytest.approx(W[keep].sum(), rel=1e-12)
+    bm = np.sum(W[keep] * V[keep]) / W[keep].sum()
+    assert mean2 == pytest.approx(bm, abs=1e-12)
+    assert sv2 + nv2 == pytest.approx(np.sum(W[keep] * (V[keep] - bm) ** 2) / W[keep].sum(), rel=1e-9)
+    assert ST.truncated_mixture(fl, wt, eps, weps, 3.0)[1] is None
+
+
+def test_vg_curve_stochastic_censors_beyond_sweep():
+    """Review finding 2: the V_G curve honours sweep.vd_max_V like sweep_mc (centre state, carrier noise only:
+    V_LU = the first-passage quantiles, censored above vd_max)."""
+    pl = {"device": {"preset": "paper"}, "sweep": {"vd_max_V": 3.645, "rate_V_per_s": 0.4},
+          "stochastic": {"engine": "general", "local_state": {"mode": "none"}}, "vg_min": -2.0, "vg_max": -1.4, "n": 2}
+    r = ST.run_vg_curve_stochastic(pl)
+    q = C.quantiles(C.lu_hazard_curve(P.build_p(P.resolve_device({"preset": "paper"}))), 0.4)
+    keep = q <= 3.645
+    assert r["censored_weight"][0] == pytest.approx(1 - keep.mean(), abs=1e-9)
+    assert r["beyond_sweep_weight"][0] == pytest.approx(1 - keep.mean(), abs=1e-9) and r["no_latch_weight"][0] == 0
+    assert r["mean_VLU"][0] == pytest.approx(q[keep].mean(), abs=1e-9)
+    assert r["sd_VLU_mV"][0] == pytest.approx(1e3 * q[keep].std(), abs=1e-6)
+    assert 0.2 < r["censored_weight"][0] < 0.8
+    assert r["censored_weight"][1] > 0.99                                     # V_G -1.4: fold 4.19 V
+    assert not np.isfinite(r["mean_VLU"][1]) or r["mean_VLU"][1] <= 3.645
+    assert any("beyond the sweep maximum" in w for w in r["warnings"])
+    # against sweep_mc with the same payload
+    m = ST.run_sweep_mc({"device": {"preset": "paper"}, "sweep": pl["sweep"],
+                         "stochastic": dict(pl["stochastic"], n_cycles=2000)})
+    lu = m["stats"]["LU"]
+    assert lu["censored"] / 2000 == pytest.approx(r["censored_weight"][0], abs=0.035)
+    assert lu["mean"] == pytest.approx(r["mean_VLU"][0], abs=1e-3)
+
+
+def test_hazard_high_fold_reports_kernel_range():
+    """Review finding 4: a fold above ~5.1 V (l_GIDL = 44 nm) loses every hazard voltage because the lattice
+    reverse bias leaves the avalanche kernel (<= 5 V); the warning must say so, not 'window too narrow'."""
+    r = ST.run_hazard({"device": {"preset": "paper", "calib": {"l_gidl_nm": 44}}})
+    assert r["fold_V"] > 5.3 and len(r["voltage"]) == 0
+    assert r["kernel_skipped"] == r["n_voltages"] == r["skipped"] > 0
+    assert any("avalanche cluster kernel" in w for w in r["warnings"])
+    assert not any("too narrow" in w for w in r["warnings"])
+    ok = ST.run_hazard({"device": {"preset": "paper", "calib": {"l_gidl_nm": 40}}})
+    assert len(ok["voltage"]) > 50 and ok["kernel_skipped"] == 0 and ok["stats"]["sd"] > 0.005
+
+
+def test_hazard_rows_use_state_row_fallback():
+    """Review finding 4: S.state fails at V_D >~ 5.1 V, u ~ 0.9 V; the hazard rows use the bracket-shrinking
+    deterministic.state_row (identical where S.state succeeds)."""
+    from server.engine_bridge import S
+    p = np.asarray(P.build_p(P.resolve_device({"preset": "paper", "calib": {"l_gidl_nm": 44}})), float)
+    with pytest.raises(ValueError):
+        S.state(0.9, 5.3, p)
+    rows = C._state_rows(np.array([0.5, 0.9]), 5.3, p)
+    assert np.isfinite(rows).all()
+    np.testing.assert_array_equal(C._state_rows(np.array([0.5]), 3.2, p)[0], S.state(0.5, 3.2, p))
+
+
+def test_fold_node_matches_deterministic_folds():
+    """Review finding 9: the stochastic fold records carry the same refined fold states as the `folds` readout."""
+    from server.compute import deterministic as D
+    for dev in ({"preset": "paper"}, {"preset": "photo"}):
+        f = D.run_folds({"device": dev})["folds"]
+        rec = C.fold_node(P.build_p(P.resolve_device(dev)), 601)
+        for k in ("V_LU", "V_LD", "I_LU", "I_LD", "u_LU", "u_LD"):
+            assert rec[k] == f[k], (dev, k)
+    hz = ST.run_hazard({"device": {"preset": "paper"}, "sweep": {"rate_V_per_s": 0.4}})
+    assert hz["I_at_fold_A"] == D.run_folds({"device": {"preset": "paper"}})["folds"]["I_LU"]
+
+
+def test_fold_node_rejects_locus_gap():
+    """Review finding 3 (stochastic side): V_G = +0.5 V has no traceable fold."""
+    rec = C.fold_node(P.build_p(P.resolve_device({"preset": "paper", "vg": 0.5})), 601)
+    assert rec["latch"] is False and rec["locus_gap"] is True
+    h = C.lu_hazard_curve(P.build_p(P.resolve_device({"preset": "paper", "vg": 0.5})))
+    assert h["fold_V"] is None and h["locus_gap"] is True
+
+
+def test_mc_cdf_counts_censored_cycles():
+    """Review finding 7: with censored cycles the LU CDF plateaus at the latched fraction."""
+    r = ST.run_sweep_mc({"device": {"preset": "photo"}, "sweep": {"vd_max_V": 3.9}, "stochastic": {"n_cycles": 200}})
+    lu = r["stats"]["LU"]
+    assert lu["censored"] > 20
+    assert r["cdf"]["LU"]["p"][-1] == pytest.approx(lu["n"] / 200)
+    assert r["cdf"]["LU"]["n_total"] == 200 and len(r["cdf"]["LU"]["v"]) == lu["n"]
+    assert r["cdf"]["LD"]["p"][-1] == pytest.approx(1.0) and r["cdf"]["LD"]["n_total"] == lu["n"]
+
+
 def test_determinism_fixed_seed():
     pl = {"device": {"preset": "photo"}, "stochastic": {"n_cycles": 50, "seed": 42}}
     a, b = ST.run_sweep_mc(pl), ST.run_sweep_mc(pl)
@@ -231,9 +403,16 @@ def test_general_vs_calibrated_frozen_paper():
 
 @pytest.mark.slow
 def test_vg_curve_paper_points():
-    r = ST.run_vg_curve_stochastic({"device": {"preset": "paper"}, "stochastic": {"local_state": {"mode": "frozen"}},
-                                    "vg_min": -2.0, "vg_max": -1.1, "n": 4})
+    """Paper V_G curve (0-6 V sweep as in validation.check_vg_curve_stochastic): mean V_LU 4.354 V at -1.1 V.
+    With the preset's 0-4 V sweep the same point is mostly censored (review finding 2)."""
+    pl = {"device": {"preset": "paper"}, "sweep": {"vd_max_V": 6.0},
+          "stochastic": {"local_state": {"mode": "frozen"}}, "vg_min": -2.0, "vg_max": -1.1, "n": 4}
+    r = ST.run_vg_curve_stochastic(pl)
     _ok_result(r, ["vg", "mean_VLU", "sd_VLU_mV", "state_sd_mV", "noise_sd_mV", "fold_centre_V", "VLD_fold_V",
-                   "no_latch_weight", "measured"])
+                   "no_latch_weight", "beyond_sweep_weight", "censored_weight", "measured"])
     assert np.all(np.isfinite(r["mean_VLU"]))
     assert r["mean_VLU"][-1] == pytest.approx(4.354, abs=0.03)
+    assert np.all(np.asarray(r["beyond_sweep_weight"]) < 1e-6)
+    r4 = ST.run_vg_curve_stochastic(dict(pl, sweep={"vd_max_V": 4.0}))
+    assert r4["mean_VLU"][0] == pytest.approx(r["mean_VLU"][0], abs=2e-3)       # -2 V: nothing censored
+    assert r4["mean_VLU"][-1] < 4.0 and r4["censored_weight"][-1] > 0.5

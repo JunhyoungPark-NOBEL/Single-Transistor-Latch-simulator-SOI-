@@ -63,6 +63,57 @@ def test_branches_vlu_above_sweep(progress):
     assert np.nanmax(res["double_sweep"]["up"]["id"]) < 1e-10          # stays on the HRS
 
 
+def test_fold_gap_rejected(progress):
+    """Review finding 3: for V_G >~ 0 V the traced locus jumps from u ~ 1e-40 to u ~ 0.87 V; MODEL.classify fits
+    its fold parabola across that gap (paper, +0.5 V: 'V_LU' 6.17 V).  Reported as no latch with a warning."""
+    from server import params
+    p = D._pvec(params.resolve_device({"preset": "paper", "vg": 0.5}))
+    raw = D.MODEL.classify(p, D.m.state_grid(601))
+    assert raw is not None and D.fold_gap(raw)                     # the engine's (verbatim) answer
+    assert D.classify(p, 601) is None
+    res = D.run_folds({"device": {"preset": "paper", "vg": 0.5}}, progress)
+    assert res["latch"] is False and res["folds"]["V_LU"] is None
+    assert any("not traceable" in w for w in res["warnings"])
+    br = D.run_branches({"device": {"preset": "paper", "vg": 0.5}}, progress)
+    assert br["latch"] is False and len(br["HRS"]["vd"]) == 0
+    assert not any("exceeds the sweep maximum" in w for w in br["warnings"])
+    up = np.asarray(br["double_sweep"]["up"]["id"], float)
+    assert np.isfinite(up).sum() <= 2                              # no straight line drawn across the gap
+    # legitimate folds are untouched (rows one grid step apart)
+    for vg in (-3.9, -2.0, -0.82):
+        z = D.MODEL.classify(D._pvec(params.resolve_device({"preset": "paper", "vg": vg})), D.m.state_grid(601))
+        assert z is not None and not D.fold_gap(z)
+
+
+def test_vg_curve_scan_past_zero(progress):
+    """Review finding 3: a V_G scan up to +1 V keeps the real upper latch edge (-0.81 V) and reports no latch above."""
+    res = D.run_vg_curve({"device": PAPER, "vg_min": -1.4, "vg_max": 1.0, "n": 13}, progress)
+    assert res["latch"][:3] == [True, True, True] and not any(res["latch"][3:])
+    assert abs(res["window"]["vg_high"] + 0.810) <= 0.002
+    assert not any("not contiguous" in w or "extends above" in w for w in res["warnings"])
+    assert any("not traceable" in w for w in res["warnings"])
+
+
+@pytest.mark.parametrize("vg", [-2.7, -1.7])
+def test_double_sweep_continuous_at_folds(vg, progress):
+    """Review finding 6: grid 201 left a NaN current between the last HRS row and V_LU (or V_LRS start and V_LD)."""
+    res = D.run_branches({"device": {"preset": "paper", "vg": vg, "numerics": {"grid": 201}}}, progress)
+    f = res["folds"]
+    assert res["HRS"]["vd"][-1] < f["V_LU"] and res["LRS"]["vd"][0] > f["V_LD"]
+    for d in ("up", "down"):
+        assert np.all(np.isfinite(np.asarray(res["double_sweep"][d]["id"], float))), d
+
+
+def test_photo_default_sweep_no_notice(progress):
+    """Review finding 8: 5 V / 2 mV is resampled to 2001 points without a warning; the step used is reported."""
+    res = D.run_branches({"device": {"preset": "photo"}}, progress)
+    assert not any("coarsen" in w for w in res["warnings"])
+    assert res["sweep_dv_V"] == pytest.approx(0.0025)
+    assert len(res["double_sweep"]["up"]["vd"]) == 2003
+    res = D.run_branches({"device": PAPER}, progress)
+    assert res["sweep_dv_V"] == pytest.approx(0.002)
+
+
 def test_photo_power_mode(progress):
     res = D.run_folds({"device": {"preset": "photo", "light": {"power_mW": 3.51}}}, progress)
     assert abs(res["iph_A"] - 2.6325e-12) < 1e-18

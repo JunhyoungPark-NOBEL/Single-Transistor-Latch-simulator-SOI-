@@ -23,6 +23,12 @@ from server.progress import null_progress
 Q = float(m.Q)
 GRID_MIN, GRID_MAX = 201, 2001
 SWEEP_MAX_POINTS = 2001
+# A u step this large between the three rows of a fold means MODEL.classify fitted its parabola across an
+# untraced gap of the locus (e.g. V_G >~ 0 V: no steady state for 1e-40 < u < 0.84 V).  Legitimate folds have
+# rows one linear grid step apart (<= 5.5 mV at grid 201); the gaps seen are >= 0.83 V.
+LOCUS_GAP_U = 0.05
+GAP_WARNING = ("steady-state locus not traceable at the fold (gap in u between the fold rows): reported as "
+               "no latch")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -107,13 +113,18 @@ def _interp_log(part: np.ndarray, v: np.ndarray) -> np.ndarray:
     return out
 
 
-def _sweep_grid(vd_max: float, dv: float, warnings: list[str]) -> np.ndarray:
-    n = int(round(vd_max / dv)) + 1
-    if n > SWEEP_MAX_POINTS:
-        warnings.append(f"sweep step dv = {dv:g} V gives {n} points; coarsened to {vd_max / (SWEEP_MAX_POINTS - 1):.4g} V "
-                        f"({SWEEP_MAX_POINTS} points per direction)")
-        n = SWEEP_MAX_POINTS
+def _sweep_grid(vd_max: float, dv: float, warnings: list[str] | None = None) -> np.ndarray:
+    """Voltage grid of the quasi-static double sweep.  A finer dv is coarsened to SWEEP_MAX_POINTS points per
+    direction without a warning: the curve is a resampling of the traced branches (≈ 600 rows) and the fold
+    jumps are inserted exactly, so the step only sets the display resolution (reported as `sweep_dv_V`)."""
+    n = min(int(round(vd_max / dv)) + 1, SWEEP_MAX_POINTS)
     return np.linspace(0.0, vd_max, max(n, 2))
+
+
+def _fold_row(v: float, cur: float) -> np.ndarray:
+    row = np.full((1, 21), np.nan)
+    row[0, 0], row[0, 1] = v, cur
+    return row
 
 
 def double_sweep(b: np.ndarray | None, i: int | None, j: int | None, folds: dict, vd_max: float, dv: float,
@@ -136,9 +147,15 @@ def double_sweep(b: np.ndarray | None, i: int | None, j: int | None, folds: dict
         dn_i[vdown == 0] = 0.0
         return dict(up=dict(vd=v, id=up_i), down=dict(vd=vdown, id=dn_i))
 
-    hrs, lrs = _monotone(b[: i + 1]), _monotone(b[j:])
     V_LU, V_LD = folds["V_LU"], folds["V_LD"]
     I_LU, I_LD = folds["I_LU"], folds["I_LD"]
+    # the refined fold points close the branches (the grid rows b[i], b[j] stop just short of V_LU / V_LD)
+    hrs, lrs = b[: i + 1], b[j:]
+    if V_LU > hrs[-1, 0]:
+        hrs = np.vstack([hrs, _fold_row(V_LU, I_LU)])
+    if V_LD < lrs[0, 0]:
+        lrs = np.vstack([_fold_row(V_LD, I_LD), lrs])
+    hrs, lrs = _monotone(hrs), _monotone(lrs)
     latches = V_LU <= vd_max
     # up
     if latches:
@@ -163,8 +180,27 @@ def double_sweep(b: np.ndarray | None, i: int | None, j: int | None, folds: dict
     return dict(up=dict(vd=up_v, id=up_i), down=dict(vd=dn_v, id=dn_i))
 
 
-def classify(p: np.ndarray, grid: int) -> tuple[np.ndarray, int, int, np.ndarray] | None:
-    return MODEL.classify(p, m.state_grid(grid))
+def fold_gap(z) -> bool:
+    """True when the three rows of either fold are not contiguous in u, i.e. MODEL.classify took the first row
+    after an untraced gap of the locus as the maximum and fitted its fold parabola across the gap."""
+    b, i, j, _ = z
+    return any(float(np.max(np.diff(b[ind - 1:ind + 2, 17]))) > LOCUS_GAP_U for ind in (i, j))
+
+
+def classify_checked(p: np.ndarray, grid: int) -> tuple[tuple | None, bool]:
+    """(MODEL.classify result or None, gap) — a fold fitted across a gap in the traced locus is rejected
+    (returned as None with gap = True).  engine/ is verbatim, so the check lives here."""
+    z = MODEL.classify(p, m.state_grid(grid))
+    if z is not None and fold_gap(z):
+        return None, True
+    return z, False
+
+
+def classify(p: np.ndarray, grid: int, warnings: list[str] | None = None) -> tuple[np.ndarray, int, int, np.ndarray] | None:
+    z, gap = classify_checked(p, grid)
+    if gap and warnings is not None:
+        warnings.append(GAP_WARNING)
+    return z
 
 
 def folds_of(z) -> dict:
@@ -194,14 +230,21 @@ def run_branches(payload: dict, progress=null_progress) -> dict:
     p = _pvec(device)
     iph = float(p[13])
     progress(0.05, "tracing the steady-state locus")
-    z = classify(p, grid)
+    z, gap = classify_checked(p, grid)
     progress(0.6, "splitting branches")
     empty = curve_dict(np.empty((0, 21)), iph)
     if z is None:
         full = MODEL.branch(p, m.state_grid(grid))
-        warnings.append("no two-fold branch at these parameters: the device does not latch (folds are null)")
+        traced = full
+        if gap:
+            warnings.append(GAP_WARNING)
+            # the quasi-static sweep follows only the part of the locus before the first gap
+            cut = np.flatnonzero(np.diff(full[:, 17]) > LOCUS_GAP_U)
+            traced = full[: int(cut[0]) + 1] if len(cut) else full
+        else:
+            warnings.append("no two-fold branch at these parameters: the device does not latch (folds are null)")
         fl = folds_of(None)
-        ds = double_sweep(None, None, None, fl, vd_max, dv, warnings, full=full)
+        ds = double_sweep(None, None, None, fl, vd_max, dv, warnings, full=traced)
         res = dict(latch=False, HRS=empty, unstable=empty, LRS=empty, full=curve_dict(full, iph), folds=fl,
                    double_sweep=ds)
     else:
@@ -218,7 +261,8 @@ def run_branches(payload: dict, progress=null_progress) -> dict:
         res = dict(latch=True, HRS=curve_dict(b[: i + 1], iph), unstable=curve_dict(b[i: j + 1], iph),
                    LRS=curve_dict(lrs, iph), full=curve_dict(b, iph), folds=fl, double_sweep=ds)
     progress(1.0, "done")
-    res.update(iph_A=iph, p=p.tolist(), grid=grid, vd_max_V=vd_max,
+    sg = _sweep_grid(vd_max, dv)
+    res.update(iph_A=iph, p=p.tolist(), grid=grid, vd_max_V=vd_max, sweep_dv_V=float(sg[1] - sg[0]),
                runtime_s=time.perf_counter() - t0, warnings=warnings)
     return res
 
@@ -231,8 +275,10 @@ def run_folds(payload: dict, progress=null_progress) -> dict:
     grid = _grid(device, warnings)
     p = _pvec(device)
     progress(0.1, "classifying")
-    z = classify(p, grid)
-    if z is None:
+    z, gap = classify_checked(p, grid)
+    if gap:
+        warnings.append(GAP_WARNING)
+    elif z is None:
         warnings.append("no two-fold branch: the device does not latch")
     progress(1.0, "done")
     return dict(latch=z is not None, folds=folds_of(z), iph_A=float(p[13]), p=p.tolist(), grid=grid,
@@ -461,9 +507,12 @@ def run_vg_curve(payload: dict, progress=null_progress) -> dict:
     latch = np.zeros(n, bool)
     refine = bool(payload.get("refine", True))
     total = n + (16 if refine else 0)
+    gaps = []
     for k, v in enumerate(vg):
         progress(k / total, f"V_G = {v:.3f} V ({k + 1}/{n})")
-        z = _latch_at(device, v, grid)
+        z, gap = classify_checked(_pvec(dict(device, vg=float(v))), grid)
+        if gap:
+            gaps.append(float(v))
         if z is not None:
             f = folds_of(z)
             latch[k] = True
@@ -477,6 +526,9 @@ def run_vg_curve(payload: dict, progress=null_progress) -> dict:
             progress(min(count[0] / total, 0.99), "refining the latch-window edges")
 
         window = latch_window(device, grid, vg, latch, 1e-3, warnings, tick)
+    if gaps:
+        warnings.append(f"steady-state locus not traceable at the fold (gap in u) at {len(gaps)} V_G value(s) "
+                        f"({gaps[0]:+.3f} … {gaps[-1]:+.3f} V): reported as no latch")
     progress(1.0, "done")
     return dict(vg=vg, V_LU=V_LU, V_LD=V_LD, I_LU=I_LU, I_LD=I_LD, latch=latch.tolist(), window=window,
                 grid=grid, runtime_s=time.perf_counter() - t0, warnings=warnings)
