@@ -107,8 +107,8 @@ const topic: PhysicsTopic = {
       ],
       notes: [
         L(
-          "`ld_carrier_noise`가 꺼져 있으면(프리셋 기본값) latch-down은 fold에서 일어나 $V_{LD}$ 평균이 약 0.10 V 낮아진다. 측정(2.7001 V)과 비교하려면 켜야 한다. 보정 엔진은 항상 LD first-passage를 포함한다.",
-          "With `ld_carrier_noise` off (preset default) latch-down happens at the fold and the mean $V_{LD}$ drops by about 0.10 V; turn it on to compare with the measurement (2.7001 V). The calibrated engine always includes the LD first passage.",
+          "두 프리셋(paper, photo; custom은 paper 복사) 모두 `ld_carrier_noise = true`가 기본이다(`server/params.py`). 끄면 일반 엔진에서 latch-down이 (상태에 따른) fold에서 일어나 논문 소자 0.4 V/s에서 $V_{LD}$ 평균이 약 0.10 V 낮아진다(측정 2.7001 V와 비교할 때는 켜 둔다). 보정 엔진은 이 스위치와 무관하게 항상 LD first-passage를 포함한다(끄면 경고만). 회로 시뮬레이터의 같은 이름 키는 별도 기본값(false)을 쓴다(`circuit-element`).",
+          "Both presets (paper, photo; custom copies paper) default to `ld_carrier_noise = true` (`server/params.py`). Turned off, the general engine places latch-down at the (state-dependent) fold and the mean $V_{LD}$ of the paper device at 0.4 V/s drops by about 0.10 V (keep it on to compare with the measured 2.7001 V). The calibrated engine always includes the LD first passage regardless of the switch (off only adds a warning). The circuit simulator's key of the same name has its own default (false; `circuit-element`).",
         ),
         L(
           "구현 차이: 보정 엔진은 우측 합 $\\sum_{k\\ge1}h_k\\Delta t$와 격자 전압, 상승·하강에 독립 상태 경로(unpaired)를 쓴다. 일반 엔진은 사다리꼴과 스텝 내 보간, 한 사이클 안에서 상승→하강이 이어진 상태 경로(frozen: 같은 추출)를 쓴다.",

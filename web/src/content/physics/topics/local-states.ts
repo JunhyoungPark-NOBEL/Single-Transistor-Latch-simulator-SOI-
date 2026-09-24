@@ -123,12 +123,12 @@ const topic: PhysicsTopic = {
       ),
       notes: [
         L(
-          "frozen 모드의 사이클 간 독립 추출은 사이클 간 상관을 무시한다: 광조사 소자의 측정 lag-1은 0.00–0.49. 사이클 내 고정(τ ≫ 4 ms)과 사이클 간 독립(τ ≪ 8 ms)은 하나의 OU로 동시에 만족될 수 없다.",
-          "Independent per-cycle draws in frozen mode ignore inter-cycle correlation: the photo device's measured lag-1 is 0.00–0.49. Frozen within a cycle (τ ≫ 4 ms) and independent between cycles (τ ≪ 8 ms) cannot both hold for one OU process.",
+          "frozen 모드의 사이클 간 독립 추출은 사이클 간 상관을 무시한다: 광조사 소자의 측정 lag-1은 0.00–0.50(앱 `Stats.lag1` 추정량, 아래). 사이클 내 고정(τ ≫ 4 ms)과 사이클 간 독립(τ ≪ 8 ms)은 하나의 OU로 동시에 만족될 수 없다.",
+          "Independent per-cycle draws in frozen mode ignore inter-cycle correlation: the photo device's measured lag-1 is 0.00–0.50 (the app's `Stats.lag1` estimator, below). Frozen within a cycle (τ ≫ 4 ms) and independent between cycles (τ ≪ 8 ms) cannot both hold for one OU process.",
         ),
         L(
-          "evolving 모드 lag-1: 모의 $V_{LU}$ 0.66 (추세 포함) vs 측정 0.68.",
-          "Evolving-mode lag-1: simulated $V_{LU}$ 0.66 (with trend) vs measured 0.68.",
+          "evolving 모드 lag-1 (100 sweep, seed 2026092920, 추세 포함): 앱 `Stats.lag1`(연속한 유한 쌍의 Pearson 상관, `stoch_core.lag1`)으로 모의 $V_{LU}$ 0.68 vs 측정 0.70. `measured_stats.json`·데이터 탭의 추정량 $\\sum(x_t-\\bar x)(x_{t+1}-\\bar x)/\\sum(x_t-\\bar x)^2$로는 0.66 vs 0.68 (광조사 소자 측정 0.00–0.49).",
+          "Evolving-mode lag-1 (100 sweeps, seed 2026092920, with trend): with the app's `Stats.lag1` (Pearson correlation of consecutive finite pairs, `stoch_core.lag1`) simulated $V_{LU}$ 0.68 vs measured 0.70. With the estimator of `measured_stats.json` and the Data tab, $\\sum(x_t-\\bar x)(x_{t+1}-\\bar x)/\\sum(x_t-\\bar x)^2$, 0.66 vs 0.68 (photo device measured 0.00–0.49).",
         ),
       ],
     },

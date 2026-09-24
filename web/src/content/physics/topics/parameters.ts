@@ -283,7 +283,7 @@ const topic: PhysicsTopic = {
         },
         {
           symbol: "5.6",
-          name: { ko: "κ_F 기준 V_GD (impact-ionization)", en: "κ_F reference V_GD (impact-ionization)" },
+          name: { ko: "κ_F 기준 V_DG ≈ (u + r) − V_G (drain − gate, 접합 전압 합 기준; 코드 주석은 V_GD라 씀) (impact-ionization)", en: "κ_F reference V_DG ≈ (u + r) − V_G (drain − gate from the junction voltages; the code comment calls it V_GD) (impact-ionization)" },
           value: "5.6",
           unit: "V",
           code: "components() fdep",

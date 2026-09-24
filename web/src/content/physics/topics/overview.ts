@@ -57,8 +57,8 @@ When generation beats loss, $u$ grows, the seed grows exponentially and the devi
     {
       heading: { ko: "소자와 상수", en: "Device and constants" },
       body: {
-        ko: "코드는 기하 상수를 m 단위(`LENGTH_M` 등)로 두고 정전기·수송 계산에서 ×100 하여 cm 단위로 쓴다. 전류는 A, 전위는 V, 전계는 V/cm, 밀도는 cm⁻³이다. 아래 값은 논문(paper) 소자 보정값이며, 광조사(photo) 소자는 같은 보정값에 local-state 중심과 body 결합 $\\gamma$만 다시 맞춘 것이다.",
-        en: "The code keeps geometry in metres (`LENGTH_M`, …) and multiplies by 100 to work in cm for electrostatics and transport. Currents are in A, potentials in V, fields in V/cm, densities in cm⁻³. The values below are the paper-device calibration; the photo device reuses it and only re-fits the local-state centre and the body coupling $\\gamma$.",
+        ko: "코드는 기하 상수를 m 단위(`LENGTH_M` 등)로 두고 정전기·수송 계산에서 ×100 하여 cm 단위로 쓴다. 전류는 A, 전위는 V, 전계는 V/cm, 밀도는 cm⁻³이다. 아래 값은 논문(paper) 소자 보정값이며, 광조사(photo) 소자는 같은 보정값을 쓰고 local-state 중심 $\\delta\\varphi_{G0}$과 산포 $\\sigma_\\phi$(−1.8 V 암조건 기록), body 결합 $\\gamma$(−1.1 V 암조건 평균), 광 변환 응답도 $R$(래치 전 plateau)만 다시 맞춘 것이다.",
+        en: "The code keeps geometry in metres (`LENGTH_M`, …) and multiplies by 100 to work in cm for electrostatics and transport. Currents are in A, potentials in V, fields in V/cm, densities in cm⁻³. The values below are the paper-device calibration; the photo device reuses it and re-fits only the local-state centre $\\delta\\varphi_{G0}$ and spread $\\sigma_\\phi$ (−1.8 V dark record), the body coupling $\\gamma$ (−1.1 V dark mean) and the light-conversion responsivity $R$ (pre-latch plateau).",
       },
       variables: [
         {

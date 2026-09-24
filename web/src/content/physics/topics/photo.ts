@@ -31,7 +31,7 @@ const topic: PhysicsTopic = {
       body: {
         ko: String.raw`fit 점검(측정 plateau − 암 / 모델 $I_D$ / 이득 $I_D/I_{\mathrm{PH}}$, 계산값):
 
-- 0.799 mW: 0.450 / 0.758 pA / 1.27
+- 0.799 mW: 0.450 / 0.758 pA / 1.26
 - 1.42 mW: 1.733 / 1.529 pA / 1.44
 - 2.55 mW: 3.046 / 3.318 pA / 1.74
 - 2.80 mW: 4.693 / 3.777 pA / 1.80
@@ -40,7 +40,7 @@ const topic: PhysicsTopic = {
 $I_{\mathrm{PH}}$ = 0.5–5 pA에서 바이폴라 이득은 1.23–2.64다. 저주입 HRS에서 광 정공은 주로 접합 SRH로 잃고, $u$가 오를수록 seed 비율이 커져 이득이 증가한다.`,
         en: String.raw`Fit check (measured plateau − dark / model $I_D$ / gain $I_D/I_{\mathrm{PH}}$, computed):
 
-- 0.799 mW: 0.450 / 0.758 pA / 1.27
+- 0.799 mW: 0.450 / 0.758 pA / 1.26
 - 1.42 mW: 1.733 / 1.529 pA / 1.44
 - 2.55 mW: 3.046 / 3.318 pA / 1.74
 - 2.80 mW: 4.693 / 3.777 pA / 1.80

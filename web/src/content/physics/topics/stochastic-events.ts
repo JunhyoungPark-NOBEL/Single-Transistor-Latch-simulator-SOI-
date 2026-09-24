@@ -24,8 +24,8 @@ const topic: PhysicsTopic = {
           label: L("Eq. 2", "Eq. 2"),
           tex: r`\Delta Q_B = q\sum_i s_i\,\Delta N_i,\qquad s_i\in\{+1,\,-1,\,+k\}`,
           note: L(
-            "논문 스윕(0.4 V/s, 2 mV)에서 한 스텝은 $\\Delta t = 5$ ms이다. 소자 시뮬레이터는 이 증분을 직접 적분하지 않고 같은 생성자로 first-passage를 푼다(→ first-passage). 회로 시뮬레이터는 tau-leap 증분으로 쓴다(→ circuit-element).",
-            "In the paper sweep (0.4 V/s, 2 mV) one step is $\\Delta t = 5$ ms. The device simulator does not integrate this increment directly; it solves the first passage of the same generator (→ first-passage). The circuit simulator uses it as tau-leap increments (→ circuit-element).",
+            "논문 스윕(0.4 V/s, 2 mV)에서 한 스텝은 $\\Delta t = 5$ ms이다. 소자 시뮬레이터는 이 증분을 직접 적분하지 않고 같은 생성자로 first-passage를 푼다(→ first-passage). 회로 시뮬레이터는 잡음 대역 안의 완화가 느린 상태($\\tau_{\\mathrm{rel}} \\ge 40$ ns)에서 이것을 사건 수준 tau-leap 증분으로 쓰고, 그 밖에서는 분산 보정 Gaussian 또는 drift만 적분한다(→ circuit-element).",
+            "In the paper sweep (0.4 V/s, 2 mV) one step is $\\Delta t = 5$ ms. The device simulator does not integrate this increment directly; it solves the first passage of the same generator (→ first-passage). The circuit simulator uses it as event-level tau-leap increments for slowly relaxing states ($\\tau_{\\mathrm{rel}} \\ge 40$ ns) inside its noise bands, and a variance-corrected Gaussian or drift-only integration elsewhere (→ circuit-element).",
           ),
           code: "MODEL_SPEC.md §4",
         },

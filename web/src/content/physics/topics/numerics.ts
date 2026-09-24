@@ -33,8 +33,8 @@ const topic: PhysicsTopic = {
           label: { ko: "V_bi 근처 보강 (branch)", en: "Refinement near V_bi (branch)" },
           tex: String.raw`\mathcal{U} \leftarrow \mathcal{U} \cup \{V_{\mathrm{bi}}\} \cup \{V_{\mathrm{bi}} \pm g\},\quad g \in \mathrm{geom}\big(10^{-7},\,0.02,\,17\big),\quad 0 \le u \le 1.12`,
           note: {
-            ko: "격자가 3점보다 많을 때만 적용(+35점). 호출별 $N$: `stl_api.folds`, FPT, 보정 601; `stl_api.branches` 1201; `double_curve` 131.",
-            en: "Applied only when the grid has more than 3 points (+35 points). $N$ per caller: `stl_api.folds`, FPT and calibrations 601; `stl_api.branches` 1201; `double_curve` 131.",
+            ko: "격자가 3점보다 많을 때만 적용(+35점). 호출별 $N$: `stl_api.folds`, FPT hazard 곡선(`photo_fpt.hazard_curve`, `gate_fpt.one`, 서버 `stoch_core`의 LU/LD 곡선은 UI `grid`, 기본 601), 보정 스크립트 601; 논문 조회표 생성 `conditional_table.calculate` 401; `ld_fpt.py` 801; `stl_api.branches` 1201; `double_curve` 131.",
+            en: "Applied only when the grid has more than 3 points (+35 points). $N$ per caller: `stl_api.folds`, the FPT hazard curves (`photo_fpt.hazard_curve`, `gate_fpt.one`; the server's `stoch_core` LU/LD curves use the UI `grid`, default 601) and the calibration scripts 601; the paper lookup-table builder `conditional_table.calculate` 401; `ld_fpt.py` 801; `stl_api.branches` 1201; `double_curve` 131.",
           },
           code: "photo_mean.py · FastModel.branch()",
         },
@@ -65,8 +65,8 @@ const topic: PhysicsTopic = {
     {
       heading: { ko: "전계 표와 수송 해법", en: "Field tables and transport solver" },
       body: {
-        ko: "- 전계 표: $r$ = `linspace(0, 5, 1501)`($\\Delta r$ = 3.333 mV), $z$ 501점 사다리꼴, 유효 조건 $1/M > 10^{-3}$, $E_{\\mathrm{pk}} \\le 1.2\\times10^{6}$ V/cm; PCHIP을 격자에서 샘플한 뒤 선형 보간(외삽 허용).\n- 수송: RK4 64단계, Newton shooting 최대 32회, 상대 허용오차 $10^{-9}$, 초기값 $2h_E - \\ln(1+h_E)$, 저주입 해석 분기 $h_E < 10^{-8}$ 및 $Mj_0 + b < 10^{-8}$.\n- 국소 경로 bulk 정의: 수송 재해법을 포함한 고정점 반복 3회.",
-        en: "- Field tables: $r$ = `linspace(0, 5, 1501)` ($\\Delta r$ = 3.333 mV), 501-point trapezoid in $z$, validity $1/M > 10^{-3}$ and $E_{\\mathrm{pk}} \\le 1.2\\times10^{6}$ V/cm; PCHIP sampled on the grid, then linear interpolation (extrapolation allowed).\n- Transport: RK4 with 64 steps, at most 32 Newton shooting iterations, relative tolerance $10^{-9}$, initial guess $2h_E - \\ln(1+h_E)$, low-injection analytic branch for $h_E < 10^{-8}$ and $Mj_0 + b < 10^{-8}$.\n- Local path, bulk definition: 3 fixed-point iterations including transport re-solves.",
+        ko: "- 전계 표: $r$ = `linspace(0, 5, 1501)`($\\Delta r$ = 3.333 mV), $z$ 501점 사다리꼴, 유효 조건 $1/M > 10^{-3}$, $E_{\\mathrm{pk}} \\le 1.2\\times10^{6}$ V/cm; PCHIP을 격자에서 샘플한 뒤 선형 보간(외삽 허용).\n- 수송: RK4 64단계, Newton shooting 최대 32회, 상대 허용오차 $10^{-9}$, 초기값 $\\max(2h_E - \\ln(1+h_E), 10^{-100})$, 갱신 $j_0 \\leftarrow \\max(0.1j_0,\\ j_0 - \\mathrm{res}/\\mathrm{deriv})$. 저주입 해석 가드(`solve_voltage`, 식은 `bjt-transport`): $h_E < 10^{-8}$ 그리고 $(1+\\tau_r)h_E < 10^{-8}$ ($\\tau_r = \\tau_p/\\tau_n$)이면 선형 해 $j_0 = h_E\\,k/\\sinh k$ ($k = \\sqrt{\\kappa/(1+\\theta_t)}$, $k < 10^{-6}$이면 급수)를 먼저 계산하고, 그 $j_0$로 $Mj_0 + b < 10^{-8}$도 만족할 때만 해석 해를 돌려준다. 둘 중 하나라도 어긋나면 전체 shooting.\n- 국소 경로 bulk 정의: 수송 재해법을 포함한 고정점 반복 3회.",
+        en: "- Field tables: $r$ = `linspace(0, 5, 1501)` ($\\Delta r$ = 3.333 mV), 501-point trapezoid in $z$, validity $1/M > 10^{-3}$ and $E_{\\mathrm{pk}} \\le 1.2\\times10^{6}$ V/cm; PCHIP sampled on the grid, then linear interpolation (extrapolation allowed).\n- Transport: RK4 with 64 steps, at most 32 Newton shooting iterations, relative tolerance $10^{-9}$, initial guess $\\max(2h_E - \\ln(1+h_E), 10^{-100})$, update $j_0 \\leftarrow \\max(0.1j_0,\\ j_0 - \\mathrm{res}/\\mathrm{deriv})$. Low-injection analytic guard (`solve_voltage`, formulas in `bjt-transport`): if $h_E < 10^{-8}$ and $(1+\\tau_r)h_E < 10^{-8}$ ($\\tau_r = \\tau_p/\\tau_n$), the linear solution $j_0 = h_E\\,k/\\sinh k$ ($k = \\sqrt{\\kappa/(1+\\theta_t)}$, series for $k < 10^{-6}$) is computed first, and the analytic result is returned only if that $j_0$ also gives $Mj_0 + b < 10^{-8}$; if either test fails, the full shooting runs.\n- Local path, bulk definition: 3 fixed-point iterations including transport re-solves.",
       },
     },
     {

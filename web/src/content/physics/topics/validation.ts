@@ -65,6 +65,12 @@ const topic: PhysicsTopic = {
         { symbol: r`V_{LD}`, name: L("평균, SD (lag-1 0.17)", "mean, SD (lag-1 0.17)"), value: "2.7001 V, 19.5 mV", code: "measured_idvd_parsed.npz" },
         { symbol: r`f_{tr}`, name: L("2차 획득 추세가 설명하는 V_LU 분산", "V_LU variance explained by the quadratic acquisition trend"), value: "0.660" },
       ],
+      notes: [
+        L(
+          "이 주제의 측정 lag-1은 `measured_stats.json`·데이터 탭의 추정량 $\\sum(x_t-\\bar x)(x_{t+1}-\\bar x)/\\sum(x_t-\\bar x)^2$이다. 스윕 MC 결과의 `Stats.lag1`(측정 overlay 포함)은 연속한 유한 쌍의 Pearson 상관이라 값이 약간 다르다: 논문 기록 $V_{LU}$ 0.70, $V_{LD}$ 0.17; 광조사 소자 −1.8 V 2.55 mW 0.24, −1.1 V 3.51 mW 0.50(나머지는 같음).",
+          "Measured lag-1 values in this topic use the estimator of `measured_stats.json` and the Data tab, $\\sum(x_t-\\bar x)(x_{t+1}-\\bar x)/\\sum(x_t-\\bar x)^2$. `Stats.lag1` of sweep-MC results (including the measured overlay) is the Pearson correlation of consecutive finite pairs and differs slightly: paper record $V_{LU}$ 0.70, $V_{LD}$ 0.17; photo device −1.8 V 2.55 mW 0.24, −1.1 V 3.51 mW 0.50 (others unchanged).",
+        ),
+      ],
     },
     {
       heading: L("측정: 광조사 소자 8개 조건", "Measured: photo device, 8 conditions"),
@@ -92,8 +98,8 @@ const topic: PhysicsTopic = {
     {
       heading: L("검증 탭", "Validation tab"),
       body: L(
-        "검증 탭(`kind: validation`)은 같은 엔진 함수로 다시 계산해 기대값·계산값·허용오차·통과 여부를 보여준다.\n\n- **fast**: fold 3개(±1 mV), 확장 = 0 항등성(무작위 400개 $(u,r)$ + V_G −2, −1.8, −1.1 V fold, ≤ 1e-12 V), 광 변환(±0.005 pA), latch 창(이분법 0.5 mV, ±10 mV), 측정 기록 통계, FPT 노드(평균 ±3 mV, SD ±1.5 mV), 동적 MC 100 sweep(평균 ±10 mV, SD_LU ±10 mV, SD_LD ±3 mV)\n- **full**: + 10 기록 × 100 sweep, 캐리어 잡음 분해, 광조사 소자 sweep_mc(−1.8 V 암조건, ±20 mV), V_G 곡선 최대(고정 상태), 회로 부하선이 fold를 재현하는지(±30 mV)",
-        "The validation tab (`kind: validation`) recomputes the items with the same engine functions and shows expected, computed, tolerance and pass/fail.\n\n- **fast**: 3 fold checks (±1 mV), extensions = 0 identity (400 random $(u,r)$ points + folds at V_G −2, −1.8, −1.1 V, ≤ 1e-12 V), light conversion (±0.005 pA), latch window (0.5 mV bisection, ±10 mV), measured-record statistics, FPT node (mean ±3 mV, SD ±1.5 mV), dynamic MC 100 sweeps (means ±10 mV, SD_LU ±10 mV, SD_LD ±3 mV)\n- **full**: + 10 records × 100 sweeps, carrier-noise breakdown, photo-device sweep_mc (−1.8 V dark, ±20 mV), V_G-curve peaks (frozen states), circuit load line reproducing the folds (±30 mV)",
+        "검증 탭(`kind: validation`)은 같은 엔진 함수로 다시 계산해 기대값·계산값·허용오차·통과 여부를 보여준다.\n\n- **fast**: fold 3개(±1 mV), 확장 = 0 항등성(무작위 400개 $(u,r)$ + V_G −2, −1.8, −1.1 V fold, ≤ 1e-12 V), 광 변환(±0.005 pA), latch 창(이분법 0.5 mV, ±10 mV), 측정 기록 통계, FPT 노드(평균 ±3 mV, SD ±1.5 mV), 동적 MC 100 sweep(평균 ±10 mV, SD_LU ±10 mV, SD_LD ±3 mV)\n- **full**: + 10 기록 × 100 sweep(합동 σ, ±1 / ±0.5 mV), 캐리어 잡음 분해(각 ±1 mV), 광조사 소자 sweep_mc(photo 프리셋, −1.8 V 암조건, 평균·SD ±20 mV), V_G 곡선 최대(고정 상태; σ ±10 mV, 평균 ±20 mV, 위치 ±0.1 V), 회로 부하선이 fold를 재현하는지(±30 mV)",
+        "The validation tab (`kind: validation`) recomputes the items with the same engine functions and shows expected, computed, tolerance and pass/fail.\n\n- **fast**: 3 fold checks (±1 mV), extensions = 0 identity (400 random $(u,r)$ points + folds at V_G −2, −1.8, −1.1 V, ≤ 1e-12 V), light conversion (±0.005 pA), latch window (0.5 mV bisection, ±10 mV), measured-record statistics, FPT node (mean ±3 mV, SD ±1.5 mV), dynamic MC 100 sweeps (means ±10 mV, SD_LU ±10 mV, SD_LD ±3 mV)\n- **full**: + 10 records × 100 sweeps (pooled σ, ±1 / ±0.5 mV), carrier-noise breakdown (±1 mV each), photo-device sweep_mc (photo preset, −1.8 V dark, mean and SD ±20 mV), V_G-curve peaks (frozen states; σ ±10 mV, mean ±20 mV, positions ±0.1 V), circuit load line reproducing the folds (±30 mV)",
       ),
       equations: [
         {
@@ -109,8 +115,8 @@ const topic: PhysicsTopic = {
       ],
       notes: [
         L(
-          "불일치: `check_paper_records`는 seed 2026092920–29를 쓰고 '논문 기록 seed가 인수인계에 없다'고 적지만, `gate_dynamic_compare.main()`은 seed 2026093000+k를 쓴다. 후자로 실행하면 합동 SD 125.8/19.6 mV가 정확히 재현되고, 전자는 119.6/18.9 mV(기록별 SD 평균)로 허용오차 안이지만 다른 값이다.",
-          "Inconsistency: `check_paper_records` uses seeds 2026092920–29 and says the paper record seeds are not in the handoff, but `gate_dynamic_compare.main()` uses seeds 2026093000+k. Those reproduce the pooled 125.8/19.6 mV exactly; the former give 119.6/18.9 mV (mean of per-record SD), inside the tolerance but a different number.",
+          "`check_paper_records`(full)는 `gate_dynamic_compare.main()`과 같은 seed 2026093000 … 2026093009로 100 sweep 기록 10개를 만들고 1000 sweep을 합쳐 SD를 계산한다(ddof 1). 실행값 $\\sigma_{LU}$ = 125.8 mV, $\\sigma_{LD}$ = 19.6 mV로 논문 값을 그대로 재현한다(허용오차 ±1 / ±0.5 mV; 합동 평균 3.6471 / 2.7000 V).",
+          "`check_paper_records` (full) builds the ten 100-sweep records with the seeds of `gate_dynamic_compare.main()`, 2026093000 … 2026093009, and pools the 1000 sweeps (SD with ddof 1). It reproduces the paper values exactly: $\\sigma_{LU}$ = 125.8 mV, $\\sigma_{LD}$ = 19.6 mV (tolerance ±1 / ±0.5 mV; pooled means 3.6471 / 2.7000 V).",
         ),
       ],
     },
