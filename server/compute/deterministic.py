@@ -27,8 +27,9 @@ SWEEP_MAX_POINTS = 2001
 # untraced gap of the locus (e.g. V_G >~ 0 V: no steady state for 1e-40 < u < 0.84 V).  Legitimate folds have
 # rows one linear grid step apart (<= 5.5 mV at grid 201); the gaps seen are >= 0.83 V.
 LOCUS_GAP_U = 0.05
-GAP_WARNING = ("steady-state locus not traceable at the fold (gap in u between the fold rows): reported as "
-               "no latch")
+GAP_WARNING = ("steady-state locus not traceable at the fold (gap in u between the fold rows, or a spurious fold "
+               "pair with V_LD >= V_LU or above 8 V): reported as no latch")
+V_FOLD_CAP = 8.0   # fold pairs above the sweep cap are extrapolation artefacts (e.g. beta <= 0.3x: V_LD > V_LU at 9-13 V)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -188,10 +189,11 @@ def fold_gap(z) -> bool:
 
 
 def classify_checked(p: np.ndarray, grid: int) -> tuple[tuple | None, bool]:
-    """(MODEL.classify result or None, gap) — a fold fitted across a gap in the traced locus is rejected
-    (returned as None with gap = True).  engine/ is verbatim, so the check lives here."""
+    """(MODEL.classify result or None, gap) — a fold fitted across a gap in the traced locus, or a spurious fold
+    pair (V_LD >= V_LU, or V_LU above 8 V), is rejected (returned as None with gap = True).  engine/ is verbatim,
+    so the check lives here."""
     z = MODEL.classify(p, m.state_grid(grid))
-    if z is not None and fold_gap(z):
+    if z is not None and (fold_gap(z) or not (float(z[3][0]) > float(z[3][1]) and float(z[3][0]) <= V_FOLD_CAP)):
         return None, True
     return z, False
 

@@ -21,8 +21,8 @@ const topic: PhysicsTopic = {
         {
           symbol: String.raw`\beta`,
           name: {
-            ko: "확산 비율: L_ref에서의 저주입 I_e,inj/I_h,out (bjt-transport)",
-            en: "Diffusion ratio: low-injection I_e,inj/I_h,out at L_ref (bjt-transport)",
+            ko: "주입 비율: L_ref에서의 저주입 I_e,inj/I_h,out (bjt-transport)",
+            en: "Injection ratio: low-injection I_e,inj/I_h,out at L_ref (bjt-transport)",
           },
           value: "7.166501",
           unit: "–",

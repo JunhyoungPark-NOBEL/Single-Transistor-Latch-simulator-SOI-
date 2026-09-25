@@ -133,7 +133,7 @@ export const GROUPS: GroupDef[] = [
     tabs: ["device", "circuit"],
     collapsed: true,
     fields: [
-      { key: "beta", path: ["device", "calib", "beta"], sym: "\\beta", label: L("확산 비율", "Diffusion ratio"), help: L("바디 밖으로 빠져나가는 확산 손실의 비율", "Out-diffusion loss ratio"), code: "p[0]", unit: "", min: 0.01, max: 100, slider: "log" },
+      { key: "beta", path: ["device", "calib", "beta"], sym: "\\beta", label: L("주입 비율", "Injection ratio"), help: L("소스로 빠져나가는 정공 하나당 주입되는 전자 수 — 클수록 정공 손실(I_DIFF ∝ 1/β)이 작습니다", "Electrons injected per hole that leaves through the source — larger β means a smaller hole loss (I_DIFF ∝ 1/β)"), code: "p[0]", unit: "", min: 0.01, max: 100, slider: "log" },
       { key: "tau_bulk", path: ["device", "calib", "tau_bulk_s"], sym: "\\tau_{\\mathrm{bulk}}", label: L("벌크 수명", "Bulk lifetime"), help: L("바디 벌크의 SRH 재결합 수명", "SRH recombination lifetime in the body bulk"), code: "p[1]", unit: "µs", scale: 1e6, min: 1e-4, max: 1e4, slider: "log" },
       { key: "tau_junction", path: ["device", "calib", "tau_junction_s"], sym: "\\tau_{j}", label: L("접합 수명", "Junction lifetime"), help: L("공핍 영역의 SRH 수명", "SRH lifetime in the depletion region"), code: "p[2]", unit: "ns", scale: 1e9, min: 1e-3, max: 1e5, slider: "log" },
       { key: "r_contact", path: ["device", "calib", "r_contact_ohm"], sym: "R_c", label: L("접촉 저항", "Contact R"), help: L("직렬 접촉 저항", "Series contact resistance"), code: "p[3]", unit: "Ω", min: 0, max: 1e6 },

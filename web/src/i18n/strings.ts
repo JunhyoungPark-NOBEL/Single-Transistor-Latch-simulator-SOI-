@@ -175,8 +175,8 @@ export const STRINGS = {
   "local.action.multiplication": { ko: "증배 (M−1) · p[20]", en: "Multiplication (M−1) · p[20]" },
   "engine.auto": { ko: "자동", en: "Auto" },
   "engine.general": { ko: "일반 (general)", en: "General" },
-  "engine.calibrated_lookup": { ko: "보정 lookup 표", en: "Calibrated lookup" },
-  "engine.hint": { ko: "자동: 기준 보정 소자에 GIDL 작용점이면 보정 lookup 표, 그 밖에는 일반 엔진", en: "Auto: calibrated lookup for the reference-calibration device with the GIDL action point, general engine otherwise" },
+  "engine.calibrated_lookup": { ko: "보정 조회표", en: "Calibrated lookup" },
+  "engine.hint": { ko: "자동: 기준 보정 소자에 GIDL 작용점이면 보정 조회표, 그 밖에는 일반 엔진", en: "Auto: calibrated lookup for the reference-calibration device with the GIDL action point, general engine otherwise" },
 
   // ---------------------------------------------------------------- device panels
   "p.iv": { ko: "I–V 특성", en: "I–V branches" },

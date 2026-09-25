@@ -176,3 +176,12 @@ def test_carrier_noise_breakdown():
     assert abs(s["all"] - 8.03) < 0.1
     for k, e in {"II": 4.6, "BTBT": 2.7, "REC": 4.3, "DIFF": 1.8}.items():
         assert abs(s[k] - e) < 1.0
+
+
+def test_spurious_fold_pair_rejected():
+    """beta <= ~0.3x: the engine fits a fold pair far above the sweep cap (V_LD >= V_LU at ~9 V) -> no latch."""
+    p = D._pvec(dict(PAPER))
+    p = np.asarray(p, float).copy()
+    p[0] *= 0.25
+    z, gap = D.classify_checked(p, 601)
+    assert z is None and gap
