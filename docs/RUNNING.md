@@ -20,6 +20,10 @@ The service is one Python process (FastAPI + uvicorn) that owns a pool of comput
   (numpy, scipy, numba, fastapi, uvicorn[standard], orjson, pytest, httpx).
 - 최초 1회 numba 컴파일(약 10–60 s)을 미리 해 두려면: `python3 scripts/warmup.py`
   (엔진 스모크 테스트: `python3 engine/stl_api.py`, 기대값은 `engine/docs/VALIDATION.md`).
+- numba 캐시는 `server/__pycache__/numba/<stamp>`에 저장된다. `<stamp>`는 `server/**/*.py`(tests 제외)와
+  `engine/**/*.py`의 해시 앞 12자리다. 코드를 받아 오거나(`git pull`) 고치면 새 폴더에서 다시 컴파일하므로, 예전 캐시를
+  손으로 지울 필요가 없다. 이전 stamp 폴더는 다음 실행 때 지워진다. 환경변수 `NUMBA_CACHE_DIR`를 직접 주면 그 경로를
+  그대로 쓴다(이때는 코드가 바뀌어도 캐시를 새로 만들지 않으므로 빈 폴더를 줄 것).
 
 ### 2. 로컬 개발
 ```bash
@@ -29,7 +33,8 @@ scripts/dev.sh web      # 프런트엔드만 (API_PORT의 백엔드 사용)
 ```
 브라우저에서 http://127.0.0.1:5173 을 연다. 백엔드만 직접 실행하려면
 `uvicorn server.main:app --port 8000` (uvicorn `--workers`는 쓰지 말 것 — 계산 풀은 프로세스 안에 있으며,
-병렬도는 `STL_WORKERS`로 조절한다).
+병렬도는 `STL_WORKERS`로 조절한다). `server/`의 `.py`를 고치면 자동 재시작과 함께 numba 커널을 다시 컴파일하므로
+첫 계산이 수십 초 걸릴 수 있다.
 
 ### 3. 프로덕션 빌드 (Docker 없이)
 ```bash
@@ -47,8 +52,9 @@ docker run --rm -p 8000:8000 -e STL_WORKERS=2 stl-websim     # http://localhost:
 ```
 다단계 빌드: `node:22-slim`에서 `web/` 빌드 → `python:3.11-slim` 런타임. 빌드 중 `scripts/warmup.py`가
 numba 커널(엔진 + 회로 시뮬레이터)을 컴파일하고 엔진 캐시를 채운다. 컨테이너는 uid 1000 사용자로 실행되며 `/app`은 쓰기
-가능해야 한다(numba 캐시 `engine/**/__pycache__`, FPT 노드 `engine/photo_extension/photo_nodes/`,
-결과 캐시 `server/.cache/`). 결과 캐시를 유지하려면 `-v stl-cache:/app/server/.cache`를 붙인다.
+가능해야 한다(numba 캐시 `server/__pycache__/numba/<stamp>`, FPT 노드 `engine/photo_extension/photo_nodes/`,
+결과 캐시 `server/.cache/`). 결과 캐시를 유지하려면 `-v stl-cache:/app/server/.cache`를 붙인다. numba 캐시는 이
+볼륨 밖(이미지 안)에 있으므로 새 이미지는 항상 자기 커널을 쓴다.
 
 ### 5. 배포 메모
 - **메모리**: 작업 프로세스 하나당 약 150–250 MB(numba + 엔진). 512 MB 플랜에서는 `STL_WORKERS=1`.
@@ -82,11 +88,12 @@ numba 커널(엔진 + 회로 시뮬레이터)을 컴파일하고 엔진 캐시�
 | `STL_MP_CONTEXT` | `spawn` | multiprocessing 시작 방식 |
 | `STL_CORS_ORIGINS` | localhost:5173, :4173 | 허용 origin(쉼표 구분) |
 | `STL_WEB_DIST` | `web/dist` | 빌드된 프런트엔드 경로 |
+| `NUMBA_CACHE_DIR` | `server/__pycache__/numba/<stamp>` | numba 캐시 경로(직접 주면 stamp 없이 그대로 사용) |
 | `PORT` | 8000 | Docker 실행 포트 |
 
 ### 7. 테스트
 ```bash
-python3 -m pytest server/tests -q                  # 전체 (약 1 분, 작업 프로세스 2개)
+python3 -m pytest server/tests -q                  # 전체 (약 5 분, 작업 프로세스 2개; 코드를 바꾼 뒤 첫 실행은 numba 컴파일로 더 걸림)
 python3 -m pytest server/tests -q -m "not slow"    # 빠른 테스트만
 python3 scripts/warmup.py --validate               # VALIDATION.md 빠른 검증을 콘솔에 출력
 ```
@@ -100,6 +107,10 @@ python3 scripts/warmup.py --validate               # VALIDATION.md 빠른 검증
 - `pip install -r server/requirements.txt` (numpy, scipy, numba, fastapi, uvicorn[standard], orjson, pytest, httpx).
 - Pre-compile the numba kernels once (10–60 s): `python3 scripts/warmup.py`. Engine smoke test:
   `python3 engine/stl_api.py` (expected numbers in `engine/docs/VALIDATION.md`).
+- The numba cache lives in `server/__pycache__/numba/<stamp>`, where `<stamp>` is the first 12 hex digits of a hash
+  over `server/**/*.py` (tests excluded) and `engine/**/*.py`. After a pull or an edit the kernels are recompiled into a
+  new folder, so stale caches never need wiping by hand; older stamp folders are removed on the next start. An explicit
+  `NUMBA_CACHE_DIR` is used as given (it is not stamped: give an empty folder).
 
 ### 2. Local development
 ```bash
@@ -108,7 +119,8 @@ scripts/dev.sh api      # backend only
 scripts/dev.sh web      # frontend only (uses the backend on API_PORT)
 ```
 Open http://127.0.0.1:5173. Backend alone: `uvicorn server.main:app --port 8000`. Do not use uvicorn
-`--workers`: the compute pool lives inside the process; scale with `STL_WORKERS`.
+`--workers`: the compute pool lives inside the process; scale with `STL_WORKERS`. Editing a `.py` file in `server/`
+restarts the backend and recompiles the numba kernels, so the first computation afterwards can take tens of seconds.
 
 ### 3. Production build without Docker
 ```bash
@@ -127,9 +139,10 @@ docker run --rm -p 8000:8000 -e STL_WORKERS=2 stl-websim     # http://localhost:
 Multi-stage: `node:22-slim` builds `web/`, `python:3.11-slim` runs the API; `scripts/warmup.py` runs at build
 time so the numba kernels (engine and circuit simulator) and the FPT node for the validation are cached in the
 image. The container runs as
-uid 1000 and needs `/app` writable (numba caches in `engine/**/__pycache__`, FPT nodes in
+uid 1000 and needs `/app` writable (numba caches in `server/__pycache__/numba/<stamp>`, FPT nodes in
 `engine/photo_extension/photo_nodes/`, results in `server/.cache/`). Mount `-v stl-cache:/app/server/.cache`
-to keep the result cache across restarts.
+to keep the result cache across restarts; the numba cache stays in the image, outside that volume, so a new image
+always runs its own kernels.
 
 ### 5. Hosting notes
 - **Memory**: ~150–250 MB per worker process (numba + engine). Use `STL_WORKERS=1` on 512 MB plans.
@@ -151,7 +164,7 @@ See the table in the Korean section above (same variables) or `docs/API.md`.
 
 ### 7. Tests
 ```bash
-python3 -m pytest server/tests -q                  # everything (~1 min with 2 workers)
+python3 -m pytest server/tests -q                  # everything (~5 min with 2 workers; longer right after a code change: numba recompiles)
 python3 -m pytest server/tests -q -m "not slow"    # quick subset
 python3 scripts/warmup.py --validate               # print the fast VALIDATION.md checks
 ```

@@ -4,7 +4,7 @@ import { restoreParams } from "../state/persist";
 import { BUILTIN_META } from "../state/presets";
 import { canonical, clone } from "../utils/object";
 import { branchesPayload, presetRoot, sweepMcPayload, vgCurvePayload } from "../utils/payload";
-import { GEOMETRY_KEYS, GEOMETRY_LIMITS, isReferenceGeometry, REFERENCE_GEOMETRY, resolveBackGate, resolveGeometry, usesGeometryModel } from "./geometry";
+import { BACKGATE_SHIFT_MAX_V, backGateShiftV, GEOMETRY_KEYS, GEOMETRY_LIMITS, isReferenceGeometry, minLengthNm, REFERENCE_GEOMETRY, resolveBackGate, resolveGeometry, usesGeometryModel } from "./geometry";
 
 describe("geometry payload and migration", () => {
   it("restores legacy settings to the exact calibrated geometry without rounding the doping", () => {
@@ -53,5 +53,15 @@ describe("geometry payload and migration", () => {
     expect(branchesPayload(edited).device.geometry?.[key]).toBe(edited.device.geometry![key]);
     expect(isReferenceGeometry(edited.device.geometry)).toBe(false);
     expect(original.device.geometry).toEqual(REFERENCE_GEOMETRY);
+  });
+
+  it("uses the server's model domain: Nbody range, shortest L and back-gate coupling", () => {
+    expect(GEOMETRY_LIMITS.Nbody_cm3).toMatchObject({ min: 3e16, max: 1.1e18 });
+    for (const nbody of [2e16, 2e18, 3e18]) expect(resolveGeometry({ Nbody_cm3: nbody }).Nbody_cm3).toBe(REFERENCE_GEOMETRY.Nbody_cm3);
+    expect(minLengthNm(REFERENCE_GEOMETRY.Nbody_cm3)).toBeCloseTo(153.593, 2);     // server: L must exceed 153.6 nm
+    expect(minLengthNm(3e16)).toBeCloseTo(412.237, 2);
+    expect(minLengthNm(3e16)).toBeLessThan(REFERENCE_GEOMETRY.Lg_nm);
+    expect(backGateShiftV(REFERENCE_GEOMETRY, 10)).toBeLessThan(BACKGATE_SHIFT_MAX_V);
+    expect(backGateShiftV({ ...REFERENCE_GEOMETRY, EOT_nm: 100, Tbox_nm: 10, Tsi_nm: 5 }, 4)).toBeGreaterThan(BACKGATE_SHIFT_MAX_V);
   });
 });

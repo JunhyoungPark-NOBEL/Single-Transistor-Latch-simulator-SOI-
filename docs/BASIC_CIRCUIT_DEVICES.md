@@ -83,6 +83,28 @@ Analytic Jacobians are stamped into MNA. During Newton iteration, forward-increa
 voltage steps above the critical voltage are damped logarithmically (as SPICE pnjlim); reverse
 or decreasing steps are not limited.
 
+## Electrical rule check and mixed circuits
+
+Every node needs a DC path to ground. Resistors, voltage sources, diodes, the STL or MOSFET drain–source path,
+BJT junctions and comparator outputs conduct DC; capacitors, current sources, STL/MOSFET gates and comparator inputs
+do not. A node reached only through transistor gates or comparator inputs is refused before the run
+("node 'g' has no DC path to ground: it is connected only through transistor gates / comparator inputs M1.g …").
+
+Before a run, each STL cell's V_GS, drain drive and noise band are estimated from the linear part of the circuit, with
+MOSFETs, diodes and BJTs treated as open. When one of the cell's drain, gate or source nodes touches a MOSFET,
+diode or BJT pin, that estimate can be far off: the pre-run relaxation-oscillator and "no latch window" predictions
+are then not reported for the cell, its echoed `vgs_V` / `vgs_range_V` carry
+`vgs_estimate.reliable = false` with the transistors named in `vgs_estimate.transistors_ignored`, and a stochastic
+run warns that the carrier-noise band was set without the transistor network. The transient itself always solves the
+full nonlinear circuit.
+
+전기 규칙 검사(ERC)와 혼합 회로: 모든 노드는 접지까지 DC 경로가 있어야 합니다. 저항, 전압원, 다이오드, STL·MOSFET의
+드레인–소스, BJT 접합, 비교기 출력은 DC 경로가 되고, 커패시터, 전류원, STL·MOSFET 게이트, 비교기 입력은 DC 경로가
+아닙니다. 트랜지스터 게이트나 비교기 입력으로만 이어진 노드는 실행 전에 거부합니다. 실행 전 V_GS·드레인 구동·잡음
+대역은 MOSFET·다이오드·BJT를 끊은 선형 회로로 추정하므로, STL의 드레인·게이트·소스 노드가 이 소자들의 단자에 닿으면
+그 셀의 발진·"래치 창 없음" 예고를 생략하고 V_GS를 추정치(`vgs_estimate.reliable = false`)로 표시합니다. 확률 모드에서는
+잡음 대역이 트랜지스터 없이 정해졌다는 경고를 붙입니다. 과도 해석 자체는 항상 전체 비선형 회로를 풉니다.
+
 ## Probes and validation
 
 `I(M1.d)`, `I(M1.g)`, `I(M1.s)` and `I(Q1.c)`, `I(Q1.b)`, `I(Q1.e)` are currents **into**

@@ -242,7 +242,8 @@ def test_login_page(c):
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
     t = r.text
     import re
-    assert re.sub(r"</?span>", "", t).count("KAIST 전기및전자공학부 · NOBEL 연구실 (지도교수 최양규) · 개발 박준형") == 1
+    assert re.sub(r"</?span>", "", t).count("KAIST · NOBEL 연구실") == 1
+    assert "지도교수" not in t and "개발" not in t          # reduced credits (owner decision D2), as in the app
     assert 'method="post" action="/login"' in t and 'name="password"' in t and 'type="password"' in t
     assert 'name="next" value="/circuit"' in t and 'name="remember"' in t
     assert "비밀번호" in t and "Password" in t and "prefers-color-scheme:dark" in t
@@ -593,7 +594,7 @@ def test_logout_from_another_site_asks_first(c, method, site):
     r = c.request(method, "/logout", headers={"Sec-Fetch-Site": site})
     assert r.status_code == 200 and "set-cookie" not in r.headers
     assert 'method="post" action="/logout"' in r.text and "Sign out" in r.text and "<script" not in r.text.lower()
-    assert "개발 박준형" in r.text and r.headers["cache-control"] == "no-store"
+    assert "KAIST</span> · <span>NOBEL 연구실" in r.text and r.headers["cache-control"] == "no-store"
     assert c.get("/api/meta").status_code == 200                    # still signed in
     for own in ("same-origin", "none"):                              # own page's form / typed URL or bookmark
         r = c.request(method, "/logout", headers={"Sec-Fetch-Site": own})

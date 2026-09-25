@@ -135,3 +135,121 @@ def test_vbg_validation_and_public_echo():
 def test_outside_reduced_model_domain_is_not_reported_as_physical_no_latch(geometry):
     with pytest.raises(ValueError,match='geometry-domain-unavailable'):
         branches(**geometry)
+
+
+# ---- P1-2: n+ source/drain hole injection scales with the junction area only (owner decision D8) ----
+def test_emitter_injection_scales_with_area_only():
+    d0=params.resolve_device({})
+    z0=m.components(.3,1.,_pvec(d0),MODEL.na,MODEL.vbi,MODEL.rg,MODEL.fg,MODEL.table)
+    for geometry,ratio in (({'Lg_nm':300},1.),({'Nbody_cm3':1e17},1.),({'Nbody_cm3':5e17},1.),
+                           ({'W_nm':400},2.),({'Tsi_nm':25},.5),({'Lg_nm':700,'W_nm':100},.5)):
+        p=_pvec(params.resolve_device({'geometry':geometry}))
+        z=m.components(.3,1.,p,MODEL.na,MODEL.vbi,MODEL.rg,MODEL.fg,MODEL.table)
+        assert z[6]==pytest.approx(ratio*z0[6],rel=1e-12), geometry    # z[6]: source (emitter) diffusion loss
+    meta=params.geometry_model_metadata({'geometry':{'Lg_nm':400}})
+    assert meta['emitter_injection_scaling']=='area only (fixed n+ source/drain)'
+
+
+def test_forward_drain_diode_uses_the_fixed_emitter():
+    from server.compute.circuit.element import N_EV, stl_eval
+    def ifwd(geometry):
+        p=_pvec(params.resolve_device({'geometry':geometry})) if geometry else np.array(params.build_p(params.resolve_device({})))
+        out=np.empty(N_EV);ref=np.empty(N_EV)
+        assert stl_eval(.2,-.3,p,MODEL.na,MODEL.vbi,MODEL.rg,MODEL.fg,MODEL.table,out)
+        assert stl_eval(.2,0.,p,MODEL.na,MODEL.vbi,MODEL.rg,MODEL.fg,MODEL.table,ref)
+        return out[6]-ref[6]                                           # hole loss added by the forward drain diode
+    base=ifwd(None)
+    assert base>0
+    # depletion SRH part depends on Nbody, the diffusion part does not: at r = -0.3 V diffusion dominates
+    assert ifwd({'Lg_nm':300})==pytest.approx(base,rel=1e-9)
+    assert ifwd({'W_nm':400})==pytest.approx(2*base,rel=1e-9)
+
+
+def test_area_only_fold_voltages():
+    def folds(**geometry):
+        f=run_branches({'device':{'geometry':geometry,'numerics':{'grid':601}},'sweep':{'vd_max_V':8}})['folds']
+        return f['V_LU'],f['V_LD']
+    np.testing.assert_allclose(folds(Lg_nm=400),(3.5821,2.2423),atol=1e-3)
+    np.testing.assert_allclose(folds(Lg_nm=1000),(4.1646,3.8643),atol=1e-3)
+    np.testing.assert_allclose(folds(Nbody_cm3=5e17),(3.6025,2.6349),atol=1e-3)
+    np.testing.assert_allclose(folds(),(3.7037,2.5979),atol=1e-4)
+
+
+# ---- P1-3: model domain is refused, never reported as physics ----
+def test_input_limits_and_min_length_match_the_worker_check():
+    from server.engine_bridge import m as eng
+    assert params._Q_C==eng.Q and params._VT_V==eng.VT and params._EPS0_F_M==eng.EPS0 and params._NI_CM3==eng.NI_CM3
+    assert params.GEOMETRY_LIMITS['Nbody_cm3']==(3e16,1.1e18)
+    for na in (3e16,1e17,params.NA_CM3,1.1e18):
+        lmin=params.min_length_nm(na)
+        ok=params.resolve_device({'geometry':{'Nbody_cm3':na,'Lg_nm':lmin+.5}})
+        pack_p(params.build_p(ok))                                      # just above: accepted by the worker too
+        with pytest.raises(ValueError,match='geometry-domain-unavailable'):
+            pack_p(params.build_p(params.resolve_device({'geometry':{'Nbody_cm3':na,'Lg_nm':lmin-.5}})))
+    # the whole Nbody input range has a field table up to FIELD_MIN_REVERSE_V
+    for na in np.geomspace(3e16,1.1e18,7):
+        pack_p(params.build_p(params.resolve_device({'geometry':{'Nbody_cm3':float(na),'Lg_nm':2000}})))
+
+
+@pytest.mark.parametrize('nbody',[2e16,2e18,3e18])
+def test_nbody_outside_the_domain(nbody):
+    with pytest.raises(ValueError,match=r'Nbody_cm3 must be within'):
+        normalize_device({'geometry':{'Nbody_cm3':nbody}},[])
+    with pytest.raises(ValueError,match='geometry-domain-unavailable'):
+        pack_p(params.build_p(params.resolve_device({'geometry':{'Nbody_cm3':nbody}})))
+
+
+def test_short_length_is_refused_at_normalisation():
+    with pytest.raises(ValueError,match=r'geometry-domain-unavailable: L = 100 nm .*must exceed 153.6 nm'):
+        normalize_device({'geometry':{'Lg_nm':100}},[])
+    with pytest.raises(ValueError,match=r'must exceed 412.2 nm'):
+        normalize_device({'geometry':{'Lg_nm':400,'Nbody_cm3':3e16}},[])
+    normalize_device({'geometry':{'Lg_nm':160}},[])
+
+
+@pytest.mark.parametrize('vbg',[4.,8.,-4.])
+def test_backgate_beyond_linear_coupling_is_refused(vbg):
+    thin={'EOT_nm':100,'Tbox_nm':10,'Tsi_nm':5}
+    with pytest.raises(ValueError,match=r'geometry-domain-unavailable: back-gate coupling beyond the linear'):
+        normalize_device({'geometry':thin,'vbg':vbg},[])
+    with pytest.raises(ValueError,match='geometry-domain-unavailable'):
+        pack_p(params.build_p(params.resolve_device({'geometry':thin,'vbg':vbg})))
+    normalize_device({'geometry':thin,'vbg':.2},[])                    # 100/11.67*0.2 = 1.71 V: inside
+    normalize_device({'vbg':10.},[])                                    # reference stack: 14.1/156.7*10 = 0.90 V
+    meta=params.geometry_model_metadata({'vbg':1.})
+    assert '2 V' in meta['backgate_coupling'] and 'front-channel' in meta['backgate_scope']
+
+
+def test_channel_softplus_does_not_overflow():
+    from server.geometry_model import channel_current
+    p=_pvec(params.resolve_device({'geometry':{'Lg_nm':400}}))
+    for vg in (-2.,-.8,.5):
+        q=p.copy();q[11]=vg
+        n=1.7786684648788609;ov=vg+0.49032524444873615;pp=ov/n;vt=m.VT
+        sf=np.log1p(np.exp(pp/(2*vt)));sr=np.log1p(np.exp((pp-.3-1.)/(2*vt)))
+        ref=2*n*7.52135238967614e-5*vt*vt*(sf-sr)*(sf+sr)/(1+0.6335606399651017*n*vt*np.log1p(np.exp(ov/(n*vt))))
+        assert channel_current(.3,1.,q)==pytest.approx(ref*500/400,rel=1e-13)   # same closed form below the guard
+    q=p.copy();q[11]=150.
+    assert np.isfinite(channel_current(.3,1.,q)) and channel_current(.3,1.,q)>0
+
+
+@pytest.mark.parametrize('device',[
+    {'geometry':{'EOT_nm':100,'Tbox_nm':10,'Tsi_nm':5},'vbg':4},
+    {'geometry':{'EOT_nm':100,'Tbox_nm':10,'Tsi_nm':5},'vbg':8},
+    {'geometry':{'Lg_nm':100}},
+    {'geometry':{'Nbody_cm3':2e18}},
+])
+def test_domain_errors_are_http_422_not_job_errors(client,device):
+    r=client.post('/api/compute/branches',params={'wait':0},json={'device':device})
+    assert r.status_code==422, r.text
+    detail=r.json()['detail']
+    assert 'geometry-domain-unavailable' in detail or 'must be within' in detail
+
+
+def test_custom_circuit_domain_error_names_the_cell():
+    from server.compute.circuit import run_circuit
+    els=[{'type':'V','name':'VG','nodes':['g','0'],'wave':{'kind':'dc','value':-2}},
+         {'type':'V','name':'VD','nodes':['d','0'],'wave':{'kind':'dc','value':1}},
+         {'type':'STL','name':'X7','nodes':{'d':'d','g':'g','s':'0'},'device':{'geometry':{'Lg_nm':120}}}]
+    with pytest.raises(ValueError,match=r'^X7: geometry-domain-unavailable: L = 120 nm'):
+        run_circuit({'bench':'custom','mode':'deterministic','netlist':{'elements':els},'tran':{'t_stop_s':1e-6}})

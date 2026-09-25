@@ -131,6 +131,22 @@ def _check_numeric_tree(block: Any, prefix: str) -> None:
             raise ValueError(f"{prefix} must be finite")
 
 
+def check_geometry_domain(geometry: dict, vbg: float) -> None:
+    """Domain of the reduced geometry model, checked before any job is queued (HTTP 422; in a custom circuit the
+    worker prefixes the cell name).  The field-table domain (Nbody) is checked in the worker (geometry_model.pack_p)."""
+    ratio = geometry["EOT_nm"] / (geometry["Tbox_nm"] + geometry["Tsi_nm"] / 3.0)
+    shift = ratio * vbg
+    if abs(shift) > params.BACKGATE_SHIFT_MAX_V:
+        raise ValueError("geometry-domain-unavailable: back-gate coupling beyond the linear (depleted back-interface) "
+                         "range; reduce |V_BG| or EOT/Tbox (EOT/(Tbox + Tsi/3) x |V_BG| = "
+                         f"{abs(shift):.3g} V > {params.BACKGATE_SHIFT_MAX_V:g} V)")
+    lmin = params.min_length_nm(geometry["Nbody_cm3"])
+    if geometry["Lg_nm"] <= lmin:
+        raise ValueError(f"geometry-domain-unavailable: L = {geometry['Lg_nm']:g} nm fully depletes the lateral "
+                         f"neutral base assumed by this compact model at Nbody = {geometry['Nbody_cm3']:.3g} cm^-3 "
+                         f"(L must exceed {lmin:.1f} nm); increase L or Nbody")
+
+
 def normalize_device(device: Any, warnings: list[str]) -> dict:
     if device is not None and not isinstance(device, dict):
         raise ValueError("device must be an object")
@@ -148,6 +164,7 @@ def normalize_device(device: Any, warnings: list[str]) -> dict:
     d["vbg"] = _num(d.get("vbg", 0.0), "device.vbg")
     if not -10.0 <= d["vbg"] <= 10.0:
         raise ValueError("device.vbg must be within [-10, 10] V")
+    check_geometry_domain(d["geometry"], d["vbg"])
     d["vg"] = _num(d["vg"], "device.vg")
     if not -10.0 <= d["vg"] <= 10.0:
         raise ValueError("device.vg must be within [-10, 10] V")

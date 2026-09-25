@@ -484,7 +484,8 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
                              "remove one source")
         vadj[a].append((b, e.name))
         vadj[b].append((a, e.name))
-    # DC paths to ground: R, V and the STL drain-source path conduct; C, I sources and the STL gate do not
+    # DC paths to ground: R, V, diodes, the STL/MOSFET drain-source path, BJT junctions and comparator outputs
+    # conduct; C, I sources, STL/MOSFET gates and comparator inputs do not
     dc = _DSU(nodes)
     for e in els:
         if e.type in ("R", "V", "D"):
@@ -510,14 +511,15 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
         if srcs:
             via.append("current sources " + ", ".join(srcs))
         if gates:
-            via.append("STL gates / comparator inputs " + ", ".join(gates))
+            via.append("transistor gates / comparator inputs " + ", ".join(gates))
         extra = f" (also: {', '.join(repr(m) for m in others)}{' ...' if len(floating) > 6 else ''})" if others else ""
         if srcs and not caps and not gates and all(c in srcs for c in conns[n]):
             raise ValueError(f"current source {srcs[0]} drives node {n!r}, which has no other connection (open circuit): "
-                             f"add a resistor or an STL path from {n!r} to ground{extra}")
+                             f"add a resistor or another DC path from {n!r} to ground{extra}")
         how = " and ".join(via) if via else "nothing that conducts DC"
         raise ValueError(f"node {n!r} has no DC path to ground: it is connected only through {how}. Every node needs "
-                         f"a DC path (resistor, voltage source or STL drain-source) to ground{extra}")
+                         "a DC path to ground (resistor, voltage source, diode, STL or MOSFET drain-source, BJT "
+                         f"junction or comparator output){extra}")
     # warnings: single connections, shorted terminals
     for n in nodes[1:]:
         if len(conns[n]) == 1 and not conns[n][0].endswith(".out"):      # an unloaded comparator output is fine
@@ -1178,6 +1180,16 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         rth = float((S_stl[rowi[d], k] if rowi[d] >= 0 else 0.0) - (S_stl[rowi[s], k] if rowi[s] >= 0 else 0.0))
         cells.append(dict(vgs=vgs, vgs_lo=vgs_lo, vgs_hi=vgs_hi, sd=sd, drive=drive, rth=rth))
 
+    # [P1-13 stop-gap] the linear DC estimate leaves MOS/D/BJT out (G_OFF): a cell whose drain, gate or source net
+    # touches one of their pins gets estimated V_GS / drive values that may be far off, so the estimate-based
+    # oscillation and no-latch predictions are not reported for it and its V_GS is marked as an estimate (the
+    # estimate still sizes the run and picks the initial state)
+    tx_nets: dict[str, list[str]] = {}
+    for x in els:
+        if x.type in BASIC_PINS:
+            for n in x.nodes:
+                if n != "0" and x.name not in tx_nets.setdefault(n, []):
+                    tx_nets[n].append(x.name)
     wins = np.zeros((ns, 15))
     cell_info = []
     total_est_cells = 0.0
@@ -1187,6 +1199,8 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     n_bp = len(net.breakpoints())
     for k, e in enumerate(stls):
         c = cells[k]
+        tx = sorted({nm for n in set(e.nodes) for nm in tx_nets.get(n, [])})
+        tx_note = f" without the transistor network ({', '.join(tx)})" if tx else ""
         vg_dev = float(e.p[11])
         vgs_nom = 0.5 * (c["vgs_lo"] + c["vgs_hi"])
         vg_vals = [vgs_nom] if c["vgs_hi"] - c["vgs_lo"] <= 1e-3 else [c["vgs_lo"], c["vgs_hi"]]
@@ -1194,7 +1208,8 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             warnings.append(f"{e.name}: the gate-source voltage varies ({c['vgs_lo']:.4g} … {c['vgs_hi']:.4g} V, linear "
                             "estimate): latch-state fold values and noise bands are taken over this range")
         if abs(vgs_nom - vg_dev) > 1e-3 and len(vg_vals) == 1:
-            warnings.append(f"{e.name}: V_GS = {vgs_nom:.4g} V comes from the circuit; the device block's V_G = "
+            warnings.append(f"{e.name}: V_GS = {vgs_nom:.4g} V comes from the circuit"
+                            f"{' (linear estimate' + tx_note + ')' if tx else ''}; the device block's V_G = "
                             f"{vg_dev:g} V is not used")
         base_light = float(e.p[13])
         if e.light is not None:
@@ -1218,11 +1233,16 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         lat = [pr for pr in profs if pr["latch"]]
         u_i = min(pr["u_fold"][0] for pr in lat) if lat else np.inf
         u_j = max(pr["u_fold"][1] for pr in lat) if lat else np.inf
-        if not lat:
+        if tx:
+            pass                                  # V_GS unknown before the run: no latch-window prediction
+        elif not lat:
             warnings.append(f"{e.name}: no latch window at V_GS = {vgs_nom:.4g} V"
                             f"{' (locus gap at the fold, channel-on regime)' if pnom.get('gap') else ''}: no latch-up expected")
         elif len(lat) < len(profs):
             warnings.append(f"{e.name}: the latch window disappears over part of the V_GS / light range")
+        if tx and stochastic:
+            warnings.append(f"{e.name}: the carrier-noise band near the folds was set from the linear V_GS estimate"
+                            f"{tx_note}; with a different actual V_GS the noise near the folds is approximate")
         RN._check_thresholds(det, pnom, warnings, e.name)
         # noise look-ahead drive: the source that moves V_DS most
         law, lag = -1, 0.0
@@ -1251,7 +1271,8 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             osc = dict(walks=walks, i_n=(float(np.min(i_n)), float(np.max(i_n))), g_ext=g_ext, c_eff=c_eff,
                        r_ext=(1.0 / g_ext if g_ext > 1e-15 else None))
             drives = [(w["t"], w["v"], np.zeros(max(len(w["t"]) - 2, 0)), w["scale"], OSC_TRANSITION_STEPS) for w in walks]
-            _osc_warning(e, osc, pnom, t_stop, warnings)
+            if not tx:                            # the walk still sizes the run and picks the initial state
+                _osc_warning(e, osc, pnom, t_stop, warnings)
         else:
             if rth > 1e11:
                 drive = np.clip(drive, -8.5, 8.5)
@@ -1276,7 +1297,7 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         total_est_cells += max(e_k - base_k, 0.0)
         cell_info.append(dict(vgs_nom=vgs_nom, vgs_range=(c["vgs_lo"], c["vgs_hi"]), light_range_A=(min(li_vals), max(li_vals)),
                               folds=pnom["folds"], latch=bool(lat), u_fold=(u_i, u_j), band=b, rth=c["rth"],
-                              lookahead=(law, lag), est=e_k, osc=osc, fold_I=pnom.get("fold_I")))
+                              lookahead=(law, lag), est=e_k, osc=osc, fold_I=pnom.get("fold_I"), tx=tx))
 
     # ---- feasibility: linear part (every node) + cells ----
     if len(srcs) and len(tg) > 1:
@@ -1340,14 +1361,16 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             why = ("the waveforms are long compared with the step limits dt_max and |Δv| <= "
                    f"{dv_max * 1e3:.3g} mV per step (reltol) and the resolved switching transients). Shorten t_stop, "
                    "increase tran.dt_max_s / tran.reltol or reduce the number of pulses/periods.")
-        raise ValueError(f"estimated ~{est:.3g} time steps per run exceed 2 x solver.max_steps = "
+        # "circuit-step-budget:" is a stable prefix the web app translates (web/src/api/geometryPolicy.ts)
+        raise ValueError(f"circuit-step-budget: estimated ~{est:.3g} time steps per run exceed 2 x solver.max_steps = "
                          f"{2 * sol['max_steps']:.0f} (~{est * sec_step:.0f} s per run; {why}")
     if est > 0.5 * sol["max_steps"]:
         warnings.append(f"estimated ~{est:.3g} steps per run is close to solver.max_steps = {sol['max_steps']:.0f}; "
                         "runs may be truncated")
     if total_est > MAX_TOTAL_STEPS:
-        raise ValueError(f"estimated total work ~{total_est:.3g} time steps (~{total_est * sec_step / 60:.0f} min) "
-                         f"exceeds the per-request limit {MAX_TOTAL_STEPS:.0g}; reduce n_runs or t_stop")
+        raise ValueError(f"circuit-step-budget: estimated total work ~{total_est:.3g} time steps "
+                         f"(~{total_est * sec_step / 60:.0f} min) exceeds the per-request limit {MAX_TOTAL_STEPS:.0g}; "
+                         "reduce n_runs or t_stop")
     if total_est * sec_step > 120:
         warnings.append(f"estimated run time ~{total_est * sec_step:.0f} s")
 
@@ -1800,14 +1823,17 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             d["light_pA"] = None if e.light is None else e.light.resolved
             d["vgs_V"] = ci_["vgs_nom"]
             d["vgs_range_V"] = list(ci_["vgs_range"])
+            # both come from the linear DC network before the run; with MOS/D/BJT on the cell's nets they are rough
+            d["vgs_estimate"] = dict(method="linear DC network before the run (C open, STL drain-source off)",
+                                     transistors_ignored=list(ci_["tx"]), reliable=not ci_["tx"])
             d["folds"] = dict(V_LU=_fin(ci_["folds"][0]), V_LD=_fin(ci_["folds"][1]))
-            d["latch_window"] = ci_["latch"]
+            d["latch_window"] = ci_["latch"] if (ci_["latch"] or not ci_["tx"]) else None
             d["u_fold"] = dict(u_i=_fin(ci_["u_fold"][0]), u_j=_fin(ci_["u_fold"][1]))
             if stochastic:
                 d["local_state"] = None if cell_ls[k] is None else vars(cell_ls[k])
                 d["noise_band_V"] = dict(unlatched_from=_fin(ci_["band"][0]), latched_up_to=_fin(ci_["band"][3]))
             d["estimated_steps"] = ci_["est"]
-            osc = ci_["osc"]
+            osc = ci_["osc"] if not ci_["tx"] else None
             if osc is not None:
                 w0 = osc["walks"][0]
                 d["oscillator"] = dict(predicted=bool(w0["oscillating"]), period_qs_s=w0["period"],

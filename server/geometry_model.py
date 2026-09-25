@@ -29,16 +29,26 @@ def pack_p(p, force=False):
     out=np.zeros(PACK_SIZE)
     out[:26]=p[:26];out[26:32]=g
     out[32]=p[32] if len(p)==33 else 0.0
+    # domain checks; server.payloads.check_geometry_domain runs the L/Nbody and VBG ones before a job is queued
     vbi=VT*np.log(1e20*float(g[5])/NI_CM3**2)
     wd0=np.sqrt(2*(11.7*EPS0/100)*vbi/(Q*float(g[5])))
     if g[0]*1e-7 <= 2*wd0+1e-7:
         raise ValueError("geometry-domain-unavailable: this L/Nbody combination fully depletes the lateral "
                          "neutral base assumed by this compact model; increase L or Nbody")
+    if abs(g[3]/(g[4]+g[2]/3.0)*out[32]) > params.BACKGATE_SHIFT_MAX_V:
+        raise ValueError("geometry-domain-unavailable: back-gate coupling beyond the linear (depleted back-interface) "
+                         "range; reduce |V_BG| or EOT/Tbox")
     try:
         vb, rg, fg=_field(float(g[5]))
     except ValueError as exc:
         raise ValueError("geometry-domain-unavailable: the specified Nbody is outside the finite avalanche-field "
                          "domain of this compact model") from exc
+    if rg[-1] < params.FIELD_MIN_REVERSE_V:
+        # the tabulated (finite, subcritical) avalanche field ends before the latch-up bias range: a truncated
+        # table would be reported as a physical "no latch"
+        raise ValueError("geometry-domain-unavailable: the avalanche-field table for this Nbody "
+                         f"({float(g[5]):.3g} cm^-3) ends at a reverse bias of {rg[-1]:.2f} V "
+                         f"(< {params.FIELD_MIN_REVERSE_V:g} V); lower Nbody")
     out[33]=vb;out[34]=len(rg);out[35]=rg[1]-rg[0]
     out[36:36+len(rg)]=fg[0]
     # Field.btbt was integrated with the frozen junction area; scale its area here.
@@ -96,8 +106,11 @@ def channel_current(u,r,p):
     n=1.7786684648788609*(1+p[16]*(u+r))
     ov=vg-(-0.49032524444873615)+p[14]*(u+r)+p[15]*u
     pp=ov/n
-    sf=np.log1p(np.exp(pp/(2*VT)));sr=np.log1p(np.exp((pp-u-r)/(2*VT)))
-    cur=2*n*7.52135238967614e-5*VT*VT*(sf-sr)*(sf+sr)/(1+0.6335606399651017*n*VT*np.log1p(np.exp(ov/(n*VT))))
+    # softplus without exp overflow for strongly-on channels (large VG + VBG coupling); unchanged below x = 700
+    xf=pp/(2*VT);xr=(pp-u-r)/(2*VT);xo=ov/(n*VT)
+    sf=xf if xf>700.0 else np.log1p(np.exp(xf));sr=xr if xr>700.0 else np.log1p(np.exp(xr))
+    so=xo if xo>700.0 else np.log1p(np.exp(xo))
+    cur=2*n*7.52135238967614e-5*VT*VT*(sf-sr)*(sf+sr)/(1+0.6335606399651017*n*VT*so)
     if len(p)>=32:
         cur *= (p[27]/200.)*(500./p[26])*(14.1/p[29])
     return cur
@@ -163,11 +176,12 @@ def geometry_components(u,r,p,na,vbi,rg,fg,table):
     if not np.isfinite(js):return np.full(19,np.nan)
     seed=scale*js;bulk=scale*lb;emitter=seed+bulk
     # Nonlinear SRH integral returned by kernel; bulk is NOT Qpair/tau.
-    # Standard low-injection minority-hole diffusion in an n+ emitter.
-    # beta is the low-injection reference ratio at fixed zero-bias base length.
+    # Low-injection minority-hole diffusion into the n+ source (the BJT emitter). The source doping and its
+    # hole-diffusion length are not changed by L or Nbody, so its saturation current scales with the junction
+    # area W*Tsi only: beta and the reference base length/doping stay those of the calibrated device.
     # High-injection base current no longer shares its exp(u/2VT) scaling.
-    lref=length_cm-2*np.sqrt(2*eps*vbi/(Q*na))
-    isp=Q*area_cm2*DN*NI_CM3**2/(na*lref*beta)
+    lref=original.LENGTH_M*100-2*np.sqrt(2*eps*params_VBI/(Q*params_NA))
+    isp=Q*area_cm2*DN*NI_CM3**2/(params_NA*lref*beta)
     diff=isp*np.exp(-phi_emitter/VT)*np.expm1(u/VT)
     junction=Q*area_cm2*ws*NI_CM3/(2*tj)*np.expm1(u/(2*VT))
     avg=na*qa

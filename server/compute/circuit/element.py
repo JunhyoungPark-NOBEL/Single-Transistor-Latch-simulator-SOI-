@@ -27,7 +27,8 @@ Extensions outside the engine's steady-state domain (the engine never evaluates 
   (R_c + R_acc) dI_D; Q uses the exact psi(u) and source depletion width w_s(u).
 * ``r < 0`` (drain junction forward biased, e.g. fast down-ramps or photovoltaic charging at
   V_D ~ 0): the core is evaluated at r = 0 and a *symmetric forward drain diode* is added — the
-  same n+ emitter diffusion saturation current as the source (q A D_n n_i^2 / (N_A L_ref beta),
+  same n+ emitter diffusion saturation current as the source (q A D_n n_i^2 / (N_A L_ref beta) with the
+  calibrated N_A and L_ref: the n+ doping is fixed, so a changed geometry scales it with the junction area A only;
   without the source-edge state phi_E) plus depletion SRH q A w_d n_i / (2 tau_j) expm1(-r/2V_T).
   Its current is a hole loss (L += I_fwd, F -= I_fwd) and flows out of the drain terminal
   (I_D -= I_fwd); the channel current is re-evaluated with the true u + r; V_D = V_D(u,0) + r +
@@ -39,7 +40,7 @@ import numpy as np
 from numba import njit
 
 from server.engine_bridge import m
-from server.geometry_model import channel_current, constants_from_p, gate_charge_offset
+from server.geometry_model import channel_current, constants_from_p, gate_charge_offset, params_NA, params_VBI
 
 components = m.components
 
@@ -53,6 +54,8 @@ LCH = float(m.LENGTH_M) * 100.0          # channel length (cm)
 WREF = float(m.WIDTH_M) * 100.0          # calibrated width (cm)
 TSIREF = float(m.TSI_M) * 100.0          # calibrated silicon thickness (cm)
 EPS_SI = 11.7 * float(m.EPS0) / 100.0    # F/cm (as in photo_mean)
+NA_REF = float(params_NA)                # calibrated body doping (cm^-3)
+VBI_REF = float(params_VBI)              # its source/drain built-in potential (V)
 
 N_EV = 8
 
@@ -134,8 +137,10 @@ def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
             return False
         wd0 = wdep(vbi, na)
         wdr = wdep(vbi + r, na)
-        lref = lch - 2.0 * wd0
-        isd = QE * area * DN * NI * NI / (na * lref * p[0])
+        # n+ drain diode: fixed emitter doping, so the saturation current scales with the junction area only
+        # (as the source in geometry_model.geometry_components); reference cell: na, vbi, lch are these constants
+        lref = LCH - 2.0 * wdep(VBI_REF, NA_REF)
+        isd = QE * area * DN * NI * NI / (NA_REF * lref * p[0])
         tj = p[2] * (tsi / TSIREF)
         ifwd = isd * np.expm1(-r / VT) + QE * area * wdr * NI / (2.0 * tj) * np.expm1(-r / (2.0 * VT))
         dch = ch_formula(u, r, p) - ch_formula(u, 0.0, p)

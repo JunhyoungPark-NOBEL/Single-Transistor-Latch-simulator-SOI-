@@ -591,7 +591,7 @@ def _page(title: str, content: str, root: str = "") -> bytes:
 <span class="en" lang="en">Single-transistor latch simulator for SOI</span></p></div></div>
 {content}
 </main>
-<footer><span>KAIST 전기및전자공학부</span> · <span>NOBEL 연구실 (지도교수 최양규)</span> · <span>개발 박준형</span></footer>
+<footer><span>KAIST</span> · <span>NOBEL 연구실</span></footer>
 </body>
 </html>
 """

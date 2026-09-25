@@ -4,6 +4,9 @@
 #   scripts/dev.sh api             # backend only
 #   scripts/dev.sh web             # frontend only (expects the API on $API_PORT)
 # Env: API_PORT (8000), WEB_PORT (5173), STL_WORKERS (2 here), STL_CACHE_DIR, STL_PREWARM.
+# numba caches: server/__pycache__/numba/<stamp of server/**/*.py + engine/**/*.py> (server/__init__.py): an edit or a
+# pull recompiles the kernels into a fresh folder (the first computation after a reload is slow), stale caches are
+# never used and need no wiping. Leave NUMBA_CACHE_DIR unset, or it is used as given, without the stamp.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -31,6 +34,7 @@ case "$MODE" in
     API_PID=$!
     trap 'kill "$API_PID" 2>/dev/null || true' EXIT INT TERM
     echo "[dev] API  http://127.0.0.1:$API_PORT  (pid $API_PID, $STL_WORKERS workers)"
+    echo "[dev] numba cache $("$PY" -c 'import os, server; print(os.environ["NUMBA_CACHE_DIR"])' 2>/dev/null || echo '?')"
     echo "[dev] Web  http://127.0.0.1:$WEB_PORT"
     ( run_web )
     ;;

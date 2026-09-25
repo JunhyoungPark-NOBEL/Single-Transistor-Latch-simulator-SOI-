@@ -7,7 +7,7 @@
 #   2. check the commit out into a clean build worktree ($STL_HOME/build)
 #   3. docker compose build → image $STL_IMAGE:<commit12>        (the live site keeps serving meanwhile)
 #   4. canary: run the new image alone (no network, no capabilities) until its health check passes, then log in and
-#      run a real compute job through the API                     (skipped when the image did not change)
+#      run real compute jobs through the API (reference folds + one geometry branch; skipped when the image did not change)
 #   5. switch: tag the image $STL_IMAGE:live, docker compose up -d, wait for the app's health check and the proxy
 #   6. any failure: the previous image is put back (rollback); the failed commit is remembered, retried once after
 #      30 min (network hiccups), then skipped until a new commit arrives or --force
@@ -484,7 +484,7 @@ build_image() { # build_image SHA [pull]
 	return 1
 }
 
-canary() { # canary IMAGE: start it alone, wait for health, then log in and run one compute job
+canary() { # canary IMAGE: start it alone, wait for health, then log in and run two compute jobs (reference, geometry)
 	local img=$1 pw
 	CANARY=$PROJECT-canary
 	docker rm -f "$CANARY" >/dev/null 2>&1 || true
@@ -525,7 +525,14 @@ job = json.loads(data or b"{}")
 v = ((job.get("result") or {}).get("folds") or {}).get("V_LU")
 assert st == 200 and job.get("status") == "done" and isinstance(v, (int, float)), \
     f"compute job: HTTP {st}, status {job.get('status')!r}, error {job.get('error')!r}"
-print(f"login gate, session and a compute job (folds: V_LU = {v:.4f} V) work")
+# geometry extension (separate numba kernels): a changed L must be computed, not served as the reference device
+st, _, data = req("POST", "/api/compute/branches?wait=60", json.dumps({"device": {"geometry": {"Lg_nm": 400}}}),
+                  {"Cookie": cookie, "Content-Type": "application/json"})
+job = json.loads(data or b"{}")
+g = ((job.get("result") or {}).get("folds") or {}).get("V_LU")
+assert st == 200 and job.get("status") == "done" and isinstance(g, (int, float)) and abs(g - v) > 1e-3, \
+    f"geometry job: HTTP {st}, status {job.get('status')!r}, V_LU {g!r}, error {job.get('error')!r}"
+print(f"login gate, session and compute jobs (folds: V_LU = {v:.4f} V; L = 400 nm: V_LU = {g:.4f} V) work")
 PY
 		); then
 			err "canary smoke test FAILED:"

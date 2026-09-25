@@ -8,6 +8,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import math
+import mimetypes
 import os
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -35,6 +36,10 @@ MAX_WAIT_S = 60.0
 MAX_BODY_BYTES = int(float(os.environ.get("STL_MAX_BODY_KB", "256")) * 1024)   # real payloads are a few kB
 
 log = logging.getLogger("stl.api")
+
+# FileResponse guesses the type from the extension; python:3.11-slim has no /etc/mime.types entry for woff2
+# (it would be served as application/octet-stream)
+mimetypes.add_type("font/woff2", ".woff2")
 
 
 class JSONResponse(Response):

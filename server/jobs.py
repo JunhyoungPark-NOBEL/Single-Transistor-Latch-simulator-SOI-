@@ -67,7 +67,21 @@ FINAL = ("done", "error", "cancelled")
 # engine inputs that shape results (code + data); run-time cache folders are not inputs
 _ENGINE_SUFFIXES = {".py", ".json", ".npz", ".npy", ".csv", ".txt"}
 _ENGINE_CACHE_DIRS = {"__pycache__", "photo_nodes", "fpt_nodes", "conditional_table", "fast_fpt"}
-_SERVER_FILES = ("params.py", "engine_bridge.py", "geometry_model.py", "payloads.py", "jsonutil.py", "jobs.py")
+# server sources that never shape a result (HTTP layer, login gate); every other server/**/*.py is hashed
+_SERVER_EXCLUDED = ("main.py", "auth.py")
+
+
+def _server_sources(server_dir: Path) -> list[Path]:
+    """server/**/*.py except tests, caches (__pycache__, hidden folders such as .cache) and _SERVER_EXCLUDED."""
+    out = []
+    for f in server_dir.rglob("*.py"):
+        rel = f.relative_to(server_dir).parts
+        if "__pycache__" in rel or "tests" in rel or any(x.startswith(".") for x in rel[:-1]):
+            continue
+        if len(rel) == 1 and rel[0] in _SERVER_EXCLUDED:
+            continue
+        out.append(f)
+    return sorted(out)
 
 
 def _env_float(name: str, default: float) -> float:
@@ -79,12 +93,11 @@ def _env_float(name: str, default: float) -> float:
 
 
 def engine_version(server_dir: Path = SERVER_DIR, engine_dir: Path = ENGINE_DIR) -> str:
-    """sha256 over everything that shapes a cached result: server/compute/**/*.py, params.py,
-    engine_bridge.py, geometry_model.py (geometry kernels), payloads.py (normalisation), jsonutil.py
-    (serialisation), jobs.py (result post-processing) and the engine's
+    """sha256 over everything that shapes a cached result: every server/**/*.py except the tests and the HTTP/login
+    layer (main.py, auth.py) -- compute/**, params.py, engine_bridge.py, geometry_model.py, payloads.py (normalisation),
+    jsonutil.py (serialisation), jobs.py (result post-processing), and any module added later -- plus the engine's
     code + data files.  Any edit invalidates the result cache."""
-    groups: list[tuple[str, Path, list[Path]]] = [
-        ("server", server_dir, sorted((server_dir / "compute").rglob("*.py")) + [server_dir / n for n in _SERVER_FILES])]
+    groups: list[tuple[str, Path, list[Path]]] = [("server", server_dir, _server_sources(server_dir))]
     if engine_dir.is_dir():
         groups.append(("engine", engine_dir, sorted(
             f for f in engine_dir.rglob("*")

@@ -126,23 +126,23 @@
   },
   "completed": true,
   "t_reached_s": 0.008,
-  "sample_count": 3062,
-  "runtime_s": 0.6514815829996223,
+  "sample_count": 3093,
+  "runtime_s": 0.6628342399999383,
   "signal_ranges": {
     "V(drain)": {
       "min": 1e-15,
-      "max": 3.651064
+      "max": 3.626801
     },
     "I(X1.d)": {
       "min": 4.388483e-35,
-      "max": 1.213385e-05
+      "max": 2.12314e-05
     },
     "X1.q_b": {
-      "min": -4.44681e-19,
-      "max": 2.969653e-16
+      "min": -4.446779e-19,
+      "max": 3.780529e-16
     },
     "I(Cdrain)": {
-      "min": -1.213283e-05,
+      "min": -2.12304e-05,
       "max": 1e-09
     },
     "I(Iin)": {
@@ -155,73 +155,73 @@
     {
       "run": 0,
       "kind": "latch_up",
-      "t": 0.003652595204548653,
+      "t": 0.003628112746528002,
       "cell": "X1",
-      "v_d": 3.6510008499928555,
-      "value": 3.6510008499928555,
+      "v_d": 3.6267466789479825,
+      "value": 3.6267466789479825,
       "i_d": 9.999999999999982e-09
     },
     {
       "run": 0,
       "kind": "latch_down",
-      "t": 0.0036568126354591416,
+      "t": 0.0036317968189488333,
       "cell": "X1",
-      "v_d": 2.5452717869707993,
-      "value": 2.5452717869707993,
+      "v_d": 2.230869788999192,
+      "value": 2.230869788999192,
       "i_d": 1.0000000000000007e-09
     },
     {
       "run": 0,
       "kind": "latch_up",
-      "t": 0.004764653663347386,
+      "t": 0.005029515011161486,
       "cell": "X1",
-      "v_d": 3.6509995571894764,
-      "value": 3.6509995571894764,
+      "v_d": 3.6267471730531717,
+      "value": 3.6267471730531717,
       "i_d": 9.999999999999982e-09
     },
     {
       "run": 0,
       "kind": "latch_down",
-      "t": 0.004768872100241857,
+      "t": 0.005033199643566023,
       "cell": "X1",
-      "v_d": 2.545270654063298,
-      "value": 2.545270654063298,
+      "v_d": 2.230873025338481,
+      "value": 2.230873025338481,
       "i_d": 1.0000000000000007e-09
     },
     {
       "run": 0,
       "kind": "latch_up",
-      "t": 0.0058767149856443135,
+      "t": 0.006430914137762803,
       "cell": "X1",
-      "v_d": 3.6510001296555137,
-      "value": 3.6510001296555137,
+      "v_d": 3.626746850202021,
+      "value": 3.626746850202021,
       "i_d": 9.999999999999982e-09
     },
     {
       "run": 0,
       "kind": "latch_down",
-      "t": 0.005880937963535482,
+      "t": 0.006434595086845769,
       "cell": "X1",
-      "v_d": 2.5452707129407006,
-      "value": 2.5452707129407006,
+      "v_d": 2.230873212151343,
+      "value": 2.230873212151343,
       "i_d": 1.0000000000000007e-09
     },
     {
       "run": 0,
       "kind": "latch_up",
-      "t": 0.0069887810233298575,
+      "t": 0.007832308346383843,
       "cell": "X1",
-      "v_d": 3.651000357378998,
-      "value": 3.651000357378998,
+      "v_d": 3.6267461221237496,
+      "value": 3.6267461221237496,
       "i_d": 9.999999999999982e-09
     },
     {
       "run": 0,
       "kind": "latch_down",
-      "t": 0.006992994962946493,
+      "t": 0.007835990960153633,
       "cell": "X1",
-      "v_d": 2.545268475884447,
-      "value": 2.545268475884447,
+      "v_d": 2.230866212989126,
+      "value": 2.230866212989126,
       "i_d": 1.0000000000000007e-09
     }
   ],
@@ -229,7 +229,7 @@
     {
       "key": "X1.n_latch_up",
       "label": {
-        "ko": "X1 래치업 횟수",
+        "ko": "X1 \ub798\uce58\uc5c5 \ud69f\uc218",
         "en": "X1 latch-ups"
       },
       "value": 4,
@@ -238,7 +238,7 @@
     {
       "key": "X1.n_latch_down",
       "label": {
-        "ko": "X1 래치다운 횟수",
+        "ko": "X1 \ub798\uce58\ub2e4\uc6b4 \ud69f\uc218",
         "en": "X1 latch-downs"
       },
       "value": 4,
@@ -247,25 +247,25 @@
     {
       "key": "X1.t_first_lu",
       "label": {
-        "ko": "X1 첫 래치업 시각",
+        "ko": "X1 \uccab \ub798\uce58\uc5c5 \uc2dc\uac01",
         "en": "X1 first latch-up time"
       },
-      "value": 0.003652595204548653,
+      "value": 0.003628112746528002,
       "unit": "s"
     },
     {
       "key": "X1.vd_first_lu",
       "label": {
-        "ko": "X1 첫 래치업 시 V_DS",
+        "ko": "X1 \uccab \ub798\uce58\uc5c5 \uc2dc V_DS",
         "en": "X1 V_DS at the first latch-up"
       },
-      "value": 3.6510008499928555,
+      "value": 3.6267466789479825,
       "unit": "V"
     },
     {
       "key": "X1.latched_end",
       "label": {
-        "ko": "X1 t_stop에서 래치 상태 (1 = 래치)",
+        "ko": "X1 t_stop\uc5d0\uc11c \ub798\uce58 \uc0c1\ud0dc (1 = \ub798\uce58)",
         "en": "X1 latched at t_stop (1 = yes)"
       },
       "value": 0,
@@ -274,7 +274,7 @@
     {
       "key": "X1.final_state",
       "label": {
-        "ko": "X1 최종 상태",
+        "ko": "X1 \ucd5c\uc885 \uc0c1\ud0dc",
         "en": "X1 final state"
       },
       "value": "HRS"
@@ -282,73 +282,73 @@
     {
       "key": "X1.period",
       "label": {
-        "ko": "X1 래치업 간격 평균 (발진 주기)",
+        "ko": "X1 \ub798\uce58\uc5c5 \uac04\uaca9 \ud3c9\uade0 (\ubc1c\uc9c4 \uc8fc\uae30)",
         "en": "X1 mean interval between latch-ups (period)"
       },
-      "value": 0.0011120619395937348,
+      "value": 0.0014013985332852804,
       "unit": "s",
-      "spread": 3.826966531580123e-09
+      "spread": 4.0606467543961984e-09
     },
     {
       "key": "X1.f_osc",
       "label": {
-        "ko": "X1 래치업 주파수 (1 / 평균 간격)",
+        "ko": "X1 \ub798\uce58\uc5c5 \uc8fc\ud30c\uc218 (1 / \ud3c9\uade0 \uac04\uaca9)",
         "en": "X1 latch-up rate (1 / mean interval)"
       },
-      "value": 899.230487436092,
+      "value": 713.5728889737832,
       "unit": "Hz"
     },
     {
       "key": "X1.isi_cv",
       "label": {
-        "ko": "X1 한 실행 안에서 래치업 간격의 변동계수 (CV, 스파이크 타이밍 지터)",
+        "ko": "X1 \ud55c \uc2e4\ud589 \uc548\uc5d0\uc11c \ub798\uce58\uc5c5 \uac04\uaca9\uc758 \ubcc0\ub3d9\uacc4\uc218 (CV, \uc2a4\ud30c\uc774\ud06c \ud0c0\uc774\ubc0d \uc9c0\ud130)",
         "en": "X1 coefficient of variation of the intervals within a run (spike-timing jitter)"
       },
-      "value": 3.4413249795944046e-06,
+      "value": 2.8975674356365115e-06,
       "unit": "1"
     },
     {
       "key": "X1.vd_lu_mean",
       "label": {
-        "ko": "X1 래치업 시 V_DS (모든 사건 평균 ± SD)",
-        "en": "X1 V_DS at latch-up (all events, mean ± SD)"
+        "ko": "X1 \ub798\uce58\uc5c5 \uc2dc V_DS (\ubaa8\ub4e0 \uc0ac\uac74 \ud3c9\uade0 \u00b1 SD)",
+        "en": "X1 V_DS at latch-up (all events, mean \u00b1 SD)"
       },
-      "value": 3.6510002235542105,
+      "value": 3.6267467060817316,
       "unit": "V",
-      "spread": 5.364057462279478e-07
+      "spread": 4.399151997180508e-07
     },
     {
       "key": "X1.vd_ld_mean",
       "label": {
-        "ko": "X1 래치다운 시 V_DS (모든 사건 평균 ± SD)",
-        "en": "X1 V_DS at latch-down (all events, mean ± SD)"
+        "ko": "X1 \ub798\uce58\ub2e4\uc6b4 \uc2dc V_DS (\ubaa8\ub4e0 \uc0ac\uac74 \ud3c9\uade0 \u00b1 SD)",
+        "en": "X1 V_DS at latch-down (all events, mean \u00b1 SD)"
       },
-      "value": 2.545270407464811,
+      "value": 2.2308705598695355,
       "unit": "V",
-      "spread": 1.3890243346834003e-06
+      "spread": 3.2966015979909295e-06
     },
     {
       "key": "X1.fold_V_LU",
       "label": {
-        "ko": "X1 준정적 폴드 V_LU (V_GS = -2 V)",
+        "ko": "X1 \uc900\uc815\uc801 \ud3f4\ub4dc V_LU (V_GS = -2 V)",
         "en": "X1 quasi-static fold V_LU (V_GS = -2 V)"
       },
-      "value": 3.609526381403998,
+      "value": 3.582152292324707,
       "unit": "V"
     },
     {
       "key": "X1.fold_V_LD",
       "label": {
-        "ko": "X1 준정적 폴드 V_LD",
+        "ko": "X1 \uc900\uc815\uc801 \ud3f4\ub4dc V_LD",
         "en": "X1 quasi-static fold V_LD"
       },
-      "value": 2.5556216577591178,
+      "value": 2.2423486395852974,
       "unit": "V"
     },
     {
       "key": "runs",
       "label": {
-        "ko": "실행 수",
+        "ko": "\uc2e4\ud589 \uc218",
         "en": "Runs"
       },
       "value": 1
@@ -356,17 +356,17 @@
     {
       "key": "steps_per_run",
       "label": {
-        "ko": "실행당 시간 스텝",
+        "ko": "\uc2e4\ud589\ub2f9 \uc2dc\uac04 \uc2a4\ud15d",
         "en": "Time steps per run"
       },
-      "value": 5976.0
+      "value": 6130.0
     }
   ],
   "solver_stats": {
-    "steps": 5976,
-    "rejected": 659,
-    "newton_iters": 13226,
-    "runtime_s": 0.34107494199997745
+    "steps": 6130,
+    "rejected": 657,
+    "newton_iters": 13503,
+    "runtime_s": 0.4458758529945044
   },
   "elements": [
     {
@@ -403,10 +403,13 @@
           "tbox_source": "nominal assumption; absent from calibration",
           "validated": false,
           "scope": "geometry-extrapolation",
-          "backgate_coupling": "channel overdrive += EOT / (Tbox + Tsi/3) * VBG; relative VBG=0 calibration",
+          "backgate_coupling": "channel overdrive += EOT / (Tbox + Tsi/3) * VBG; relative VBG=0 calibration; valid while |EOT / (Tbox + Tsi/3) * VBG| <= 2 V (linear coupling, depleted back interface); larger values are refused",
+          "backgate_scope": "front-channel current only: VBG does not store holes in the body in this model, so with the channel off (V_G below about -1.5 V) V_LU and V_LD hardly change",
+          "emitter_injection_scaling": "area only (fixed n+ source/drain)",
           "junction_lifetime_scaling": "tau_j_eff = tau_j_ref * Tsi / 50nm",
           "body_capacitance_scaling": "Cf + Cb - Cb0; Cb0 is reference-calibration counterterm",
-          "gate_charge": "Cf*(psi-VG) + (Cb-Cb0)*psi - Cb*VBG"
+          "gate_charge": "Cf*(psi-VG) + (Cb-Cb0)*psi - Cb*VBG",
+          "domain": "L > 2 w_d0(Nbody) + 1 nm (neutral lateral base); Nbody with an avalanche-field table reaching 3 V reverse bias; |EOT / (Tbox + Tsi/3) * VBG| <= 2 V"
         },
         "iph_pA": 0.0,
         "label": "STL (FDSOI reference calibration, dark)"
@@ -417,20 +420,25 @@
         -2.0,
         -2.0
       ],
+      "vgs_estimate": {
+        "method": "linear DC network before the run (C open, STL drain-source off)",
+        "transistors_ignored": [],
+        "reliable": true
+      },
       "folds": {
-        "V_LU": 3.609526381403998,
-        "V_LD": 2.5556216577591178
+        "V_LU": 3.582152292324707,
+        "V_LD": 2.2423486395852974
       },
       "latch_window": true,
       "u_fold": {
-        "u_i": 0.548,
-        "u_j": 0.7423333333333334
+        "u_i": 0.5443333333333334,
+        "u_j": 0.7533333333333334
       },
-      "estimated_steps": 7265.001549267065,
+      "estimated_steps": 6470.782646629119,
       "oscillator": {
         "predicted": true,
-        "period_qs_s": 0.0010615864702102455,
-        "latch_ups_expected": 5.0,
+        "period_qs_s": 0.0013466520559457732,
+        "latch_ups_expected": 4.0,
         "c_eff_F": 1e-12,
         "i_norton_A": [
           1e-09,
@@ -441,22 +449,22 @@
     }
   ],
   "warnings": [
-    "X1: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 10.53 pA, I_LD = 11.74 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 1.062 ms (~5 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+    "X1: relaxation oscillator \u2014 fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 9.158 pA, I_LD = 16.78 nA): V_DS saws between \u2248 V_LD and V_LU with a quasi-static period \u2248 1.347 ms (~4 latch-ups in t_stop; the fold lags lengthen it by a few %)",
     "X1: current-biased above the HRS (the load line at t = 0 does not cross the HRS, so the DC operating point would be an equilibrium on the negative-resistance branch or the LRS): the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto'; 'op' uses the DC operating point)"
   ],
-  "maximum_recorded_kcl_residual_A": 3.000000000090318e-11,
+  "maximum_recorded_kcl_residual_A": 5.0000000000109636e-11,
   "latch_up_count": 4,
   "latch_down_count": 4,
-  "mean_latch_interval_s": 0.0011120619395937348,
-  "latch_frequency_Hz": 899.230487436092,
+  "mean_latch_interval_s": 0.0014013985332852804,
+  "latch_frequency_Hz": 713.5728889737832,
   "recorded_kcl_note": "KCL uses returned current traces rounded to seven significant figures; the residual is evaluated on those recorded traces, not unrounded Newton states.",
-  "maximum_recorded_kcl_residual_over_peak_device_current": 2.4724221908877376e-06,
+  "maximum_recorded_kcl_residual_over_peak_device_current": 2.3550024963078097e-06,
   "latch_up_voltage_range_V": [
-    3.6509995571894764,
-    3.6510008499928555
+    3.6267461221237496,
+    3.6267471730531717
   ],
   "latch_down_voltage_range_V": [
-    2.545268475884447,
-    2.5452717869707993
+    2.230866212989126,
+    2.230873212151343
   ]
 }
