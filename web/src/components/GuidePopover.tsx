@@ -13,7 +13,7 @@ import { create } from "zustand";
 import type { L10n } from "../content/physics/types";
 import { useT, type T } from "../i18n";
 import { GUIDE } from "../i18n/strings.guide";
-import { effectChips, firstSentence, GUIDE_LEGEND, splitLead, type Effect, type GuideVerb, type ParamGuide } from "../params/guideUi";
+import { effectChips, inlineLead, splitLead, type Effect, type GuideVerb, type ParamGuide } from "../params/guideUi";
 import { IconAlert, IconX } from "./icons";
 import "./guide.css";
 
@@ -87,16 +87,47 @@ export function EffectChip({ e }: { e: Effect }) {
 
 export const verbLabel = (t: T, v: GuideVerb): string => t.l(GUIDE[v === "on" ? "guide.on" : v === "change" ? "guide.change" : "guide.raise"]);
 
-/** "키우면  V_LU ↑ 80 mV  V_LD → 그대로" — omitted chips when a line does not parse. */
-export function EffectChips({ guide, verb }: { guide: ParamGuide; verb: GuideVerb }) {
+/** "키우면 (+0.1 V)  V_LU ↑ 80 mV  V_LD → 그대로": the step the guide measured with comes right after the verb,
+ *  so a chip is never read as "any increase moves V_LU by 80 mV" (and, for a negative V_G, "+0.1 V" says
+ *  which way "raise" goes). When neither voltage moves (V_D,max, cycle counts), the guide's third line says
+ *  what does change ("래치업되는 사이클 비율만 ↑ …"), so the row never reads as "this knob does nothing". */
+export function EffectChips({ guide, verb, refTag }: { guide: ParamGuide; verb: GuideVerb; refTag?: boolean }) {
   const t = useT();
   const [lu, ld] = effectChips(guide, t.lang);
   if (!lu?.q && !ld?.q) return null;
+  const step = lu?.step ?? ld?.step;
+  const still = (e: Effect | null) => !e || (e.dir === "flat" && !e.sigma);
+  // (units glued to their numbers so "100 %" never breaks across lines)
+  const why = still(lu) && still(ld) ? t.l(guide.effect[2]).split(" · ")[0].trim().replace(/(\d) (%|V|mV)/g, "$1\u00a0$2") : "";
   return (
-    <span className="gchips">
-      <span className="gchips-lead">{verbLabel(t, verb)}</span>{" "}
+    // the numbers are measured on the reference calibration (V_G = −2 V, dark): said in the tooltip
+    <span className="gchips" title={legendNote(t)}>
+      <span className="gchips-lead">{verbLabel(t, verb)}</span>
+      {step && (
+        <>
+          {" "}
+          <span className="gchips-step">({step})</span>
+        </>
+      )}{" "}
       {lu && <EffectChip e={lu} />}{" "}
       {ld && <EffectChip e={ld} />}
+      {why && (
+        <>
+          {" "}
+          <span className="gchips-why">
+            · <GuideText text={why} plain />
+          </span>
+        </>
+      )}
+      {/* another preset is active: the arrows and numbers are still those of the reference calibration */}
+      {refTag && (
+        <>
+          {" "}
+          <span className="gchips-ref" data-testid="gchips-ref">
+            {t.l(GUIDE["guide.refTag"])}
+          </span>
+        </>
+      )}
     </span>
   );
 }
@@ -129,8 +160,9 @@ export function Caveat({ text, interactive }: { text: string; interactive: boole
   );
 }
 
-/** First sentence of GUIDE_LEGEND.arrows ("화살표는 이 값을 키울 때의 변화이고 … (기준 보정: V_G = −2 V, 암조건)."). */
-export const legendNote = (t: T) => firstSentence(t.l(GUIDE_LEGEND.arrows));
+/** How to read the arrows (a UI-owned short form of GUIDE_LEGEND.arrows): "화살표는 이 값을 키울 때의 변화, 괄호 안은
+ *  키운 폭입니다 (기준 보정: V_G = −2 V, 암조건)." */
+export const legendNote = (t: T) => t.l(GUIDE["guide.legend.short"]);
 
 // ---------------------------------------------------------------- popover store (one open at a time)
 type PopMode = "preview" | "pinned";
@@ -214,16 +246,9 @@ function GuideCard({ sym, label, guide, verb = "raise", technical, onMore, pinne
             </ul>
           </div>
           {guide.caveat && <Caveat text={L(guide.caveat)} interactive={pinned} />}
-          <p className="gp-basis">
+          {/* the guide's provenance note (English, for guide.test.ts) stays in the tooltip, not in the body */}
+          <p className="gp-basis" title={guide.basis ? `${L(GUIDE["guide.basis"])}: ${guide.basis}` : undefined}>
             <GuideText text={legendNote(t)} plain />
-            {guide.basis && (
-              <>
-                {" "}
-                <span className="gp-basis-src">
-                  {L(GUIDE["guide.basis"])}: <span className="mono">{guide.basis}</span>
-                </span>
-              </>
-            )}
           </p>
         </>
       )}
@@ -488,5 +513,6 @@ function PopoverLayer({ id, card, mode, popId, headingId }: { id: string; card: 
   );
 }
 
-/** Plain-text first sentence of a guide entry (inline line, list rows). */
-export const intuitiveLead = (t: T, g: ParamGuide) => firstSentence(t.l(g.intuitive));
+/** Inline line beside a main field: the whole intuitive picture with its glosses collapsed ("(GIDL)"),
+ *  so the plain "raise it → …" half is always visible. The popover keeps the full text. */
+export const intuitiveLead = (t: T, g: ParamGuide) => inlineLead(t.l(g.intuitive));

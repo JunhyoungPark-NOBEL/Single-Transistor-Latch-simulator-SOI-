@@ -6,8 +6,8 @@ const topic: PhysicsTopic = {
   id: "photo",
   title: { ko: "광조사: 광생성 정공 공급", en: "Illumination: photogenerated hole supply" },
   summary: {
-    ko: String.raw`빛은 바디에 균일하게 공급되는 정공 전류 $I_{\mathrm{PH}}$(p[13])로 들어간다. 짝을 이루는 전자는 드레인에서 수집되며 $(M-1)$배로 증배된다. 광세기 변환 $I_{\mathrm{PH}} = R\,P$의 $R = 0.75$ pA/mW는 래치 전 plateau에 맞춘 값이다.`,
-    en: String.raw`Light enters as a uniform hole supply $I_{\mathrm{PH}}$ (p[13]) into the body; the partner electron is collected at the drain and multiplied by $(M-1)$. The conversion $I_{\mathrm{PH}} = R\,P$ with $R = 0.75$ pA/mW is fitted to the pre-latch plateau.`,
+    ko: String.raw`빛은 바디에 균일하게 공급되는 정공 전류 $I_{\mathrm{PH}}$로 들어간다. 짝을 이루는 전자는 드레인 쪽 고전계에서 $M$배로 증배되고, 이때 생긴 $(M-1)\,I_{\mathrm{PH}}$의 정공이 바디에 더해진다. 광세기 변환 $I_{\mathrm{PH}} = R\,P$의 $R = 0.75$ pA/mW는 래치 전 평탄 구간(plateau)에 맞춘 값이다.`,
+    en: String.raw`Light enters as a uniform hole supply $I_{\mathrm{PH}}$ into the body; the partner electron is multiplied by $M$ near the drain, adding $(M-1)\,I_{\mathrm{PH}}$ holes to the body. The conversion $I_{\mathrm{PH}} = R\,P$ with $R = 0.75$ pA/mW is fitted to the pre-latch plateau.`,
   },
   tags: ["I_PH", "p[13]", "illumination calibration"],
   sections: [
@@ -91,7 +91,7 @@ For $I_{\mathrm{PH}}$ = 0.5–5 pA the bipolar gain is 1.23–2.64. In the low-i
       ],
     },
     {
-      heading: { ko: "fold에 미치는 영향", en: "Effect on the folds" },
+      heading: { ko: "꺾임점(fold)에 미치는 영향", en: "Effect on the folds" },
       body: {
         ko: "$V_G = -1.8$ V, $I_{\\mathrm{PH}}$ = 0 / 0.8625 / 1.9125 / 2.6325 pA (계산값):\n\n- 기본 모델($\\gamma = 0$, $\\delta\\varphi_{G0} = 0$): $V_{\\mathrm{LU}}$ = 3.8644 / 3.7088 / 3.4633 / 3.2907 V, $V_{\\mathrm{LD}}$ = 2.5979 → 2.5962 V. 정확히 2.63 pA에서는 3.2913 V (`VALIDATION.md`).\n- 광조사 보정 프리셋($\\gamma = 0.2794$, $\\delta\\varphi_{G0} = +0.0744$ V): 3.8042 / 3.6598 / 3.4371 / 3.2781 V; $V_G = -1.1$ V에서는 3.4079 / 3.1930 / 3.0231 / 2.9417 V.\n- 광조사 측정 기록의 평균(400 사이클, 1200 V/s): −1.8 V 3.806 / 3.500 / 3.336 / 3.073 V; −1.1 V 3.408 / 3.273 / 3.098 / 2.933 V. fold는 결정론적 중심값이고, 측정 평균에는 확률적 탈출과 상태 산포가 함께 들어 있다.\n\n기전: $I_{\\mathrm{PH}}$는 $V_D$와 무관한 정공 공급이므로, 각 $V_D$에서 HRS 균형이 더 큰 $u$(더 큰 시드 전류)에서 이루어지고 필요한 증배가 줄어든다. 따라서 fold가 더 낮은 $V_D$로 이동한다. 2.63 pA에서의 fold는 $u = 0.592$ V, $r = 2.699$ V, $M = 1.270$이다(암조건: $u = 0.559$ V, $r = 3.305$ V, $M = 1.387$). LRS는 nA–µA 수준의 BJT 전류가 지배하므로 $V_{\\mathrm{LD}}$는 거의 변하지 않는다.",
         en: "$V_G = -1.8$ V, $I_{\\mathrm{PH}}$ = 0 / 0.8625 / 1.9125 / 2.6325 pA (computed):\n\n- Base model ($\\gamma = 0$, $\\delta\\varphi_{G0} = 0$): $V_{\\mathrm{LU}}$ = 3.8644 / 3.7088 / 3.4633 / 3.2907 V, $V_{\\mathrm{LD}}$ = 2.5979 → 2.5962 V. At exactly 2.63 pA: 3.2913 V (`VALIDATION.md`).\n- Illumination-calibration preset ($\\gamma = 0.2794$, $\\delta\\varphi_{G0} = +0.0744$ V): 3.8042 / 3.6598 / 3.4371 / 3.2781 V; at $V_G = -1.1$ V: 3.4079 / 3.1930 / 3.0231 / 2.9417 V.\n- Means of the illumination records (400 cycles, 1200 V/s): −1.8 V 3.806 / 3.500 / 3.336 / 3.073 V; −1.1 V 3.408 / 3.273 / 3.098 / 2.933 V. The fold is the deterministic center; the measured means also include stochastic escape and state spread.\n\nMechanism: $I_{\\mathrm{PH}}$ is a $V_D$-independent hole supply, so at every $V_D$ the HRS balance sits at a larger $u$ (larger seed current) and less multiplication is needed; the fold therefore moves to a lower $V_D$. Fold at 2.63 pA: $u = 0.592$ V, $r = 2.699$ V, $M = 1.270$ (dark: $u = 0.559$ V, $r = 3.305$ V, $M = 1.387$). The LRS is dominated by BJT currents of nA to µA, so $V_{\\mathrm{LD}}$ barely moves.",

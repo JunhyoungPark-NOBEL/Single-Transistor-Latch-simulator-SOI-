@@ -39,7 +39,8 @@ export default function PlotImpl({ data, layout, config, onGraph, className }: P
       config={{
         displaylogo: false,
         responsive: true,
-        displayModeBar: "hover",
+        // touch screens have no hover: the bar would sit on top of the legend for good (export is in ⋯)
+        displayModeBar: typeof window !== "undefined" && window.matchMedia?.("(hover: none)").matches ? false : "hover",
         modeBarButtonsToRemove: ["select2d", "lasso2d", "toImage", "autoScale2d"],
         ...config,
       }}

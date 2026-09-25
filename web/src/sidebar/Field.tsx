@@ -11,6 +11,8 @@ import type { StrKey } from "../i18n/strings";
 import { guideFor, guideVerb } from "../params/guideUi";
 import { scaleOf, unitOf, type Ctx, type FieldDef, type Option } from "../params/schema";
 import { nearlyEqual, parseNumber, toInputString } from "../utils/format";
+import { subs } from "../plots/labels";
+import { SubText } from "../plots/SubText";
 import { GuideInline } from "./GuideInline";
 
 /** Where the field sits: its group's Details topic and visible keys (for "물리 자세히 보기 →"). */
@@ -54,6 +56,15 @@ function fmtDefault(t: T, f: FieldDef, ctx: Ctx, def: unknown): string {
   return String(def ?? "—");
 }
 
+/** Number for display with a typographic minus (−2, not -2). */
+const tm = (s: string) => s.replace(/^-/, "−");
+
+/** "범위 −6 … 1 V" (min/max are in display units already; typographic minus). */
+function rangeText(t: T, f: FieldDef, ctx: Ctx): string {
+  const u = unitOf(f, ctx);
+  return `${t("range", { min: tm(toInputString(f.min, 4)), max: tm(toInputString(f.max, 4)) })}${u ? ` ${u}` : ""}`;
+}
+
 /** Technical block of the popover: today's help, code index, default and range. */
 function TechContent({ f, ctx, def }: { f: FieldDef; ctx: Ctx; def: unknown }) {
   const t = useT();
@@ -62,8 +73,8 @@ function TechContent({ f, ctx, def }: { f: FieldDef; ctx: Ctx; def: unknown }) {
       <p className="gp-tech-help">{t.l(f.help)}</p>
       <div className="gp-tech-meta">
         {f.code && <code className="code-chip">{f.code}</code>}
-        {t("default")}: {fmtDefault(t, f, ctx, def)}
-        {f.min !== undefined && f.max !== undefined && f.type !== "toggle" && !f.options ? ` · ${t("range", { min: toInputString(f.min, 4), max: toInputString(f.max, 4) })}` : ""}
+        {t("default")}: {tm(fmtDefault(t, f, ctx, def))}
+        {f.min !== undefined && f.max !== undefined && f.type !== "toggle" && !f.options ? ` · ${rangeText(t, f, ctx)}` : ""}
       </div>
     </>
   );
@@ -146,6 +157,12 @@ function NumberField({ f, ctx, value, def, onChange, main, slider = true, group 
   const emptyAuto = f.auto && text.trim() === "";
   const error = emptyAuto ? null : parsed === null ? t("invalid") : outOfRange ? t("range", { min: toInputString(f.min, 4), max: toInputString(f.max, 4) }) : null;
   const changed = def === null ? value !== null : typeof def === "number" && !nearlyEqual(num, def);
+  // auto: "자동 = −2 V (바이어스·스윕의 V_G)" when the client knows the value, else the help's "자동: …" clause
+  const resolved = f.auto ? f.autoValue?.(ctx) : null;
+  const autoNum = resolved ? tm(toInputString(resolved.v * scale, 4)) : null;
+  const autoNow = autoNum ? `${autoNum}${unit ? ` ${unit}` : ""}` : null;
+  const helpAuto = t.l(f.help).match(/^(?:자동|auto)\s*[:：]\s*([^.(]*?)(?:\s*\(|\.\s|$)/i)?.[1]?.trim();
+  const autoNote = resolved ? `${t("auto.is", { v: autoNow ?? "" })} (${t.l(resolved.src)})` : helpAuto ? `${t("auto")}: ${helpAuto}` : null;
 
   const commit = (v: number) => {
     let x = f.int ? Math.round(v) : v;
@@ -183,7 +200,8 @@ function NumberField({ f, ctx, value, def, onChange, main, slider = true, group 
             aria-invalid={!!error}
             aria-describedby={describedBy(error && `${id}-err`, guideId)}
             onFocus={() => setEditing(true)}
-            placeholder={f.auto ? t("auto") : undefined}
+            // the number only: the unit is printed right beside the input ("자동 (0.4)  V/s", never cut to "0.4 V/")
+            placeholder={f.auto ? (autoNum ? `${t("auto")} (${autoNum})` : t("auto")) : undefined}
             onChange={(e) => {
               setText(e.target.value);
               if (f.auto && e.target.value.trim() === "") {
@@ -217,7 +235,12 @@ function NumberField({ f, ctx, value, def, onChange, main, slider = true, group 
           <button type="button" className="chip" aria-pressed={isAuto} onClick={() => { setText(""); onChange(null); }} title={t("auto.hint")} data-testid={`auto-${f.key}`}>
             {t("auto")}
           </button>
-          {isAuto && <span className="small muted">{t("auto.hint")}</span>}
+          {/* what "auto" will use: the resolved value and its source, else the field's own "자동: …" note */}
+          {isAuto && autoNote && (
+            <span className="small muted auto-note" data-testid={`auto-note-${f.key}`}>
+              <SubText text={subs(autoNote)} />
+            </span>
+          )}
         </div>
       )}
       {error && editing && (
@@ -351,7 +374,7 @@ function ListField({ f, ctx, value, def, onChange, group }: FieldProps) {
             className={`input${bad ? " invalid" : ""}`}
             style={{ textAlign: "left", paddingRight: 40 }}
             value={text}
-            placeholder={t("list.placeholder")}
+            placeholder={f.placeholder ? t.l(f.placeholder) : t("list.placeholder")}
             spellCheck={false}
             aria-invalid={bad}
             onFocus={() => setEditing(true)}

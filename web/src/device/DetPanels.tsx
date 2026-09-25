@@ -54,6 +54,9 @@ export interface MeasuredOpts {
   name?: string;
   /** Legend name of the band. */
   bandName?: string;
+  /** Illumination records: draw only the curve nearest to the current power (the 간단히 layout). The other
+   *  light powers / V_G values would otherwise sit unlabelled across the model traces. */
+  onlyBest?: boolean;
 }
 
 /** Measured overlay traces for I–V panels: paper-device median (+ 10–90 % band), or photo light I–V curves. */
@@ -79,7 +82,9 @@ export function measuredIvTraces(t: T, c: PlotPalette, m: MeasuredData | undefin
     m.light_iv.forEach((cv, i) => {
       if (cv.power_mW != null && Math.abs(cv.power_mW - powerNow) < Math.abs((m.light_iv[best].power_mW ?? 1e9) - powerNow)) best = i;
     });
-    return m.light_iv.map((cv, i) => ({
+    const curves = opts.onlyBest ? [m.light_iv[best]] : m.light_iv;
+    if (opts.onlyBest) best = 0;
+    return curves.map((cv, i) => ({
       x: cv.vd,
       y: pos(cv.id),
       type: "scatter" as const,
@@ -150,6 +155,7 @@ export function IvPanel() {
   const [showBand, setShowBand] = useState(false);
   const [showSweep, setShowSweep] = useState(false);
   const [showPrev, setShowPrev] = useState(true);
+  const isAll = useIsAll();
   const measKind = isPaperReference(params.device) ? "paper" : preset === "photo" ? "photo" : null;
   useEffect(() => {
     if (showMeas && measKind && measured.status === "idle") void loadMeasured();
@@ -175,7 +181,7 @@ export function IvPanel() {
       }
       traces.push({ x, y, type: "scatter", mode: "lines", name: L("leg.prev"), line: { color: c.ghost, width: 1.6, dash: "dot" }, meta: NO_CSV as never, connectgaps: false, hovertemplate: `${HOVER_IV}<extra>${L("leg.prev")}</extra>` });
     }
-    if (showMeas) traces.push(...measuredIvTraces(t, c, measured.data, measKind, powerMW(params.device), { band: showBand && measKind === "paper", name: L("leg.meas"), bandName: L("leg.measBand") }));
+    if (showMeas) traces.push(...measuredIvTraces(t, c, measured.data, measKind, powerMW(params.device), { band: showBand && measKind === "paper", name: L(measKind === "paper" ? "leg.measMedian" : "leg.meas"), bandName: L("leg.measBand"), onlyBest: !isAll }));
     const br = (curve: BranchesResult["HRS"], name: string, color: string, dash: "solid" | "dash", width: number): Data => ({
       x: nums(curve.vd), y: Y(curve.id), type: "scatter", mode: "lines", name, line: { color, width, dash }, hovertemplate: `${HOVER_IV}<extra>${name}</extra>`,
     });
@@ -218,19 +224,42 @@ export function IvPanel() {
       if (isNum(f.I_LD) && f.I_LD > 0 && isNum(bottom) && bottom > 0 && bottom < f.I_LD / 1.5) ann.push(jumpArrow(f.V_LD, f.I_LD, bottom, c.lrs, yv));
       ann.push(...foldAnnotations(f, c, yv));
     }
+    // a fold above the sweep peak: widen the axis so it stays in view, and mark where the sweep turns back
+    const sweepTop = data.vd_max_V ?? params.sweep.vd_max_V;
+    const beyond = data.latch && isNum(f.V_LU) && f.V_LU > sweepTop + 1e-9;
+    const shapes: Partial<Shape>[] = [];
+    if (beyond) {
+      shapes.push({ type: "line", xref: "x", yref: "paper", x0: sweepTop, x1: sweepTop, y0: 0, y1: 1, line: { color: c.warn, width: 1.2, dash: "dot" } });
+      ann.push({ x: sweepTop, y: 1, xref: "x", yref: "paper", yanchor: "bottom", xanchor: "right", text: subs(fill(L("foot.vdmax"), { v: String(sweepTop) })), showarrow: false, font: { size: 11, color: c.warn } });
+    }
     const yr = log ? logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) : undefined;
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: t("axis.vd") }, range: [0, params.sweep.vd_max_V + 0.15], zeroline: false },
+      xaxis: { title: { text: t("axis.vd") }, range: [0, Math.max(params.sweep.vd_max_V, beyond && isNum(f.V_LU) ? f.V_LU : 0) + 0.15], zeroline: false },
       yaxis: { ...currentAxis(log, log ? t("axis.idAbs") : t("axis.id")), ...(yr ? { range: yr } : {}) },
+      shapes,
       annotations: ann,
       margin: { l: 64, r: 16, t: 30, b: 46 },
       legend: ROW_LEGEND,
     };
     return { data: traces, layout };
-  }, [data, ghost, log, showMeas, showBand, showSweep, measured.data, measKind, c, t, params.sweep.vd_max_V, params.device]);
+  }, [data, ghost, log, showMeas, showBand, showSweep, measured.data, measKind, isAll, c, t, params.sweep.vd_max_V, params.device]);
 
   const f = data?.folds;
-  const foot = !data ? undefined : !data.latch ? L("foot.nolatch") : isNum(f?.I_LU) || isNum(f?.I_LD) ? <SubText text={subs(fill(L("foot.ifold"), { lu: fmtSI(f?.I_LU, "A", 3), ld: fmtSI(f?.I_LD, "A", 3) }))} /> : undefined;
+  // the measured median switches ~0.1 V before the folds (noise-driven early escape): say so, once
+  const early = showMeas && measKind === "paper" && !!measured.data?.paper_iv && !!data?.latch;
+  const foot = !data ? undefined : !data.latch ? (
+    L("foot.nolatch")
+  ) : isNum(f?.I_LU) || isNum(f?.I_LD) ? (
+    <>
+      <SubText text={subs(fill(L("foot.ifold"), { lu: fmtSI(f?.I_LU, "A", 3), ld: fmtSI(f?.I_LD, "A", 3) }))} />
+      {early && (
+        <>
+          <span className="sep"> · </span>
+          {L("foot.measEarly")}
+        </>
+      )}
+    </>
+  ) : undefined;
   const menu: PanelMenuItem[] = [
     { kind: "check", id: "sweeps", label: L("menu.sweeps"), checked: showSweep, onChange: setShowSweep, testId: "iv-sweeps" },
     ...(measKind ? [{ kind: "check" as const, id: "meas", label: L("menu.meas"), checked: showMeas, onChange: setShowMeas, testId: "toggle-measured" }] : []),
@@ -503,12 +532,21 @@ export function VgPanel() {
   // canonical V_G in the payload: moving V_G only moves the "현재 V_G" marker (no stale badge, no re-run)
   const { vg_curve: key } = useDeviceKeys();
   const vgNow = params.device.vg;
+  // the sweep peak: a fold above it exists in the model, but the 0 → V_D,max sweep never reaches it
+  const vmax = params.sweep.vd_max_V;
   const plot = useMemo(() => {
     if (!data) return undefined;
     const vg = nums(data.vg);
+    const vlu = nums(data.V_LU);
+    const above = vlu.map((v) => v != null && v > vmax + 1e-9);
     const traces: Data[] = [
       { x: vg, y: nums(data.V_LD), type: "scatter", mode: "lines+markers", name: "V<sub>LD</sub>", line: { color: c.lrs, width: 2 }, marker: { size: 4 }, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>V<sub>LD</sub> = %{y:.4f} V<extra></extra>" },
-      { x: vg, y: nums(data.V_LU), type: "scatter", mode: "lines+markers", name: "V<sub>LU</sub>", line: { color: c.hrs, width: 2 }, marker: { size: 4 }, fill: "tonexty", fillcolor: c.neutralSoft, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>V<sub>LU</sub> = %{y:.4f} V<extra></extra>" },
+      {
+        x: vg, y: vlu, type: "scatter", mode: "lines+markers", name: "V<sub>LU</sub>", line: { color: c.hrs, width: 2 }, fill: "tonexty", fillcolor: c.neutralSoft,
+        // points above V_D,max: hollow grey markers (the sweep turns back before them)
+        marker: { size: above.map((a) => (a ? 5 : 4)), color: above.map((a) => (a ? c.surface : c.hrs)), line: { width: above.map((a) => (a ? 1.2 : 0)), color: c.muted } } as never,
+        hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>V<sub>LU</sub> = %{y:.4f} V<extra></extra>",
+      },
     ];
     const shapes: Partial<Shape>[] = [];
     const ann: Ann[] = [];
@@ -517,8 +555,18 @@ export function VgPanel() {
       shapes.push({ type: "rect", xref: "x", yref: "paper", x0: w.vg_low, x1: w.vg_high, y0: 0, y1: 1, fillcolor: c.neutralSoft, opacity: 0.6, line: { width: 0 }, layer: "below" });
       ann.push({ x: (w.vg_low + w.vg_high) / 2, y: 1, xref: "x", yref: "paper", yanchor: "bottom", text: `${t("vg.window")}: ${signed(w.vg_low, 2)} … ${signed(w.vg_high, 2)} V`, showarrow: false, font: { size: 11, color: c.text2 } });
     }
+    // V_D,max: dotted line with its label at the left end
+    shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: vmax, y1: vmax, line: { color: c.warn, width: 1.2, dash: "dot" } });
+    ann.push({ x: 0.01, y: vmax, xref: "paper", yref: "y", xanchor: "left", yanchor: "bottom", text: subs(fill(t.l(DEV["foot.vdmax"]), { v: String(vmax) })), showarrow: false, font: { size: 11, color: c.warn } });
     shapes.push({ type: "line", xref: "x", yref: "paper", x0: vgNow, x1: vgNow, y0: 0, y1: 1, line: { color: c.text2, width: 1.2, dash: "dash" } });
-    ann.push({ x: vgNow, y: 0.97, xref: "x", yref: "paper", yanchor: "top", text: t("axis.ann.setVg", { v: signed(vgNow, 2) }), showarrow: false, xanchor: "left", xshift: 4, font: { size: 11, color: c.text2 }, bgcolor: c.surface });
+    // "설정 V_G" midway between the two curves at the set V_G (an empty area), else at the top
+    const luNow = interpAt(data.vg, data.V_LU, vgNow);
+    const ldNow = interpAt(data.vg, data.V_LD, vgNow);
+    const mid = isNum(luNow) && isNum(ldNow) ? (luNow + ldNow) / 2 : null;
+    ann.push({
+      x: vgNow, xref: "x", ...(mid !== null ? { y: mid, yref: "y" as const, yanchor: "middle" as const } : { y: 0.97, yref: "paper" as const, yanchor: "top" as const }),
+      text: t("axis.ann.setVg", { v: signed(vgNow, 2) }), showarrow: false, xanchor: "left", xshift: 4, font: { size: 11, color: c.text2 },
+    });
     const layout: Partial<Layout> = {
       xaxis: { title: { text: t("axis.vg") } },
       yaxis: { title: { text: t("axis.foldV") } },
@@ -528,9 +576,48 @@ export function VgPanel() {
       legend: { x: 1, xanchor: "right", y: 1.08 },
     };
     return { data: traces, layout };
-  }, [data, vgNow, c, t]);
+  }, [data, vgNow, vmax, c, t]);
   const vgs = nums(data?.vg).filter((v): v is number => v != null);
-  const foot = vgs.length ? fill(t.l(DEV["foot.range"]), { min: signed(vgs[0], 1), max: signed(vgs[vgs.length - 1], 1), n: vgs.length }) : undefined;
+  // the V_G ranges whose fold the current sweep reaches (V_LU ≤ V_D,max), as contiguous segments
+  const reach = useMemo(() => {
+    if (!data) return null;
+    const vg = nums(data.vg);
+    const vlu = nums(data.V_LU);
+    const seg: [number, number][] = [];
+    let open: [number, number] | null = null;
+    vg.forEach((g, i) => {
+      const v = vlu[i];
+      const ok = g != null && v != null && v <= vmax + 1e-9 && data.latch?.[i] !== false;
+      if (ok) open = open ? [open[0], g] : [g, g];
+      else if (open) {
+        seg.push(open);
+        open = null;
+      }
+    });
+    if (open) seg.push(open);
+    const any = vlu.some((v) => v != null && v > vmax + 1e-9);
+    return { seg, any };
+  }, [data, vmax]);
+  const rangeText = vgs.length ? fill(t.l(DEV["foot.range"]), { min: signed(vgs[0], 1), max: signed(vgs[vgs.length - 1], 1), n: vgs.length }) : undefined;
+  const reachText =
+    reach && reach.any
+      ? reach.seg.length
+        ? fill(t.l(DEV["foot.vgReach"]), { v: vmax, r: reach.seg.map(([a, b]) => (a === b ? `${signed(a, 2)} V` : `${signed(a, 2)} … ${signed(b, 2)} V`)).join(", ") })
+        : fill(t.l(DEV["foot.vgReach.none"]), { v: vmax })
+      : null;
+  const foot = rangeText ? (
+    <>
+      {reachText && (
+        <>
+          <span data-testid="vg-reach">
+            <SubText text={subs(reachText)} />
+          </span>
+          <span className="sep"> · </span>
+        </>
+      )}
+      {rangeText}
+    </>
+  ) : undefined;
   return (
     <Panel
       id="vg"

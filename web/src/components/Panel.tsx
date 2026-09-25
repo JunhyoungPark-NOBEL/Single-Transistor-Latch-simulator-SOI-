@@ -1,7 +1,8 @@
 // Result panel card. One 40 px title row: title (+ at most one status badge: 변경됨 > 오류 > 데모), at most one
 // visible control (`toolbar`), 📖 (Details) and ⋯ (PanelMenu: 보기 toggles + 내보내기 CSV/PNG). The description
-// shows only while the panel is empty (otherwise it is the title's tooltip). Below: the plot (or table
-// children), then one muted footnote line (`foot`) and the server notices.
+// shows only while the panel is empty (otherwise it is the title's tooltip) — except inside a MoreCard tab,
+// where it stays as a one-line caption ("what to look for"), since the tab has no visible title. Below: the
+// plot (or table children), then one muted footnote line (`foot`) that also carries the server notices.
 // Empty state: a primary (hero) panel offers the big Run button; other panels show a quiet placeholder.
 // Inside a MoreCard tab (MoreCardContext.embedded) the card border goes, the h3 is visually hidden (the tab
 // label is the title) and the badge/📖/⋯ move into the tab row (MoreSlotContext); the toolbar sits under it.
@@ -72,23 +73,23 @@ export function Progress({ value, indeterminate }: { value: number; indeterminat
   );
 }
 
-/** Informational server warnings: a small collapsible notice (most runs carry a few). */
-export function Notices({ items }: { items: string[] }) {
+/** Informational server notes: a small collapsible pill (most runs carry a few). `inline`: at the end of the
+ *  footnote line (no second row under the card, so side-by-side cards keep even bottoms). */
+export function Notices({ items, inline }: { items: string[]; inline?: boolean }) {
   const t = useT();
-  return (
-    <div className="panel-foot">
-      <details className="notices" data-testid="notices">
-        <summary>
-          {t("warnings")} · {items.length}
-        </summary>
-        <ul>
-          {items.map((w, i) => (
-            <li key={i}>{w}</li>
-          ))}
-        </ul>
-      </details>
-    </div>
+  const body = (
+    <details className={`notices${inline ? " inline" : ""}`} data-testid="notices">
+      <summary>
+        {t("warnings")} · {items.length}
+      </summary>
+      <ul>
+        {items.map((w, i) => (
+          <li key={i}>{w}</li>
+        ))}
+      </ul>
+    </details>
   );
+  return inline ? body : <div className="panel-foot">{body}</div>;
 }
 
 const hasFoot = (f: ReactNode) => f != null && f !== false && f !== "";
@@ -159,6 +160,8 @@ export function Panel(p: PanelProps) {
     </>
   );
   const showDesc = !!p.desc && !p.hasData && !(p.primary && !running);
+  // a MoreCard tab has no visible title: its description stays as a one-line caption once data is in
+  const caption = embedded && !!p.desc && p.hasData;
 
   // plot-area click → data x (Plotly's axis objects: _offset/_length in px, p2l pixel → value). Plotly covers
   // the page while a pointer is down (drag layer), so the release is caught on the document.
@@ -220,8 +223,8 @@ export function Panel(p: PanelProps) {
               </div>,
               slot,
             )}
-          {showDesc && (
-            <div className="panel-desc embedded-desc">
+          {(showDesc || caption) && (
+            <div className={`panel-desc embedded-desc${caption ? " caption" : ""}`} title={caption ? p.desc : undefined} data-testid={caption ? `panel-caption-${p.id}` : undefined}>
               <SubText text={symbolSubs(p.desc!)} />
             </div>
           )}
@@ -232,7 +235,9 @@ export function Panel(p: PanelProps) {
           {/* title and the one control share a line while they fit; a wider toolbar wraps under the title */}
           <div className="panel-headmain">
             <h3 className="panel-title" id={`panel-${p.id}-title`} title={p.hasData && p.desc ? p.desc : undefined}>
-              <span className="pt-text">{p.title}</span>
+              <span className="pt-text">
+                <SubText text={symbolSubs(p.title)} />
+              </span>
               {status}
               {p.badges}
             </h3>
@@ -292,8 +297,19 @@ export function Panel(p: PanelProps) {
         </div>
       )}
       {p.children}
-      {hasFoot(p.foot) && <div className="panel-footnote">{p.foot}</div>}
-      {p.warnings && p.warnings.length > 0 && <Notices items={p.warnings} />}
+      {hasFoot(p.foot) ? (
+        <div className="panel-footnote">
+          {p.foot}
+          {p.warnings && p.warnings.length > 0 && (
+            <>
+              {" "}
+              <Notices items={p.warnings} inline />
+            </>
+          )}
+        </div>
+      ) : (
+        p.warnings && p.warnings.length > 0 && <Notices items={p.warnings} />
+      )}
     </section>
   );
 }

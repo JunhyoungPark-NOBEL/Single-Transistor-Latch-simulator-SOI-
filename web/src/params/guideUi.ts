@@ -29,6 +29,17 @@ export function firstSentence(s: string): string {
   }
 }
 
+/** Guide text for the inline line beside a main field: the whole intuitive picture (both sentences, so the
+ *  plain "what happens" half is never cut off) with parenthetical glosses collapsed to their first term:
+ *  "(GIDL, 게이트 유도 드레인 누설: …)" → "(GIDL)". Short parentheticals without a gloss ("(유량)") stay.
+ *  The popover and the Details window keep the full text. */
+export function inlineLead(s: string): string {
+  return s
+    .trim()
+    .replace(/\(([^()]{1,12}?)\s*[,:：][^()]*\)/g, "($1)")
+    .replace(/\s{2,}/g, " ");
+}
+
 export type EffectDir = "up" | "down" | "flat";
 export interface Effect {
   /** Quantity the line is about: a leading "V_LU" or "V_LD". */
@@ -41,6 +52,10 @@ export interface Effect {
   mean: boolean;
   /** The spread σ moves in a later "· …" clause (e.g. "→ 거의 그대로 · σ 약 2배"). */
   sigma?: "up" | "down";
+  /** How much the parameter was raised for this number: the bracket after the magnitude ("+0.1 V",
+   *  "0 → 1.9 pA", "×10"; only its first comma-separated part). Omitted for "→" lines and for brackets
+   *  that qualify the result instead ("<1 mV", "거의 그대로"). */
+  step?: string;
 }
 
 const ARROW = /[↑↓→]/u;
@@ -60,6 +75,9 @@ export function parseEffect(line: string | null | undefined): Effect | null {
   if (dir !== "flat") {
     const m = s.slice(i + 1).match(MAG);
     if (m) out.mag = `${m[1]} ${m[2]}`;
+    const b = s.slice(i + 1).match(/\(([^()]*)\)/);
+    const step = b?.[1].split(/[,，]/)[0].trim();
+    if (step && /^[+−-]?\s*[\d.]|[+×→]/.test(step) && !/[<≤]|그대로|unchanged|같음|same/i.test(step)) out.step = step;
   }
   // a later "· σ …" clause: the mean may stay put while the spread grows or shrinks
   const rest = s.slice(i + 1);

@@ -15,6 +15,7 @@ import { usePrevRun } from "../state/prevRuns";
 import { useStore } from "../state/store";
 import { fmtDuration, fmtSI, isNum } from "../utils/format";
 import { branchesPayload, sweepMcPayload } from "../utils/payload";
+import { describe, diffSeries } from "../stats/describe";
 import { isStale, useCurrentKey, useEntry } from "./common";
 import "./device.css";
 
@@ -125,10 +126,13 @@ export function KpiStrip() {
     const loading = !br && (be?.status === "running" || be?.status === "queued");
     const f = br?.folds;
     const noLatch = !!br && !br.latch;
+    // the fold pair exists but V_LU lies above the sweep peak: the 0 → V_D,max sweep never latches up
+    const sweepTop = br?.vd_max_V ?? params.sweep.vd_max_V;
+    const beyond = !!br && br.latch && isNum(f?.V_LU) && f!.V_LU! > sweepTop + 1e-9;
     const win = f ? (f.window_V ?? (isNum(f.V_LU) && isNum(f.V_LD) ? f.V_LU - f.V_LD : null)) : null;
     const pf = prevBr?.data.folds;
     const pWin = pf ? (pf.window_V ?? (isNum(pf.V_LU) && isNum(pf.V_LD) ? pf.V_LU - pf.V_LD : null)) : null;
-    const hasPrev = !!pf && !!br && !noLatch && prevBr!.data.latch;
+    const hasPrev = !!pf && !!br && !noLatch && !beyond && prevBr!.data.latch;
     const tip = (lines: (string | false | null | undefined)[]) => lines.filter(Boolean).join("\n") || undefined;
     const common = br ? [isNum(br.iph_A) ? `I_PH = ${fmtSI(br.iph_A, "A", 3)}` : null, runtime(br.runtime_s, be?.cached)] : [];
     const noLatchVal = <span className="ans-nolatch">{t.l(DEV["kpi.nolatch"])}</span>;
@@ -140,8 +144,15 @@ export function KpiStrip() {
           ? fill(t.l(DEV["kpi.nolatch.window"]), { lo: signed(w.vg_low, 2), hi: signed(w.vg_high, 2) })
           : t.l(DEV["kpi.nolatch.vdmax"])
         : t.l(DEV["kpi.nolatch.hint"]);
+    const beyondSub = (
+      <span className="ans-hint" data-testid="kpi-vlu-beyond" title={t.l(DEV["kpi.beyondVdmax.hint"]).replace(/[{}]/g, "")}>
+        <SubText text={subs(fill(t.l(DEV["kpi.beyondVdmax"]), { v: String(sweepTop) }))} />
+      </span>
+    );
     const sub = (id: string, meaning: string, now: number | null | undefined, before: number | null | undefined) =>
-      noLatch ? (
+      beyond && id === "vlu" ? (
+        beyondSub
+      ) : noLatch ? (
         id === "vlu" ? (
           <span className="ans-hint">
             <SubText text={subs(noLatchHint)} />
@@ -162,7 +173,7 @@ export function KpiStrip() {
           sym={SYM.vlu}
           color="var(--hrs)"
           loading={loading}
-          value={noLatch ? noLatchVal : v3(f?.V_LU)}
+          value={noLatch ? noLatchVal : beyond ? <span className="ans-nolatch">{v3(f?.V_LU)}</span> : v3(f?.V_LU)}
           unit={noLatch || !br ? undefined : "V"}
           sub={sub("vlu", t.l(DEV["kpi.meaning.vlu"]), f?.V_LU, pf?.V_LU)}
           title={f ? tip([isNum(f.u_LU) && `u_LU = ${v3(f.u_LU)} V`, isNum(f.I_LU) && `I_LU = ${fmtSI(f.I_LU, "A", 3)}`, ...common]) : undefined}
@@ -184,10 +195,10 @@ export function KpiStrip() {
           sym={SYM.win}
           color="var(--text)"
           loading={loading}
-          value={noLatch ? "—" : v3(win)}
-          unit={isNum(win) && !noLatch ? "V" : undefined}
+          value={noLatch || beyond ? "—" : v3(win)}
+          unit={isNum(win) && !noLatch && !beyond ? "V" : undefined}
           sub={
-            noLatch ? undefined : hasPrev ? (
+            noLatch || beyond ? undefined : hasPrev ? (
               <Delta id="window" t={t} now={win} before={pWin} />
             ) : (
               <span className="ans-meaning">
@@ -203,6 +214,8 @@ export function KpiStrip() {
     const lu = mc?.stats.LU;
     const ld = mc?.stats.LD;
     const win = isNum(lu?.mean) && isNum(ld?.mean) ? lu!.mean! - ld!.mean! : null;
+    // spread of the per-cycle window V_LU − V_LD (as large as the V_LU spread: the two are not independent)
+    const winSd = mc ? describe(diffSeries(mc.V_LU, mc.V_LD)).sd : null;
     const m = mc?.measured;
     const mLu = m?.stats.LU;
     const mLd = m?.stats.LD;
@@ -265,6 +278,7 @@ export function KpiStrip() {
           loading={loading}
           value={mc ? v3(win) : "—"}
           unit={isNum(win) ? "V" : undefined}
+          pm={mc && isNum(winSd) ? `±\u00a0${sdMV(winSd)}\u00a0mV` : undefined}
           sub={sub(
             "window",
             isNum(mWin) ? fill(t.l(DEV["kpi.measured"]), { v: `${v3(mWin)}\u00a0V` }) : undefined,

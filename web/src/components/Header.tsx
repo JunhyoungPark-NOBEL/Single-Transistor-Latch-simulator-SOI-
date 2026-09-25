@@ -10,6 +10,8 @@ import type { StrKey } from "../i18n/strings";
 import type { Tab } from "../params/schema";
 import { initBackend } from "../state/runner";
 import { useStore } from "../state/store";
+import { subs } from "../plots/labels";
+import { SubText } from "../plots/SubText";
 import { Credits } from "./Credits";
 import { IconMenu, IconMoon, IconSun } from "./icons";
 import { Logo } from "./Logo";
@@ -244,7 +246,7 @@ export function ContextStrip() {
     <div className={`modestrip${hasMode(tab) ? "" : " no-mode"}`} data-testid="modebar">
       {phone && hasMode(tab) && <ModeToggle compact />}
       <span className="hint" data-testid="mode-hint" title={modeHintTech(t, tab, mode, method)}>
-        {hint}
+        <SubText text={subs(hint)} />
       </span>
       <StatusPill />
       <Credits />

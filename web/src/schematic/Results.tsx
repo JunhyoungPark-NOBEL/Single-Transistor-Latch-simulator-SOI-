@@ -161,10 +161,16 @@ function WaveViewer({ res, entry, stale }: { res: CustomCircuitResult; entry: Re
     });
     // latch events of run 0 as small markers along the top
     const evs = res.events.filter((e) => e.run === 0 && (e.kind === "latch_up" || e.kind === "latch_down")).slice(0, 80);
-    layout.annotations = evs.map((e) => ({
-      x: e.t * ts, xref: "x", y: 1, yref: "paper", yanchor: "bottom", showarrow: false, text: e.kind === "latch_up" ? "▲" : "▼",
-      font: { size: 9, color: e.kind === "latch_up" ? c.lrs : c.hrs }, hovertext: `${e.cell ?? ""} ${e.kind} · t = ${fmtSI(e.t, "s", 4)}${isNum(e.v_d) ? ` · V<sub>D</sub> = ${e.v_d.toFixed(3)} V` : ""}`,
-    })) as Layout["annotations"];
+    // latch-up ▲ in the V_LU colour (--hrs), latch-down ▼ in the V_LD colour (--lrs), stacked so they never merge
+    const anns = evs.map((e) => ({
+      x: e.t * ts, xref: "x", y: 1, yref: "paper", yanchor: "bottom", showarrow: false, text: e.kind === "latch_up" ? "▲" : "▼", yshift: e.kind === "latch_down" ? 11 : 0,
+      font: { size: 9, color: e.kind === "latch_up" ? c.hrs : c.lrs }, hovertext: `${e.cell ?? ""} ${t(e.kind === "latch_up" ? "c.ev.latch_up" : "c.ev.latch_down")} · t = ${fmtSI(e.t, "s", 4)}${isNum(e.v_d) ? ` · V<sub>D</sub> = ${e.v_d.toFixed(3)} V` : ""}`,
+    })) as NonNullable<Layout["annotations"]>;
+    // stochastic: say what the bold / faint lines and the markers are (the default shows the ensemble mean)
+    if (sto && res.envelopes?.length)
+      anns.push({ x: 0, xref: "paper", xanchor: "left", y: 1, yref: "paper", yanchor: "bottom", yshift: evs.length ? 22 : 0, showarrow: false, text: t(showRuns ? "schematic.res.stoKey" : "schematic.res.stoKeyMean", { n: res.runs.length }), font: { size: 10.5, color: c.muted } } as NonNullable<Layout["annotations"]>[number]);
+    layout.annotations = anns;
+    if (sto && res.envelopes?.length) layout.margin = { ...layout.margin, t: evs.length ? 50 : 36 };
     return { data, layout, n };
   }, [present, res, logI, showRuns, showBand, sto, ts, tu, c, t, colorOf]);
 
@@ -346,8 +352,11 @@ function hexA(hex: string, a: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
-/** Summary cells of the schematic results (per the first STL), in this order when present. */
-function schPriority(sto: boolean): string[] {
+/** Summary cells of the schematic results (per the first STL), in this order when present. With a comparator
+ *  (p-bit) the drain sits on a flat pulse top when it latches: V_DS at the first latch-up is just the pulse
+ *  level and a "latch-up frequency" is not an oscillation, so the random latch delay takes their place. */
+function schPriority(sto: boolean, comparator = false): string[] {
+  if (comparator) return ["n_latch_up", "*.p_fire", "t_first_lu", sto ? "p_any_lu" : "final_state", "final_state", sto ? "p_latched_end" : "latched_end"];
   return ["n_latch_up", "*.p_fire", "f_osc", "vd_first_lu", sto ? "p_any_lu" : "t_first_lu", "final_state", sto ? "p_latched_end" : "latched_end"];
 }
 
@@ -554,7 +563,7 @@ export function Results({ entry, stale, cells }: { entry: ResultEntry | undefine
   const nRuns = res.mode === "stochastic" ? Math.max(res.runs.length, ...res.events.map((e) => e.run + 1), data?.request.stochastic?.n_runs ?? 0) : 1;
   const ss = res.solver_stats;
   const sto = res.mode === "stochastic";
-  const summary = <SummaryStrip items={res.summary} priority={schPriority(sto)} testId="sch-summary" prefix="sch-" moreTestId="sch-summary-more" firstOf={cells[0]} stale={stale} />;
+  const summary = <SummaryStrip items={res.summary} priority={schPriority(sto, res.summary.some((x) => x.key.endsWith(".p_fire")))} testId="sch-summary" prefix="sch-" moreTestId="sch-summary-more" firstOf={cells[0]} stale={stale} />;
   const demo = data?.demoFallback && (
     <div className="callout warn" role="status" data-testid="sch-demo-fallback">
       {t("schematic.run.demoFallback")}

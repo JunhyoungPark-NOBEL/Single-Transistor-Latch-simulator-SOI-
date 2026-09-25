@@ -344,6 +344,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .badge.err { background: var(--err-soft); color: var(--err); }
 .badge.sto { background: var(--sto-soft); color: var(--sto-strong); }
 .badge.det { background: var(--det-soft); color: var(--det-strong); }
+/* circuit events: latch-up in the V_LU colour, latch-down in the V_LD colour */
+.badge.lu { background: color-mix(in srgb, var(--hrs) 14%, transparent); color: var(--hrs); }
+.badge.ld { background: color-mix(in srgb, var(--lrs) 14%, transparent); color: var(--lrs); }
 .overlay { position: absolute; inset: 0 8px 8px; display: grid; place-items: center; pointer-events: none; }
 .overlay-card { pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; max-width: 360px; padding: 16px 20px; border-radius: 12px; background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--border); box-shadow: var(--shadow-2); font-size: 13px; color: var(--text-2); }
 .overlay-card .progress { width: 220px; }
@@ -509,6 +512,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .val-table tr.fail td { background: var(--err-soft); }
 .val-table tr.na td { color: var(--muted); }
 .val-tol { color: var(--muted); white-space: nowrap; }
+/* compact table: engine strings on one line (full text in the tooltip) */
+.val-clamp { display: block; max-width: 34ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .val-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; padding: 8px 16px 14px; }
 .val-empty { margin: 0; padding: 0 16px 16px; }
 .val-head { flex-wrap: wrap; }
@@ -595,6 +600,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .notices[open] summary { color: var(--text-2); }
 .notices ul { margin: 6px 0 0; padding-left: 18px; color: var(--text-2); line-height: 1.45; }
 .notices li { margin: 2px 0; }
+/* notes pill at the end of a panel's footnote line; the list opens on its own full-width line */
+.notices.inline { display: inline; }
+.notices.inline[open] { display: block; margin-top: 4px; }
 .panel-actions { display: flex; align-items: center; gap: 4px; flex: none; }
 .icon-btn.xs { width: 26px; height: 26px; border-radius: 7px; border-color: transparent; background: transparent; color: var(--muted); }
 .icon-btn.xs:hover { border-color: var(--border); background: var(--surface-2); color: var(--text); }

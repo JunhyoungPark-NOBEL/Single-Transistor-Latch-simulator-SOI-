@@ -18,7 +18,7 @@ function DetLayout() {
   const results = useStore((s) => s.results);
   const keys = useDeviceKeys();
   const tabs: MoreTab[] = [
-    { id: "vg", label: t.l(DEV["tab.vg"]), title: t("p.vg.desc"), panel: <VgPanel />, status: entryStatus(results.vg_curve, keys.vg_curve) },
+    { id: "vg", label: t.l(DEV["tab.vg"]), plainLabel: t.l(DEV["tab.vg.plain"]), title: t("p.vg.desc"), panel: <VgPanel />, status: entryStatus(results.vg_curve, keys.vg_curve) },
     { id: "components", label: t.l(DEV["tab.components"]), title: t("p.comp.desc"), panel: <ComponentsPanel />, status: entryStatus(results.branches, keys.branches) },
     { id: "charge-balance", label: t.l(DEV["tab.cb"]), title: t("p.cb.desc"), panel: <ChargeBalancePanel />, status: entryStatus(results.charge_balance, keys.charge_balance) },
   ];
@@ -35,7 +35,7 @@ function StoLayout() {
     { id: "dist", label: t.l(DEV["tab.dist"]), title: t("p.dist.desc"), panel: <DistPanel />, status: mc },
     { id: "hazard", label: t.l(DEV["tab.hazard"]), title: t("p.hazard.desc"), panel: <HazardPanel />, status: entryStatus(results.hazard, keys.hazard) },
     { id: "cycles", label: t.l(DEV["tab.cycles"]), title: t("p.cycles.desc"), panel: <CyclePanel />, status: mc },
-    { id: "vg-sto", label: t.l(DEV["tab.vgs"]), title: t("p.vgs.desc"), panel: <VgStochPanel />, status: entryStatus(results.vg_curve_stochastic, keys.vg_curve_stochastic) },
+    { id: "vg-sto", label: t.l(DEV["tab.vgs"]), plainLabel: t.l(DEV["tab.vgs.plain"]), title: t("p.vgs.desc"), panel: <VgStochPanel />, status: entryStatus(results.vg_curve_stochastic, keys.vg_curve_stochastic) },
     { id: "design-map", label: t.l(DEV["tab.dmap"]), title: t("p.dmap.desc"), panel: <DesignMapPanel />, status: mergeStatus(dm.status === "loading" ? "running" : dm.status === "error" ? "error" : null) },
   ];
   return <FocusLayout testId="panels-stochastic" scope="device-sto" hero={<McIvPanel />} tabs={tabs} defaultTab="dist" side allOrder={["hero", "dist", "hazard", "vg-sto", "cycles", "design-map"]} />;

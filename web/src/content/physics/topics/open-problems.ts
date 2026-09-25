@@ -5,7 +5,7 @@ const r = String.raw;
 
 const topic: PhysicsTopic = {
   id: "open-problems",
-  title: L("열린 문제와 UI 옵션", "Open problems and UI options"),
+  title: L("미해결 문제와 선택 옵션", "Open problems and options"),
   summary: L(
     "아직 답이 정해지지 않은 세 가지 문제 — 광조사 보정에서 −1.1 V의 채널 시드, 국소 상태의 작용점, 스윕 사이에 남는 정공 — 는 코드가 답을 강요하지 않도록 모두 선택 옵션으로 둔다. 기본값은 확장 없는 기본 모델이다.",
     "Three questions that are still open — the channel seed at −1.1 V in the illumination calibration, the action point of the local state, and residual holes between sweeps — are all exposed as options, so the code never forces an answer. The default is the base model without extensions.",

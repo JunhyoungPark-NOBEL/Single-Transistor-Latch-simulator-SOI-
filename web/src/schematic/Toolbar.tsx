@@ -5,6 +5,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { selectMoreTab } from "../components/MoreCard";
 import { useT, type T } from "../i18n";
+import { subs } from "../plots/labels";
+import { SubText } from "../plots/SubText";
 import type { StrKey } from "../i18n/strings";
 import { deviceName } from "../devices/library";
 import { useDeviceLib } from "../devices/store";
@@ -279,13 +281,16 @@ export function Toolbar() {
                 role="menuitem"
                 className="sch-menu-item"
                 data-testid={`tpl-${id}`}
+                title={t(TEMPLATE_TEXT[id].desc)}
                 onClick={() => {
                   loadTemplate(id, t);
                   close();
                 }}
               >
                 <strong>{t(TEMPLATE_TEXT[id].title)}</strong>
-                <span>{t(TEMPLATE_TEXT[id].desc)}</span>
+                <span className="tpl-desc">
+                  <SubText text={subs(t(TEMPLATE_TEXT[id].desc))} />
+                </span>
               </button>
             ))}
           </>

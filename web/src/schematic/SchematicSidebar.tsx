@@ -9,6 +9,8 @@ import { deviceName, type LibDevice } from "../devices/library";
 import { SaveDeviceForm } from "../devices/DeviceCard";
 import { useDeviceLib } from "../devices/store";
 import { LOCAL_ACTION_OPTIONS, LOCAL_MODE_OPTIONS } from "../params/schema";
+import { subs } from "../plots/labels";
+import { SubText } from "../plots/SubText";
 import { useIsAll } from "../state/layout";
 import { useStore } from "../state/store";
 import { fmtDuration, fmtSI as fmtSIu } from "../utils/format";
@@ -68,10 +70,15 @@ function LibraryCard() {
                 <PartIcon kind="STL" size={20} />
               </span>
               <span className="lib-text">
-                <span className="lib-name">{d.id === "current" ? t("schematic.lib.current") : deviceName(d, lang)}</span>
+                <span className="lib-name">
+                  {/* one flex item (the name carries "V_G = −2 V": rendered with a subscript) */}
+                  <span>
+                    <SubText text={subs(d.id === "current" ? t("schematic.lib.current") : deviceName(d, lang))} />
+                  </span>
+                </span>
                 <span className="lib-meta mono">
                   {d.builtin && <span className="lib-badge">{t("schematic.lib.builtin")}</span>}
-                  V<sub>G</sub> {d.device.vg.toFixed(2)} V · {iph ? <>I<sub>PH</sub> {fmtSIu(iph * 1e-12, "A", 3)}</> : t("schematic.lib.dark")} · {d.stochastic.local_state.mode}
+                  V<sub>G</sub> {d.device.vg.toFixed(2).replace("-", "−")} V · {iph ? <>I<sub>PH</sub> {fmtSIu(iph * 1e-12, "A", 3)}</> : t("schematic.lib.dark")} · {t("schematic.lib.local", { mode: t(`local.mode.short.${d.stochastic.local_state.mode}` as never) })}
                 </span>
               </span>
               <button type="button" className={`btn sm${active ? " primary" : ""}`} onClick={() => place(d)} aria-label={t("schematic.lib.placeAria", { name: d.id === "current" ? t("schematic.lib.current") : deviceName(d, lang) })} data-testid="lib-place">

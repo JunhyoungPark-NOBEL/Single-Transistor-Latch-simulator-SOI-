@@ -48,7 +48,7 @@ function Row({ d, onPlace, onLoad }: { d: LibDevice; onPlace: (d: LibDevice) => 
           <GeometryLine g={d.geometry} />
         </div>
         <div className="dm-meta mono">
-          V<sub>G</sub> {dev.vg.toFixed(2)} V · {iph ? <>I<sub>PH</sub> {fmtSI(iph * 1e-12, "A", 3)}</> : t("schematic.lib.dark")} · {t("schematic.lib.local", { mode: d.stochastic.local_state.mode })}
+          V<sub>G</sub> {dev.vg.toFixed(2).replace("-", "−")} V · {iph ? <>I<sub>PH</sub> {fmtSI(iph * 1e-12, "A", 3)}</> : t("schematic.lib.dark")} · {t("schematic.lib.local", { mode: t(`local.mode.short.${d.stochastic.local_state.mode}` as never) })}
           {!d.builtin && ` · ${t("schematic.dev.fromDevice", { base: calibPart(t.l(d.calibration_label)) })}`}
         </div>
         {d.notes && <div className="dm-notes">{d.notes}</div>}

@@ -81,6 +81,8 @@ test.describe("STL simulator (mock mode)", () => {
     await expect(win.locator(".katex").first()).toBeVisible();
     // the page is still usable (non-modal): no page navigation, tabs still there
     await expect(page.getByTestId("main-device")).toBeVisible();
+    // measure at rest: the window slides in (pwIn, a few px of translateY) — a box taken mid-animation is off
+    await win.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)).then(() => undefined));
     const box = await win.boundingBox();
     const bbox = await btn.boundingBox();
     expect(box && bbox).toBeTruthy();
@@ -272,8 +274,9 @@ test.describe("UX regressions", () => {
     await page.getByTestId("field-method").getByRole("radio", { name: "TRAP" }).click();
     await expect(hint).toContainText("TRAP");
     await page.getByTestId("mode-stochastic").click();
-    await expect(hint).toContainText("Eq. 2");
-    await expect(hint).toContainText("Q_B");
+    // plain sentence with a subscript (Q_B renders as Q<sub>B</sub>); "Eq. 2" only in the technical tooltip
+    await expect(hint).toContainText("QB");
+    await expect(hint).toHaveAttribute("title", /Eq\. 2/);
     await page.getByTestId("tab-device").click();
     await expect(hint).toContainText("MC");
   });

@@ -302,11 +302,16 @@ export function StatsTable({
                         </div>
                       )}
                     </th>
-                    {cols.map((c) => (
-                      <td key={c} className={`num${groupStart.has(c) && !compact ? " g-start" : ""}${COLUMN_GROUP[c] === "compare" ? " cmp" : ""}`} data-col={c} title={r.spec.cellTips?.[c]}>
-                        {fmt(r, c, "model", plan)}
-                      </td>
-                    ))}
+                    {cols.map((c) => {
+                      // KS p < 0.05: the model distribution differs from the measurement — flag it
+                      const pv = c === "ks_p" ? cellValue(r, c, "model") : null;
+                      const low = typeof pv === "number" && pv < 0.05;
+                      return (
+                        <td key={c} className={`num${groupStart.has(c) && !compact ? " g-start" : ""}${COLUMN_GROUP[c] === "compare" ? " cmp" : ""}${low ? " warn" : ""}`} data-col={c} title={low ? t("stats.line.ks.tip") : r.spec.cellTips?.[c]}>
+                          {fmt(r, c, "model", plan)}
+                        </td>
+                      );
+                    })}
                   </tr>
                   {showMeasRow && (
                     <tr className="meas" data-row={`${r.spec.key}:measured`}>

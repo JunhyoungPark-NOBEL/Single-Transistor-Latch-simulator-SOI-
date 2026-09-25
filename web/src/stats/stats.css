@@ -88,3 +88,5 @@
   .stats-label-col { min-width: 108px; }
   .stats-sub { max-width: 150px; }
 }
+/* KS p < 0.05: the distributions differ */
+.stats-table td.warn { color: var(--warn); font-weight: 650; }

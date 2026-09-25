@@ -77,6 +77,8 @@ export function fmtShare(v: number | null | undefined): string {
   if (!isNum(v)) return DASH;
   if (v === 0) return "0 %";
   const p = v * 100;
+  // 99.74 % must not print as "100 %" (that would claim every cycle), nor 0.04 % as "0 %"
+  if (p >= 99 && p < 100) return `${Math.min(p, 99.9).toFixed(1)} %`;
   return `${p >= 10 ? p.toFixed(0) : p >= 0.1 ? p.toFixed(1) : p.toPrecision(1)} %`;
 }
 

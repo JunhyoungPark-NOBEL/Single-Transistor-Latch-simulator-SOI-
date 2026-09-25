@@ -59,6 +59,11 @@ export interface FieldDef {
   /** Main field (간단히 layout): always visible, with a slider and the inline guide. Other fields of a basic
    *  group fold behind "고급 항목 n개" unless their value differs from the default. */
   main?: boolean | ((c: Ctx) => boolean);
+  /** List fields: an example in the field's own units (else the generic "쉼표로 구분" placeholder). */
+  placeholder?: L10n;
+  /** Auto fields whose value the client knows: the value (stored units) and where it comes from, shown as
+   *  "자동 = −2 V (바이어스·스윕의 V_G)" instead of a generic hint. */
+  autoValue?: (c: Ctx) => { v: number; src: L10n } | null;
 }
 export type CustomBlock = "light" | "seed" | "local-warning" | "bench";
 export interface GroupDef {
@@ -111,7 +116,7 @@ export const GROUPS: GroupDef[] = [
     topic: "charge-balance",
     tabs: ["device", "circuit"],
     fields: [
-      { key: "vg", path: ["device", "vg"], sym: "V_G", label: L("게이트 전압", "Gate voltage"), help: L("게이트-소스 전압 — 채널 전류와 게이트 가장자리 GIDL 전계에 들어갑니다", "Gate–source voltage — enters the channel current and the gate-edge GIDL field"), code: "p[11]", unit: "V", min: -6, max: 1, step: 0.01, slider: true, main: true },
+      { key: "vg", path: ["device", "vg"], sym: "V_G", label: L("게이트 전압", "Gate voltage"), help: L("게이트-소스 전압. 채널 전류와 게이트 가장자리 GIDL 전계를 정합니다", "Gate–source voltage; sets the channel current and the gate-edge GIDL field"), code: "p[11]", unit: "V", min: -6, max: 1, step: 0.01, slider: true, main: true },
       { key: "vd_max", path: ["sweep", "vd_max_V"], sym: "V_{D,\\max}", label: L("스윕 최대 전압", "Sweep peak"), help: L("삼각 스윕 0 → V_D,max → 0의 최고점 (서버 상한 8 V)", "Peak drain voltage of the triangular sweep 0 → V_D,max → 0 (server limit 8 V)"), unit: "V", min: 0.5, max: 8, step: 0.05, slider: true, show: isDevice, main: true },
       { key: "rate", path: ["sweep", "rate_V_per_s"], sym: "\\dot V_D", label: L("램프 속도", "Ramp rate"), help: L("드레인 전압 스윕 속도 — hazard 적분과 MC 시간축을 정합니다", "Drain-voltage sweep rate — sets the hazard integral and the MC time axis"), unit: "V/s", min: 1e-3, max: 1e5, slider: "log", show: isDevice, main: (c) => c.mode === "stochastic" },
       { key: "dv", path: ["sweep", "dv_V"], sym: "\\Delta V", label: L("전압 스텝", "Voltage step"), help: L("스윕 전압 간격 (MC 시간 스텝 Δt = ΔV / 램프 속도)", "Sweep voltage step (MC time step Δt = ΔV / ramp rate)"), unit: "mV", scale: 1e3, min: 0.1, max: 50, step: 0.1, show: isDevice },

@@ -5,9 +5,11 @@
 import type { CSSProperties } from "react";
 import type { SummaryItem } from "../api/types";
 import { useT } from "../i18n";
+import { subs } from "../plots/labels";
+import { SubText } from "../plots/SubText";
 import { useIsAll } from "../state/layout";
 import { isNum } from "../utils/format";
-import { splitUnit } from "./summary";
+import { fmtCoefValue, isCoefKey, splitSpread, splitUnit } from "./summary";
 
 /** Run metadata that never takes a summary cell (it is in the solver footnote or the run settings). */
 const META = new Set(["runs", "steps_per_run", "t_noise_resolved_frac", "truncated_runs"]);
@@ -18,7 +20,15 @@ const META = new Set(["runs", "steps_per_run", "t_noise_resolved_frac", "truncat
  * then the remaining items in server order, up to `max`. Returns [shown, rest].
  */
 export function pickSummary(items: SummaryItem[], priority: string[], max = 4, firstOf?: string): [SummaryItem[], SummaryItem[]] {
-  const pool = items.filter((s) => !META.has(s.key));
+  // a cell that repeats another within rounding (p-bit: latched fraction = P(1)) yields its place
+  const num = (k: string) => {
+    const v = items.find((s) => s.key === k)?.value;
+    return typeof v === "number" ? v : null;
+  };
+  const p1 = num("P1");
+  const pl = num("P_latched");
+  const dup = new Set(p1 !== null && pl !== null && Math.abs(p1 - pl) < 0.005 ? ["P_latched"] : []);
+  const pool = items.filter((s) => !META.has(s.key) && !dup.has(s.key));
   const shown: SummaryItem[] = [];
   const matches = (s: SummaryItem, p: string) => {
     if (s.key === p) return true;
@@ -51,10 +61,15 @@ export function summaryColor(key: string): string | undefined {
 }
 
 function display(s: SummaryItem) {
-  const v = splitUnit(s.value, s.unit);
-  const sp = isNum(s.spread) ? splitUnit(s.spread, s.unit, s.unit === "V" ? "mV" : undefined) : null;
+  const coef = isCoefKey(s.key) && typeof s.value === "number" && isNum(s.value);
+  const v = coef ? { value: fmtCoefValue(s.value as number), unit: "" } : splitUnit(s.value, s.unit);
+  // at most 2 significant digits, hidden when it rounds to 0 in the shown unit ("3.689 V", not "± 0.0 mV")
+  const sp = isNum(s.spread) ? splitSpread(s.spread, s.unit) : null;
   return { v, sp };
 }
+
+/** Server labels: symbols as subscripts, "SD" as σ (the device tab's word for the spread). */
+const labelText = (label: string) => subs(label.replace(/\bSD\b/g, "σ"));
 
 function Cell({ s, prefix }: { s: SummaryItem; prefix: string }) {
   const t = useT();
@@ -63,14 +78,16 @@ function Cell({ s, prefix }: { s: SummaryItem; prefix: string }) {
   const label = t.l(s.label);
   return (
     <div className="sum-cell" data-testid={`kpi-${prefix}${s.key}`} title={`${label} · ${s.key}`}>
-      <div className="sum-label">{label}</div>
+      <div className="sum-label">
+        <SubText text={labelText(label)} />
+      </div>
       <div className="sum-value" style={color ? ({ color } as CSSProperties) : undefined}>
         <span data-testid={`kpi-${prefix}${s.key}-value`}>
           {v.value}
           {v.unit && <span className="u">{v.unit}</span>}
         </span>
         {sp && (
-          <span className="sum-spread">
+          <span className="sum-spread" title={t("c.spread.title")}>
             ± {sp.value} {sp.unit}
           </span>
         )}
@@ -124,7 +141,9 @@ export function SummaryStrip({ items, priority, testId, prefix, moreTestId, firs
               const color = summaryColor(s.key);
               return (
                 <div key={s.key} className="sum-row" data-testid={`kpi-${prefix}${s.key}`} title={s.key}>
-                  <dt>{t.l(s.label)}</dt>
+                  <dt>
+                    <SubText text={labelText(t.l(s.label))} />
+                  </dt>
                   <dd className="mono" style={color ? { color } : undefined}>
                     <span data-testid={`kpi-${prefix}${s.key}-value`}>
                       {v.value}

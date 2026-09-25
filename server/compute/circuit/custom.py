@@ -1630,7 +1630,7 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             summary += [
                 _item(f"{nm}.period", f"{nm} 래치업 간격 평균 (발진 주기)", f"{nm} mean interval between latch-ups (period)",
                       m_i, "s", sd_i),
-                _item(f"{nm}.f_osc", f"{nm} 래치업 빈도 (1 / 평균 간격)", f"{nm} latch-up rate (1 / mean interval)", 1.0 / m_i, "Hz"),
+                _item(f"{nm}.f_osc", f"{nm} 래치업 주파수 (1 / 평균 간격)", f"{nm} latch-up rate (1 / mean interval)", 1.0 / m_i, "Hz"),
                 _item(f"{nm}.isi_cv", f"{nm} 한 실행 안에서 래치업 간격의 변동계수 (CV, 스파이크 타이밍 지터)",
                       f"{nm} coefficient of variation of the intervals within a run (spike-timing jitter)", cv_in, "1"),
                 _item(f"{nm}.vd_lu_mean", f"{nm} 래치업 시 V_DS (모든 사건 평균 ± SD)", f"{nm} V_DS at latch-up (all events, mean ± SD)",

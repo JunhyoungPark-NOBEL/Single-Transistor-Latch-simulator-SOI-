@@ -12,6 +12,7 @@ import { useT, type T } from "../i18n";
 import type { StrKey } from "../i18n/strings";
 import { DEV } from "../i18n/strings.device";
 import { fill, UX } from "../i18n/strings.ux";
+import { subs } from "../plots/labels";
 import { SubText } from "../plots/SubText";
 import { currentAxis, HOVER_IV } from "../plots/theme";
 import { useIsAll } from "../state/layout";
@@ -24,6 +25,18 @@ import { fmtDuration, isNum } from "../utils/format";
 import { powerMW } from "../utils/payload";
 import { isPaperReference, isStale, logRange, nums, pos, useDeviceKeys, useEntry, usePalette } from "./common";
 import { measuredIvTraces, RangePopover, ROW_LEGEND, Seg } from "./DetPanels";
+
+/** Local-state mode in words (never the raw id such as "evolving"). */
+export function localModeLabel(t: T, mode: string | undefined): string {
+  const k = `local.mode.${mode}` as StrKey;
+  return mode ? (t(k) === k ? mode : t(k)) : "";
+}
+
+/** Label of the local-state axis: the server's English label mapped by its action (the calibrated GIDL
+ *  action is the drain-edge GIDL potential δφ_G); other actions keep the server text. */
+export function stateAxisLabel(t: T, ax: { action: string; label: string }): string {
+  return ax.action === "gidl" ? t("cyc.state.gidl") : ax.label;
+}
 
 /** Readable engine name (never the raw id such as calibrated_lookup). */
 export function engineName(t: T, engine: string | undefined): string {
@@ -109,12 +122,17 @@ export function StatsPanel() {
   const m = data?.measured;
   const seed = data?.seed ?? params.stochastic.seed;
   const nTot = lu?.n_total ?? 0;
+  // KS p of the model vs the measured record, labelled per quantity; p < 0.05 (distributions differ) in warn colour
   const ks = useMemo(() => {
     if (!data?.measured) return null;
     const a = ks2(data.V_LU, data.measured.V_LU);
     const b = data.measured.V_LD ? ks2(data.V_LD, data.measured.V_LD) : null;
     if (a.p === null && (!b || b.p === null)) return null;
-    return [a.p, b?.p ?? null].filter((p, i) => i === 0 || p !== null).map((p) => fmtP(p)).join(" / ");
+    const items = [
+      { q: "V_LU", p: a.p },
+      { q: "V_LD", p: b?.p ?? null },
+    ].filter((x) => x.p !== null);
+    return { text: items.map((x) => `${x.q} ${fmtP(x.p)}`).join(" · "), low: items.some((x) => (x.p as number) < 0.05) };
   }, [data]);
   const running = entry?.status === "running" || entry?.status === "queued";
   const stale = isStale(entry, keys.sweep_mc);
@@ -124,7 +142,7 @@ export function StatsPanel() {
     ? [
         { key: "n", text: t("stats.line.cycles", { n: nTot }) },
         { key: "cens", text: t("stats.line.noLatch", { n: cens, pct: fmtShare(nTot ? cens / nTot : 0) }), cls: cens > 0 ? "warn" : undefined, title: t("stats.line.noLatch.tip") },
-        ...(ks ? [{ key: "ks", text: t("stats.line.ks", { p: ks }) }] : []),
+        ...(ks ? [{ key: "ks", text: t("stats.line.ks", { p: ks.text }), cls: ks.low ? "warn" : undefined, title: t("stats.line.ks.tip") }] : []),
         { key: "seed", text: t("stats.line.seed", { s: seed }) },
         { key: "sweep", text: t("stats.meta.sweep", { v: data.vd_max_V ?? params.sweep.vd_max_V, rate: data.rate_V_per_s ?? params.sweep.rate_V_per_s }) },
         { key: "engine", text: engineName(t, data.engine) },
@@ -152,7 +170,7 @@ export function StatsPanel() {
             parts.map((x, i) => (
               <span key={x.key} className={x.cls} title={x.title} data-testid={x.key === "cens" ? "stats-line-censored" : undefined}>
                 {i > 0 && <span className="sep"> · </span>}
-                {x.text}
+                <SubText text={subs(x.text)} />
               </span>
             ))
           ) : (
@@ -181,7 +199,11 @@ export function StatsPanel() {
           <StatsTable rows={rows} csvName="statistics_vlu_vld" allColumns={full} onAllColumnsChange={setAllCols} />
           {full && (
             <div className="stats-detail small muted">
-              {ci && <span data-testid="stats-ci">{ciText}</span>}
+              {ci && (
+                <span data-testid="stats-ci">
+                  <SubText text={subs(ciText ?? "")} />
+                </span>
+              )}
               <span className={cens > 0 ? "warn" : undefined} data-testid="stats-censored">
                 {t("stats.meta.censored", { n: cens, pct: fmtShare(nTot ? cens / nTot : 0) })}
               </span>
@@ -189,7 +211,12 @@ export function StatsPanel() {
           )}
           <div className="stats-foot small muted">
             {t("stats.foot.censoring")}
-            {m && m.V_LU.length > 0 && <> {measuredCaption(t, m.V_LU.length, params.device.vg, powerMW(params.device))}</>}
+            {m && m.V_LU.length > 0 && (
+              <>
+                {" "}
+                <SubText text={subs(measuredCaption(t, m.V_LU.length, params.device.vg, powerMW(params.device)))} />
+              </>
+            )}
           </div>
         </div>
       )}
@@ -211,6 +238,7 @@ export function McIvPanel() {
   const [showMeas, setShowMeas] = useState(true);
   const [showBand, setShowBand] = useState(false);
   const [showTraces, setShowTraces] = useState(true);
+  const isAll = useIsAll();
   const measKind = isPaperReference(params.device) ? "paper" : preset === "photo" ? "photo" : null;
   useEffect(() => {
     if (showMeas && measKind && measured.status === "idle") void loadMeasured();
@@ -220,7 +248,7 @@ export function McIvPanel() {
   const plot = useMemo(() => {
     if (!data) return undefined;
     const traces: Data[] = [];
-    if (showMeas) traces.push(...measuredIvTraces(t, c, measured.data, measKind, powerMW(params.device), { band: showBand && measKind === "paper", name: L("leg.meas"), bandName: L("leg.measBand") }));
+    if (showMeas) traces.push(...measuredIvTraces(t, c, measured.data, measKind, powerMW(params.device), { band: showBand && measKind === "paper", name: L("leg.meas"), bandName: L("leg.measBand"), onlyBest: !isAll }));
     // all MC traces in one trace separated by nulls (fast, one legend entry)
     const x: (number | null)[] = [];
     const y: (number | null)[] = [];
@@ -244,19 +272,27 @@ export function McIvPanel() {
       { x: lu, y: lu.map(() => 1), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.rugLu"), showlegend: false, marker: { symbol: "line-ns-open", size: 14, color: c.hrs, line: { width: 1.2 } }, opacity: 0.6, hovertemplate: "V<sub>LU</sub> = %{x:.3f} V<extra></extra>" },
       { x: ld, y: ld.map(() => 0), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.rugLd"), showlegend: false, marker: { symbol: "line-ns-open", size: 14, color: c.lrs, line: { width: 1.2 } }, opacity: 0.6, hovertemplate: "V<sub>LD</sub> = %{x:.3f} V<extra></extra>" },
     );
+    // MC means: dashed (the Distribution tab's dotted lines are the mean-model folds), labelled at the top
     const shapes: Partial<Shape>[] = [];
-    for (const [v, col] of [[data.stats.LU.mean, c.hrs], [data.stats.LD.mean, c.lrs]] as const)
-      if (isNum(v)) shapes.push({ type: "line", xref: "x", yref: "paper", x0: v, x1: v, y0: 0, y1: 1, line: { color: col, width: 1, dash: "dot" } });
+    const ann: NonNullable<Partial<Layout>["annotations"]> = [];
+    // both labels sit left of their line (V_LU is close to the sweep peak, so a label right of it would run off
+    // the plot), V_LD one row lower so the two never collide on a narrow plot
+    for (const [v, col, q, row] of [[data.stats.LU.mean, c.hrs, "LU", 0], [data.stats.LD.mean, c.lrs, "LD", 1]] as const)
+      if (isNum(v)) {
+        shapes.push({ type: "line", xref: "x", yref: "paper", x0: v, x1: v, y0: 0, y1: 1, line: { color: col, width: 1, dash: "dash" } });
+        ann.push({ x: v, y: 1, xref: "x", yref: "paper", yanchor: "top", xanchor: "right", xshift: -3, yshift: -14 * row, text: `${t("stats.mean")} V<sub>${q}</sub> ${v.toFixed(3)}`, showarrow: false, font: { size: 10.5, color: col } });
+      }
     const layout: Partial<Layout> = {
       xaxis: { title: { text: t("axis.vd") }, range: [0, params.sweep.vd_max_V + 0.15], anchor: "y2" },
       yaxis: { ...currentAxis(log, log ? t("axis.idAbs") : t("axis.id")), domain: [0.16, 1], ...(log ? { range: logRange(traces.filter((tr) => (tr as { yaxis?: string }).yaxis !== "y2").map((tr) => (tr as { y?: (number | null)[] }).y)) } : {}) },
       yaxis2: { domain: [0, 0.1], range: [-0.8, 1.8], showticklabels: false, showgrid: false, zeroline: false, ticks: "", showline: false, fixedrange: true },
       shapes,
+      annotations: ann,
       margin: { l: 64, r: 16, t: 30, b: 46 },
       legend: ROW_LEGEND,
     };
     return { data: traces, layout, className: "plot tall" };
-  }, [data, br, log, showMeas, showBand, showTraces, measured.data, measKind, params.sweep.vd_max_V, params.device, c, t]);
+  }, [data, br, log, showMeas, showBand, showTraces, measured.data, measKind, isAll, params.sweep.vd_max_V, params.device, c, t]);
 
   const menu: PanelMenuItem[] = [
     { kind: "check", id: "traces", label: L("menu.traces"), checked: showTraces, onChange: setShowTraces, testId: "mciv-traces" },
@@ -351,7 +387,9 @@ export function DistPanel() {
           const mc = histFromEdges(s.meas, edges);
           const scale = s.model.length / s.meas.length;
           const mn = t("axis.leg.meas", { s: s.label });
-          traces.push({ x: centers, y: mc.map((v) => v * scale), type: "scatter", mode: "lines", line: { shape: "hvh", color: c.meas, width: 1.6 }, name: `${mn}${Math.abs(scale - 1) > 1e-9 ? ` (×${scale.toFixed(2)})` : ""}`, hovertemplate: `${s.label} = %{x:.3f} V<br>n = %{y:.1f}<extra>${mn}</extra>` });
+          // measured counts rescaled to the model cycle count: said in the hover, not in the legend name
+          const note = Math.abs(scale - 1) > 1e-9 ? `<br>${fill(t.l(DEV["foot.hist.scale"]), { s: scale.toFixed(2) })}` : "";
+          traces.push({ x: centers, y: mc.map((v) => v * scale), type: "scatter", mode: "lines", line: { shape: "hvh", color: c.meas, width: 1.6 }, name: mn, hovertemplate: `${s.label} = %{x:.3f} V<br>n = %{y:.1f}${note}<extra>${mn}</extra>` });
         }
       } else {
         const cm = modelCdf(data.cdf?.[s.k], s.raw);
@@ -367,7 +405,7 @@ export function DistPanel() {
     const layout: Partial<Layout> = {
       barmode: "overlay",
       bargap: 0,
-      xaxis: { title: { text: which === "LU" ? t("axis.vlu") : which === "LD" ? t("axis.vld") : t("axis.vSwitch") } },
+      xaxis: { title: { text: which === "LU" ? t("axis.vlu") : which === "LD" ? t("axis.vld") : t("axis.vSwitch") }, nticks: 8 },
       yaxis: view === "hist" ? { title: { text: t("axis.count") }, rangemode: "tozero" } : { title: { text: t("axis.cdf") }, range: [0, 1.02] },
       shapes,
       margin: { l: 56, r: 16, t: 40, b: 46 },
@@ -459,12 +497,13 @@ export function HazardPanel() {
     const ann: NonNullable<Partial<Layout>["annotations"]> = [];
     if (isNum(data.fold_V)) {
       shapes.push({ type: "line", xref: "x", yref: "paper", x0: data.fold_V, x1: data.fold_V, y0: 0, y1: 1, line: { color: c.hrs, width: 1.2, dash: "dash" } });
-      ann.push({ x: data.fold_V, y: 1, xref: "x", yref: "paper", yanchor: "bottom", text: `fold ${data.fold_V.toFixed(3)} V`, showarrow: false, font: { size: 11, color: c.hrs } });
+      ann.push({ x: data.fold_V, y: 1, xref: "x", yref: "paper", yanchor: "bottom", text: `${t("hz.fold")} ${data.fold_V.toFixed(3)} V`, showarrow: false, font: { size: 11, color: c.hrs } });
     }
     const st = data.stats;
     if (isNum(st.mean)) {
       shapes.push({ type: "line", xref: "x", yref: "y2", x0: st.mean, x1: st.mean, y0: 0, y1: 1, line: { color: c.hrs, width: 1, dash: "dot" } });
-      ann.push({ x: st.mean, y: 0.5, xref: "x", yref: "y2", text: `⟨V<sub>LU</sub>⟩ = ${st.mean.toFixed(3)} V<br>σ = ${isNum(st.sd) ? (st.sd * 1e3).toFixed(1) : "—"} mV`, showarrow: false, xanchor: "right", xshift: -6, align: "right", font: { size: 11, color: c.text2 } });
+      // carrier noise only: say so on the plot, since the MC answer's ± (local states included) is ~15× larger
+      ann.push({ x: st.mean, y: 0.5, xref: "x", yref: "y2", text: `${t("stats.row.hazard")}<br>${t("stats.mean")} V<sub>LU</sub> ${st.mean.toFixed(3)} V · σ ${isNum(st.sd) ? (st.sd * 1e3).toFixed(1) : "—"} mV`, showarrow: false, xanchor: "right", xshift: -6, align: "right", font: { size: 11, color: c.text2 } });
     }
     // sweep rate: bottom-left of the survival strip (S = 1 there, below the fold)
     if (isNum(data.rate_V_per_s))
@@ -480,7 +519,19 @@ export function HazardPanel() {
     return { data: traces, layout, className: "plot tall" };
   }, [data, c, t]);
   return (
-    <Panel id="hazard" title={t.l(DEV["hazard.title"])} desc={t("p.hazard.desc")} topic="first-passage" entry={entry} hasData={!!data} currentKey={key} csvName="hazard" plot={plot} warnings={data?.warnings} />
+    <Panel
+      id="hazard"
+      title={t.l(DEV["hazard.title"])}
+      desc={t("p.hazard.desc")}
+      topic="first-passage"
+      entry={entry}
+      hasData={!!data}
+      currentKey={key}
+      csvName="hazard"
+      plot={plot}
+      warnings={data?.warnings}
+      foot={data ? <span data-testid="hazard-foot">{fill(t.l(DEV["hazard.foot"]), { sd: isNum(data.stats.sd) ? (data.stats.sd * 1e3).toFixed(1) : "—" })}</span> : undefined}
+    />
   );
 }
 
@@ -488,6 +539,7 @@ export function HazardPanel() {
 export function VgStochPanel() {
   const t = useT();
   const c = usePalette();
+  const all = useIsAll();
   const range = useStore((s) => s.vgsRange);
   const setRange = useStore((s) => s.setVgsRange);
   const { entry, data } = useEntry<VgCurveStochasticResult>("vg_curve_stochastic");
@@ -495,40 +547,71 @@ export function VgStochPanel() {
   const plot = useMemo(() => {
     if (!data) return undefined;
     const vg = nums(data.vg);
-    const mean = nums(data.mean_VLU);
-    const sd = nums(data.sd_VLU_mV).map((s) => (s == null ? null : s / 1e3));
+    // more than half the cycles censored: the mean and σ of the rest are squeezed by the sweep limit → blank
+    const censW = data.censored_weight ? nums(data.censored_weight) : null;
+    const masked = vg.map((_, i) => (censW?.[i] ?? 0) > 0.5);
+    const keep = <V,>(a: (V | null)[]) => a.map((v, i) => (masked[i] ? null : v));
+    const mean = keep(nums(data.mean_VLU));
+    const sdMv = keep(nums(data.sd_VLU_mV));
+    const sd = sdMv.map((s) => (s == null ? null : s / 1e3));
     const up = mean.map((m, i) => (m == null || sd[i] == null ? null : m + (sd[i] as number)));
     const lo = mean.map((m, i) => (m == null || sd[i] == null ? null : m - (sd[i] as number)));
+    // ± σ band as one closed polygon per run of unmasked points (a "tonexty" fill would bridge the gaps)
+    const bx: (number | null)[] = [];
+    const by: (number | null)[] = [];
+    let seg: number[] = [];
+    const flush = () => {
+      if (seg.length) {
+        bx.push(...seg.map((i) => vg[i]), ...[...seg].reverse().map((i) => vg[i]), null);
+        by.push(...seg.map((i) => up[i]), ...[...seg].reverse().map((i) => lo[i]), null);
+      }
+      seg = [];
+    };
+    vg.forEach((g, i) => (g != null && up[i] != null && lo[i] != null ? seg.push(i) : flush()));
+    flush();
+    // 간단히: mean ± σ, total σ and the censored bars in a one- or two-row legend; the breakdown and the folds are
+    // in 모두 보기 (there they start legend-only, one click away)
+    const hide = all ? { visible: "legendonly" as const } : { visible: false as const, showlegend: false };
     const traces: Data[] = [
-      { x: vg, y: lo, type: "scatter", mode: "lines", line: { width: 0 }, hoverinfo: "skip", showlegend: false },
-      { x: vg, y: up, type: "scatter", mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: c.hrsSoft, name: "± σ", hoverinfo: "skip" },
-      { x: vg, y: mean, type: "scatter", mode: "lines+markers", name: t("axis.leg.vluMean"), line: { color: c.hrs, width: 2.2 }, marker: { size: 6 }, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra></extra>" },
-      { x: vg, y: nums(data.fold_centre_V), type: "scatter", mode: "lines", name: t("vgs.fold"), line: { color: c.hrs, width: 1.4, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>V<sub>LU</sub> = %{y:.3f} V<extra>${t("vgs.fold")}</extra>` },
-      { x: vg, y: nums(data.VLD_fold_V), type: "scatter", mode: "lines", name: t("axis.leg.vldFold"), line: { color: c.lrs, width: 1.4, dash: "dot" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>V<sub>LD</sub> = %{y:.3f} V<extra>${t("axis.leg.vldFold")}</extra>` },
-      { x: vg, y: nums(data.sd_VLU_mV), type: "scatter", mode: "lines+markers", name: t("axis.leg.sdTotal"), yaxis: "y2", line: { color: c.hrs, width: 2 }, marker: { size: 5 }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("axis.leg.sdTotal")}</extra>` },
-      { x: vg, y: nums(data.state_sd_mV), type: "scatter", mode: "lines", name: t("vgs.state"), yaxis: "y2", line: { color: c.categorical[1], width: 1.5, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.state")}</extra>` },
-      { x: vg, y: nums(data.noise_sd_mV), type: "scatter", mode: "lines", name: t("vgs.noise"), yaxis: "y2", line: { color: c.categorical[2], width: 1.5, dash: "dot" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.noise")}</extra>` },
+      { x: bx, y: by, type: "scatter", mode: "lines", line: { width: 0 }, fill: "toself", fillcolor: c.hrsSoft, name: "± σ", hoverinfo: "skip", showlegend: false },
+      { x: vg, y: mean, type: "scatter", mode: "lines+markers", name: `${t("axis.leg.vluMean")} ± σ`, line: { color: c.hrs, width: 2.2 }, marker: { size: 6 }, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra></extra>" },
+      { x: vg, y: nums(data.fold_centre_V), type: "scatter", mode: "lines", name: t("vgs.fold"), line: { color: c.hrs, width: 1.4, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>V<sub>LU</sub> = %{y:.3f} V<extra>${t("vgs.fold")}</extra>`, ...hide },
+      { x: vg, y: nums(data.VLD_fold_V), type: "scatter", mode: "lines", name: t("axis.leg.vldFold"), line: { color: c.lrs, width: 1.4, dash: "dot" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>V<sub>LD</sub> = %{y:.3f} V<extra>${t("axis.leg.vldFold")}</extra>`, ...hide },
+      { x: vg, y: sdMv, type: "scatter", mode: "lines+markers", name: t("axis.leg.sdTotal"), yaxis: "y2", line: { color: c.hrs, width: 2 }, marker: { size: 5 }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("axis.leg.sdTotal")}</extra>` },
+      { x: vg, y: keep(nums(data.state_sd_mV)), type: "scatter", mode: "lines", name: t("vgs.state"), yaxis: "y2", line: { color: c.categorical[1], width: 1.5, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.state")}</extra>`, ...hide },
+      { x: vg, y: keep(nums(data.noise_sd_mV)), type: "scatter", mode: "lines", name: t("vgs.noise"), yaxis: "y2", line: { color: c.categorical[2], width: 1.5, dash: "dot" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.noise")}</extra>`, ...hide },
     ];
     if (data.measured?.length) {
       traces.push(
         { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.mean_V), error_y: { type: "data", array: data.measured.map((m) => m.sd_mV / 1e3), visible: true, color: c.meas, thickness: 1.2, width: 4 }, type: "scatter", mode: "markers", name: t("axis.leg.meanMeas"), marker: { color: c.meas, size: 8, symbol: "square" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("measured")}</extra>` },
-        { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.sd_mV), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.sdMeas"), marker: { color: c.meas, size: 8, symbol: "square-open" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("measured")}</extra>` },
+        { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.sd_mV), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.sdMeas"), marker: { color: c.meas, size: 8, symbol: "square-open" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("measured")}</extra>`, showlegend: false },
       );
     }
     // censoring at the sweep maximum (engines fix): stacked bars on a right-hand % axis of the σ strip
     const cens = censoredShares(data);
     if (cens) {
       traces.push(
-        { x: vg, y: cens.noLatch.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("axis.leg.noLatch"), marker: { color: c.unstable }, opacity: 0.35, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>%{y:.1f} %<extra>${t("axis.leg.noLatch")}</extra>` },
+        { x: vg, y: cens.noLatch.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("axis.leg.noLatch"), marker: { color: c.unstable }, opacity: 0.35, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>%{y:.1f} %<extra>${t("axis.leg.noLatch")}</extra>`, ...hide },
         { x: vg, y: cens.beyond.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("axis.leg.beyond", { v: cens.vdMax }), marker: { color: c.warn }, opacity: 0.35, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>%{y:.1f} %<extra>${t("axis.leg.beyond", { v: cens.vdMax })}</extra>` },
       );
+    }
+    // the sweep peak on the mean axis: points pinned just under it are censoring artefacts
+    const vdMax = data.vd_max_V ?? cens?.vdMax;
+    const shapes: Partial<Shape>[] = [];
+    const ann: NonNullable<Partial<Layout>["annotations"]> = [];
+    if (isNum(vdMax) && vdMax > 0) {
+      shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: vdMax, y1: vdMax, line: { dash: "dot", color: c.warn, width: 1.2 } });
+      ann.push({ x: 0.01, y: vdMax, xref: "paper", yref: "y", xanchor: "left", yanchor: "bottom", text: `V<sub>D,max</sub> ${vdMax} V`, showarrow: false, font: { size: 10.5, color: c.warn } });
     }
     const layout: Partial<Layout> = {
       xaxis: { title: { text: t("axis.vg") }, anchor: "y2" },
       yaxis: { title: { text: t("axis.s.vluMean") }, domain: [0.45, 1] },
       yaxis2: { title: { text: t("axis.s.sigmaLu") }, domain: [0, 0.37], rangemode: "tozero" },
-      margin: { l: 58, r: cens ? 50 : 16, t: 58, b: 46 },
-      legend: { font: { size: 10.5 }, traceorder: "normal" },
+      shapes,
+      annotations: ann,
+      margin: { l: 58, r: cens ? 50 : 16, t: 40, b: 46 },
+      // one compact row above the plot (the hidden breakdown stays one click away in the legend)
+      legend: { orientation: "h", x: 0, xanchor: "left", y: 1.02, yanchor: "bottom", font: { size: 10.5 }, itemwidth: 30, traceorder: "normal" },
     };
     if (cens) {
       layout.yaxis3 = { title: { text: t("axis.s.censored"), font: { size: 11 } }, overlaying: "y2", side: "right", range: [0, 100], showgrid: false, zeroline: false, ticksuffix: "", fixedrange: true };
@@ -536,7 +619,7 @@ export function VgStochPanel() {
       layout.bargap = 0.35;
     }
     return { data: traces, layout, className: "plot tall" };
-  }, [data, c, t]);
+  }, [data, all, c, t]);
   const cens = data ? censoredShares(data) : null;
   const running = entry?.status === "running" || entry?.status === "queued";
   const stale = isStale(entry, key);
@@ -544,7 +627,13 @@ export function VgStochPanel() {
   if (cens && cens.peak)
     foot.push(
       <span key="c" data-testid="vgs-censored">
-        {t("stats.vgs.foot", { max: fmtShare(cens.peak.total), vg: cens.peak.vg.toFixed(2).replace("-", "−"), nl: fmtShare(cens.peak.noLatch), bs: fmtShare(cens.peak.beyond) })}
+        <SubText text={subs(t("stats.vgs.foot", { max: fmtShare(cens.peak.total), vg: cens.peak.vg.toFixed(2).replace("-", "−"), nl: fmtShare(cens.peak.noLatch), bs: fmtShare(cens.peak.beyond) }))} />
+        {data?.censored_weight && nums(data.censored_weight).some((w) => (w ?? 0) > 0.5) && (
+          <>
+            {" "}
+            <SubText text={subs(t("stats.vgs.masked"))} />
+          </>
+        )}
       </span>,
     );
   if (stale && !running)
@@ -644,7 +733,7 @@ export function CyclePanel() {
       currentKey={key}
       csvName="cycle_series"
       plot={plot}
-      foot={ax ? `${t("cyc.state")}: ${ax.label} · ${ax.mode} · σ = ${ax.unit === "V" ? `${(ax.sigma * 1e3).toFixed(1)} mV` : `${ax.sigma.toFixed(3)} ${ax.unit}`}` : undefined}
+      foot={ax ? <SubText text={subs(`${t("cyc.state")}: ${stateAxisLabel(t, ax)} · ${localModeLabel(t, ax.mode)} · σ = ${ax.unit === "V" ? `${(ax.sigma * 1e3).toFixed(1)} mV` : `${ax.sigma.toFixed(3)} ${ax.unit}`}`)} /> : undefined}
     />
   );
 }
@@ -732,7 +821,8 @@ export function DesignMapPanel() {
       });
     }
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: t("axis.dmap.L") }, type: "log" },
+      // log axis with a few labelled ticks (Plotly would print every minor digit: "… 9 10 2 3 …")
+      xaxis: { title: { text: t("axis.dmap.L") }, type: "log", tickvals: [3, 5, 10, 20, 50, 100], ticktext: ["3", "5", "10", "20", "50", "100"] },
       yaxis: { title: { text: t("axis.dmap.d") } },
       shapes,
       annotations: ann,
@@ -755,7 +845,7 @@ export function DesignMapPanel() {
       toolbar={
         <span className="tool-field">
           <label className="tb-label" htmlFor="dmap-field">{t("dmap.field")}</label>
-          <select id="dmap-field" className="select" style={{ width: 170, height: 26 }} value={field} onChange={(e) => setField(e.target.value)} data-testid="dmap-field">
+          <select id="dmap-field" className="select" style={{ width: "auto", maxWidth: "100%", height: 26 }} value={field} onChange={(e) => setField(e.target.value)} data-testid="dmap-field">
             {available.map((f) => (
               <option key={f} value={f}>{t(`dmap.${f}` as StrKey)}</option>
             ))}

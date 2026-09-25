@@ -9,6 +9,7 @@ import { Panel } from "../components/Panel";
 import { usePalette } from "../device/common";
 import { useT } from "../i18n";
 import { fmtInt, isNum } from "../utils/format";
+import { fmtCoefValue } from "../circuit/summary";
 
 export function CmpPlot({ cmp, stale }: { cmp: ComparatorStats; stale: boolean }) {
   const t = useT();
@@ -29,11 +30,12 @@ export function CmpPlot({ cmp, stale }: { cmp: ComparatorStats; stale: boolean }
         z,
         zmin: 0,
         zmax: 1,
+        // fired = the mode colour (red is V_LD / LRS everywhere else)
         colorscale: [
           [0, c.grid],
           [0.5, c.grid],
-          [0.5, c.lrs],
-          [1, c.lrs],
+          [0.5, c.sto],
+          [1, c.sto],
         ],
         showscale: false,
         xgap: nW <= 60 ? 1 : 0,
@@ -57,9 +59,16 @@ export function CmpPlot({ cmp, stale }: { cmp: ComparatorStats; stale: boolean }
     ];
     if (isNum(cmp.p_fire)) data.push({ type: "scatter", mode: "lines", x: [0.5, nW + 0.5], y: [cmp.p_fire, cmp.p_fire], line: { color: c.text2, width: 1, dash: "dot" }, hoverinfo: "skip", xaxis: "x", yaxis: "y2" } as Data);
     const layout: Partial<Layout> = {
-      margin: { l: 60, r: 16, t: 14, b: 44 },
+      margin: { l: 60, r: 16, t: 30, b: 44 },
       showlegend: false,
-      xaxis: { title: { text: t("schematic.res.pulse") }, range: [0.5, nW + 0.5], anchor: "y2" as never },
+      // key of the raster colours, above it
+      annotations: [
+        {
+          x: 0, xref: "paper", xanchor: "left", y: 1, yref: "paper", yanchor: "bottom", showarrow: false, font: { size: 11, color: c.text2 },
+          text: `<span style="color:${c.sto}">■</span> ${t("schematic.res.fired")} (bit 1)   <span style="color:${c.grid}">■</span> ${t("schematic.res.notFired")}`,
+        },
+      ],
+      xaxis: { title: { text: t("schematic.res.pulseN") }, range: [0.5, nW + 0.5], anchor: "y2" as never },
       yaxis: { domain: [0.45, 1], title: { text: t("schematic.res.run"), font: { size: 11 } }, autorange: "reversed", tickformat: "d", dtick: runs.length > 12 ? undefined : 1 },
       yaxis2: { domain: [0, 0.36], range: [0, 1.05], title: { text: t("schematic.res.cmpP"), font: { size: 11 } } },
     };
@@ -67,7 +76,7 @@ export function CmpPlot({ cmp, stale }: { cmp: ComparatorStats; stale: boolean }
   }, [cmp, nW, c, t]);
   const head = [
     `${t("schematic.res.cmpP")} = ${isNum(cmp.p_fire) ? cmp.p_fire.toFixed(3) : "—"}`,
-    `${t("schematic.res.cmpLag")} = ${isNum(cmp.lag1) ? cmp.lag1.toFixed(3) : "—"}`,
+    `${t("schematic.res.cmpLag")} = ${isNum(cmp.lag1) ? fmtCoefValue(cmp.lag1) : "—"}`,
     `${t("schematic.res.cmpBits")} ${fmtInt(cmp.n_bits)}`,
     cmp.window_source ? t("schematic.res.cmpWin", { src: cmp.window_source }) : "",
   ].filter(Boolean);

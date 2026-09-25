@@ -33,7 +33,7 @@
 .ans-value { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 4px; min-width: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .ans-num { font-size: 24px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.25; color: var(--ans-color, var(--text)); white-space: nowrap; }
 .ans-value .u { font-size: 13px; color: var(--muted); font-weight: 500; }
-.ans-pm { font-size: 13px; color: var(--text-2); font-weight: 500; white-space: nowrap; }
+.ans-pm { font-size: 13px; color: var(--text-2); font-weight: 500; white-space: nowrap; font-family: var(--font); }
 .ans-nolatch { font-family: var(--font); font-size: 18px; letter-spacing: 0; color: var(--text-2); }
 .ans-sub { font-size: 11.5px; line-height: 18px; min-height: 18px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ans-meaning { color: var(--muted); }

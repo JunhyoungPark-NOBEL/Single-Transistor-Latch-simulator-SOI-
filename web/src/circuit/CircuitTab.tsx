@@ -40,8 +40,14 @@ const axisOf = (s: Signal): AxisKind =>
 /** Summary cells of the quick benches, in this order when present (then the rest in server order). */
 const BENCH_PRIORITY = ["V_LU", "V_LD", "window", "p_any_lu", "P1", "p_one", "P_sw", "P_sw1", "P_both", "vd_first_lu", "n_latch_up", "final_state", "delay", "delay1", "P_retained", "corr_LU", "corr_sw"];
 
-/** Waveform signals shown by default in 간단히: supply / pulse voltage, drain (and source) voltage, drain current. */
-const isDefaultSignal = (key: string) => /^(v_src|v_clk|v_d\d*|v_s\d*|i_d\d*)$/.test(key);
+/** Waveform signals shown by default in 간단히: supply voltage, drain voltage, drain current. p-bit: the sense
+ *  voltage V(R_S) (with the V_ref line), the comparator bit and the drain current — the drain pulse (v_clk) and
+ *  V_DS overlap on a 0–4 V axis that would flatten V(R_S) to zero; both stay in "신호 ▾". */
+export const isDefaultSignal = (key: string, bench?: string) =>
+  bench === "pbit" ? /^(v_s|i_d|bit)$/.test(key) : /^(v_src|v_clk|v_d\d*|v_s\d*|i_d\d*)$/.test(key);
+
+/** Localised event kinds (the raw id stays in the tooltip). */
+const EVENT_KIND: Record<string, StrKey> = { latch_up: "c.ev.latch_up", latch_down: "c.ev.latch_down", bit: "c.ev.bit", pulse: "c.ev.pulse" };
 
 /** Default netlists shown before the first run (element names as server/compute/circuit/benches.py). */
 function defaultSchematic(bench: BenchId, vg: number): CircuitResult["schematic"] {
@@ -227,9 +233,9 @@ function WaveformPanel({ res, entry, currentKey }: { res: CircuitResult | undefi
   const shown = useMemo(() => {
     if (all) return new Set(sigs.map((s) => s.key));
     if (picked && picked.for === sigKey) return picked.keys;
-    const d = sigs.filter((s) => isDefaultSignal(s.key)).map((s) => s.key);
+    const d = sigs.filter((s) => isDefaultSignal(s.key, all ? undefined : res?.bench)).map((s) => s.key);
     return new Set(d.length ? d : sigs.slice(0, 3).map((s) => s.key));
-  }, [all, picked, sigKey, sigs]);
+  }, [all, picked, sigKey, sigs, res?.bench]);
   const toggle = (key: string) => {
     const next = new Set(shown);
     if (next.has(key)) next.delete(key);
@@ -239,7 +245,18 @@ function WaveformPanel({ res, entry, currentKey }: { res: CircuitResult | undefi
   const plot = useMemo(() => {
     if (!res || !res.runs.length) return undefined;
     const runs = run === "all" ? res.runs : res.runs.filter((r) => String(r.run) === run).slice(0, 1);
-    const colorOf = new Map(sigs.map((s, i) => [s.key, c.categorical[i % c.categorical.length]] as const));
+    // colour by the signal's place in the full list (stable when signals are added or removed), but never two
+    // shown signals in one colour: with more signals than palette entries (p-bit: 10 > 8) the index wraps
+    const colorOf = new Map<string, string>();
+    const taken = new Set<number>();
+    const nCat = c.categorical.length;
+    sigs.forEach((s, i) => {
+      if (!shown.has(s.key)) return;
+      let k = i % nCat;
+      for (let j = 0; j < nCat && taken.has(k); j++) k = (k + 1) % nCat;
+      taken.add(k);
+      colorOf.set(s.key, c.categorical[k]);
+    });
     const present = AXES.filter((a) => res.runs.some((r) => r.signals.some((s) => shown.has(s.key) && axisOf(s) === a)));
     const n = Math.max(1, present.length);
     const gap = 0.07;
@@ -278,13 +295,28 @@ function WaveformPanel({ res, entry, currentKey }: { res: CircuitResult | undefi
         }
       }
     });
+    const shapes: Partial<Shape>[] = [];
+    const ann: NonNullable<Partial<Layout>["annotations"]> = [];
     if (showEvents) {
-      const evs = res.events.filter((e) => run === "all" || String(e.run) === run).slice(0, 200);
-      layout.shapes = evs.map((e) => ({
-        type: "line", xref: "x", yref: "paper", x0: e.t * ts, x1: e.t * ts, y0: 0, y1: 1,
-        line: { color: e.kind === "latch_up" ? c.lrs : e.kind === "latch_down" ? c.hrs : c.muted, width: 1, dash: "dot" },
-      })) as Partial<Shape>[];
+      // latch-up in the V_LU colour (--hrs), latch-down in the V_LD colour (--lrs), as everywhere else
+      const evs = res.events.filter((e) => (run === "all" || String(e.run) === run) && (e.kind === "latch_up" || e.kind === "latch_down")).slice(0, 200);
+      shapes.push(
+        ...(evs.map((e) => ({
+          type: "line", xref: "x", yref: "paper", x0: e.t * ts, x1: e.t * ts, y0: 0, y1: 1,
+          line: { color: e.kind === "latch_up" ? c.hrs : c.lrs, width: 1, dash: "dot" },
+        })) as Partial<Shape>[]),
+      );
     }
+    // p-bit: the comparator threshold V_ref on the axis that carries V(R_S), so each pulse visibly crosses it or not
+    const vref = res.bench === "pbit" ? Number((res.bench_params as { v_ref_V?: unknown } | undefined)?.v_ref_V ?? res.summary.find((x) => x.key === "v_th")?.value) : NaN;
+    const vsAxis = present.indexOf("voltage");
+    if (Number.isFinite(vref) && vsAxis >= 0 && shown.has("v_s")) {
+      const yref = vsAxis === 0 ? "y" : `y${vsAxis + 1}`;
+      shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, yref: yref as never, y0: vref, y1: vref, line: { color: c.warn, width: 1.2, dash: "dash" } });
+      ann.push({ x: 1, xref: "paper", xanchor: "right", y: vref, yref: yref as never, yanchor: "bottom", text: `${subs(t("c.vref"))} ${fmtSig(vref, 3)} V`, showarrow: false, font: { size: 11, color: c.warn }, bgcolor: c.surface });
+    }
+    layout.shapes = shapes;
+    layout.annotations = ann;
     return { data: traces, layout, className: stackClass(n) };
   }, [res, run, logI, showEvents, shown, sigs, c, t]);
 
@@ -362,7 +394,9 @@ function TrajectoryPanel({ res, entry, currentKey }: { res: CircuitResult | unde
       );
     }
     traces.push({ x: nums(res.trajectory.vd), y: pos(res.trajectory.id), type: "scatter", mode: "lines", name: t("axis.leg.run0"), line: { color: c.categorical[6], width: 1.6 }, hovertemplate: `${HOVER_IV}<extra>${t("axis.leg.run0")}</extra>` });
-    return { data: traces, layout: { xaxis: { title: { text: t("axis.vd") } }, yaxis: { ...currentAxis(true, t("axis.idAbs")), range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) } } as Partial<Layout> };
+    // the trajectory is V(drain) − V(source): with a source resistor (p-bit) that is V_DS, not V_D
+    const xTitle = res.bench === "pbit" ? t("axis.vdsCell", { cell: "" }).trim() : t("axis.vd");
+    return { data: traces, layout: { xaxis: { title: { text: xTitle } }, yaxis: { ...currentAxis(true, t("axis.idAbs")), range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) } } as Partial<Layout> };
   }, [res, br, c, t]);
   return <Panel id="trajectory" title={t("c.traj")} desc={t("c.traj.desc")} topic="circuit-element" entry={entry} hasData={!!plot} currentKey={currentKey} csvName="trajectory" plot={plot ?? { data: [], layout: {} }} />;
 }
@@ -461,7 +495,11 @@ function EventsPanel({ res, stale }: { res: CircuitResult; stale: boolean }) {
                 {res.events.slice(0, 300).map((e, i) => (
                   <tr key={i}>
                     <td className="num">{e.run}</td>
-                    <td><span className={`badge ${e.kind === "latch_up" ? "err" : e.kind === "latch_down" ? "det" : ""}`}>{e.kind}</span></td>
+                    <td>
+                      <span className={`badge ${e.kind === "latch_up" ? "lu" : e.kind === "latch_down" ? "ld" : ""}`} title={e.kind}>
+                        {EVENT_KIND[e.kind] ? t(EVENT_KIND[e.kind]) : e.kind}
+                      </span>
+                    </td>
                     <td className="num">{(e.t * ts).toPrecision(5)}</td>
                     <td className="num">{isNum(e.value) ? e.value.toPrecision(4) : "—"}</td>
                     <td className="num">{isNum(e.v_src) ? e.v_src.toFixed(3) : "—"}</td>

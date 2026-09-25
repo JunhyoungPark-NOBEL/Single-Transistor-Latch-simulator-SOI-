@@ -109,6 +109,8 @@ export interface MoreTab {
   hidden?: boolean;
   /** Tooltip of the tab label. */
   title?: string;
+  /** Label for the phone <select>, whose options cannot show subscripts (else `label` with "_" dropped). */
+  plainLabel?: string;
 }
 
 export interface MoreCardProps {
@@ -163,7 +165,10 @@ export function MoreCard({ scope, tabs, defaultTab, className }: MoreCardProps) 
           <select className="select more-select" value={active.id} onChange={(e) => selectMoreTab(scope, e.target.value)} aria-label={t.l(UX["more.select"])} data-testid={`more-select-${scope}`}>
             {visible.map((x) => (
               <option key={x.id} value={x.id}>
-                {x.status ? `${x.label} · ${statusText(x.status)}` : x.label}
+                {(() => {
+                  const l = x.plainLabel ?? x.label.replace(/([A-Za-z])_([A-Za-z0-9]+)/g, "$1$2");
+                  return x.status ? `${l} · ${statusText(x.status)}` : l;
+                })()}
               </option>
             ))}
           </select>

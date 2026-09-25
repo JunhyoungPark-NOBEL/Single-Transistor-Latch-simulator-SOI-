@@ -5,7 +5,7 @@ const r = String.raw;
 
 const topic: PhysicsTopic = {
   id: "design-map",
-  title: L("설계 지도 (핫스팟 크기 × 깊이)", "Design map (hotspot size × depth)"),
+  title: L("설계 지도 (국소 영역 크기 × 깊이)", "Design map (local-region size × depth)"),
   summary: L(
     "`design_map_filled.npz`는 드레인 가장자리 핫스팟의 크기 $L_0$와 깊이 비율 $d$에 따른 국소 전위 산포 $\\sigma_\\phi$, 그로 인한 $\\sigma_{V_{LU}}$, 래치 비율을 담고 있다. 이 파일을 만든 스크립트는 엔진 코드(engine/)에 포함되어 있지 않으므로, 아래 관계식은 배열에서 수치적으로 역산한 추정이다(모두 기계 정밀도로 일치한다).",
     "`design_map_filled.npz` gives the local-potential spread $\\sigma_\\phi$ of a drain-edge hotspot of size $L_0$ and depth fraction $d$, the resulting $\\sigma_{V_{LU}}$ and the latched fraction. The script that generated it is not included in engine/, so the relations below are inferred numerically from the arrays (all agree to machine precision).",

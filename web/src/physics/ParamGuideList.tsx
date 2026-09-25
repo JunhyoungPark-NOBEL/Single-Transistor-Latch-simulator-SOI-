@@ -39,13 +39,14 @@ export function matchGuideKeys(q: string): Set<string> {
   return new Set([...TEXT.entries()].filter(([, txt]) => ws.every((w) => txt.includes(w))).map(([k]) => k));
 }
 
-export function ParamGuideList({ query }: { query: string }) {
+/** `labelledBy`: the id of an enclosing heading that already names the list (its own h3 is then left out). */
+export function ParamGuideList({ query, labelledBy }: { query: string; labelledBy?: string }) {
   const t = useT();
   const hits = useMemo(() => matchGuideKeys(query), [query]);
   const groups = ORDER.map((g) => ({ ...g, keys: g.keys.filter((k) => hits.has(k.key)) })).filter((g) => g.keys.length > 0);
   return (
-    <section className="guide-list" id="guide-list" data-testid="guide-list" aria-labelledby="guide-list-title">
-      <h3 id="guide-list-title">{t.l(GUIDE["guide.list.title"])}</h3>
+    <section className="guide-list" id="guide-list" data-testid="guide-list" aria-labelledby={labelledBy ?? "guide-list-title"}>
+      {!labelledBy && <h3 id="guide-list-title">{t.l(GUIDE["guide.list.title"])}</h3>}
       <p className="lead">
         <GuideText text={t.l(GUIDE["guide.list.lead"])} plain />
       </p>

@@ -196,7 +196,7 @@ test.describe("Device · 간단히 layout (mock mode)", () => {
     await expect(page.getByTestId("kpi-vlu")).toContainText("측정");
     const meta = page.getByTestId("stats-meta");
     await expect(meta).toContainText("시드");
-    await expect(meta).toContainText("래치업 안 된 사이클 0");
+    await expect(meta).toContainText("래치업 안 된 사이클(중도절단) 0");
     await expect(meta).toContainText("보정 조회표");
     await expect(meta).not.toContainText("calibrated_lookup");
     await expect(page.getByTestId("panel-mc-iv")).not.toContainText("calibrated_lookup");
@@ -330,7 +330,7 @@ test.describe("Device · 간단히 layout (mock mode)", () => {
     await expect(meta).toContainText("Seed");
     await expect(meta).toContainText("no latch-up in 0 cycles");
     await expect(meta).toContainText("calibrated lookup table");
-    await expect(page.getByTestId("kpi-vlu")).toContainText("Turn-on");
+    await expect(page.getByTestId("kpi-vlu")).toContainText("Latch-up");
     await expect(page.getByTestId("panel-mc-iv")).toContainText("calibrated lookup table");
   });
 });

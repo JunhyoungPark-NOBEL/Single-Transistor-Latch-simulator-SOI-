@@ -113,8 +113,8 @@ def check_extension_identity(progress) -> dict:
         fold_d = max(fold_d, float(np.max(np.abs(za[3] - zb[3]))))
         progress(0.5 + 0.15 * (vg + 2.0 + 1.0), "fold identity")
     ok = max_dv <= 1e-12 and fold_d <= 1e-12 and nan_mismatch == 0
-    return _check("extension_identity", "확장 항이 모두 0이면 gate_mean과 동일", "All extension terms at zero reproduce gate_mean",
-                  "identical to gate_mean (≤ 1e-12 V)",
+    return _check("extension_identity", "확장 항을 모두 0으로 두면 기본 모델과 같음", "All extensions at zero reproduce the base model",
+                  "identical to the base model (≤ 1e-12 V)",
                   f"max |ΔV_D| = {max_dv:.2e} V over {finite} finite (u, r) points, max rel. Δ(currents) = {max_rel:.1e}, "
                   f"max |Δfold| = {fold_d:.2e} V (V_G −2, −1.8, −1.1)", ok, "≤ 1e-12 V",
                   note=f"{npts} random (u, r) points, u ∈ [0, 1.1] V, r ∈ [0, 5] V; NaN-pattern mismatches: {nan_mismatch}")
@@ -174,7 +174,7 @@ def check_dynamic_mc(progress) -> dict:
     mlu, slu = float(np.nanmean(lu)), float(np.nanstd(lu, ddof=1)) * 1e3
     mld, sld = float(np.nanmean(ld)), float(np.nanstd(ld, ddof=1)) * 1e3
     ok = abs(mlu - 3.63) <= 0.010 and abs(slu - 120) <= 10 and abs(mld - 2.70) <= 0.010 and abs(sld - 20) <= 3
-    return _check("dynamic_mc", "동적 MC 100회 스윕 (seed 2026092920)", "Dynamic MC, 100 sweeps (seed 2026092920)",
+    return _check("dynamic_mc", "동적 MC 100회 스윕 (시드 2026092920)", "Dynamic MC, 100 sweeps (seed 2026092920)",
                   "V_LU 3.63 V / 120 mV, V_LD 2.70 V / 20 mV",
                   f"V_LU {mlu:.4f} V / {slu:.1f} mV, V_LD {mld:.4f} V / {sld:.1f} mV", ok,
                   "means ±10 mV, SD_LU ±10 mV, SD_LD ±3 mV")

@@ -112,8 +112,19 @@ function useConditionLine(): string {
   const t = useT();
   const device = useStore((s) => s.params.device);
   const rate = useStore((s) => s.params.sweep.rate_V_per_s);
+  const preset = useStore((s) => s.preset);
+  const conds = useStore((s) => s.meta.measured_photo_conditions ?? []);
   const iph = iphPA(device);
-  const light = iph > 0 ? (device.light.mode === "power" ? `P ${num(device.light.power_mW)} mW` : `I_PH ${num(iph)} pA`) : cap(t.l(GUIDE["light.dark"]));
+  // the illumination calibration starts with the light off: say so, or "암조건" reads as "the light did not apply"
+  const pMax = Math.max(0, ...conds.map((c) => c.power_mW));
+  const light =
+    iph > 0
+      ? device.light.mode === "power"
+        ? `P ${num(device.light.power_mW)} mW`
+        : `I_PH ${num(iph)} pA`
+      : preset === "photo" && pMax > 0
+        ? fill(t.l(GUIDE["dev.photoDark"]), { max: num(pMax) })
+        : cap(t.l(GUIDE["light.dark"]));
   return `${light} · V_G ${num(device.vg)} V · ${num(rate)} V/s`;
 }
 
@@ -158,7 +169,7 @@ export function DeviceCard() {
       </div>
       <div className="preset-options" role="radiogroup" aria-label={t("schematic.dev.calibration")}>
         {PRESET_IDS.map((id: PresetId) => (
-          <button key={id} type="button" role="radio" aria-checked={preset === id && !modified} className="preset-opt" data-testid={`preset-${id}`} onClick={() => load(id)} title={meta.presets[id]?.label?.[t.lang] ?? id}>
+          <button key={id} type="button" role="radio" aria-checked={preset === id && !modified} className="preset-opt" data-testid={`preset-${id}`} onClick={() => load(id)} title={`${meta.presets[id]?.label?.[t.lang] ?? id}${id === "photo" ? `\n${t.l(GUIDE["dev.photo.tip"])}` : ""}`}>
             {t(`preset.${id}` as never)}
           </button>
         ))}

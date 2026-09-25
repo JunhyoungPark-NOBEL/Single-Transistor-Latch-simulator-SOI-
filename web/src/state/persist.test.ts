@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fitScale, MIN_FIT_SCALE } from "../components/Tex";
-import { modeHint } from "../components/Header";
+import { modeHint, modeHintTech } from "../components/Header";
 import { translate } from "../i18n";
 import type { StrKey } from "../i18n/strings";
 import { presetRoot } from "../utils/payload";
@@ -96,7 +96,9 @@ describe("mode banner text follows the tab", () => {
       expect(det).toContain("TRAP");
       expect(det).toContain("MNA");
       expect(det).not.toContain("fold");
-      expect(sto).toContain("Eq. 2");
+      // the plain hint has no equation number; "Eq. 2" stays in the technical tooltip
+      expect(sto).not.toContain("Eq. 2");
+      expect(modeHintTech(t, "circuit", "stochastic", "BE")).toContain("Eq. 2");
       expect(sto).toContain("Q_B");
       expect(modeHint(t, "device", "deterministic", "BE")).toBe(translate(lang, "mode.deterministic.hint"));
       expect(modeHint(t, "validation", "stochastic", "BE")).toBe(translate(lang, "mode.validation.hint"));

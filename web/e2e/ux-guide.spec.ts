@@ -4,7 +4,7 @@
 // sidebar-guide.png, guide-popover.png, phone-guide-sheet.png, details-window.png, sidebar-advanced.png.
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { PARAM_GUIDE } from "../src/content/params/guide";
-import { firstSentence, parseEffect } from "../src/params/guideUi";
+import { inlineLead, parseEffect } from "../src/params/guideUi";
 
 const SHOTS = "e2e/screenshots";
 
@@ -42,12 +42,13 @@ async function expectInline(page: Page, key: string, lang: "ko" | "en" = "ko") {
   const g = PARAM_GUIDE[key];
   const inline = page.getByTestId(`guide-inline-${key}`);
   await expect(inline).toBeVisible();
-  // the first sentence of the intuitive picture (subscripts render V_G as "VG")
-  const first = firstSentence(g.intuitive[lang]).replace(/([A-Za-z])_([A-Za-z0-9]+)/g, "$1$2");
-  await expect(inline.locator(".gi-text")).toHaveText(first);
-  // ≤ 2 lines
+  // the whole intuitive picture with glosses collapsed ("(GIDL)"), so the plain "raise it → …" half is there
+  // (subscripts render V_G as "VG")
+  const lead = inlineLead(g.intuitive[lang]).replace(/([A-Za-z])_([A-Za-z0-9]+)/g, "$1$2");
+  await expect(inline.locator(".gi-text")).toHaveText(lead);
+  // ≤ 3 lines
   const lines = await inline.locator(".gi-text").evaluate((el) => Math.round(el.clientHeight / parseFloat(getComputedStyle(el).lineHeight)));
-  expect(lines).toBeLessThanOrEqual(2);
+  expect(lines).toBeLessThanOrEqual(3);
   await expect(inline.locator(".gchip.lu")).toHaveText(chipText(g.effect[0][lang], lang));
   await expect(inline.locator(".gchip.ld")).toHaveText(chipText(g.effect[1][lang], lang));
 }
@@ -144,6 +145,11 @@ test.describe("parameter guide and simplified sidebar (간단히)", () => {
     await expect(page.getByTestId("guide-inline-vg")).toContainText("키우면");
     await expect(page.getByTestId("guide-inline-vg").locator(".gchip.lu")).toHaveText("VLU ↑ 80 mV");
     await expect(page.getByTestId("guide-inline-vg").locator(".gchip.ld")).toHaveText("VLD → 그대로");
+    // the step the numbers were measured with comes right after the verb; the plain sentence ends in its verb
+    await expect(page.getByTestId("guide-inline-vg").locator(".gchips-step")).toHaveText("(+0.1 V)");
+    await expect(page.getByTestId("guide-inline-vg").locator(".gi-text")).toContainText("손잡이입니다");
+    // V_D,max moves neither voltage: the row says what does change
+    await expect(page.getByTestId("guide-inline-vd_max").locator(".gchips-why")).toContainText("래치업되는 사이클 비율");
     // the line describes the input (aria-describedby)
     const inlineId = await page.getByTestId("guide-inline-vg").getAttribute("id");
     await expect(page.getByTestId("field-vg").locator("input.input")).toHaveAttribute("aria-describedby", new RegExp(inlineId!.replace(/[:]/g, "\\:")));
@@ -309,7 +315,7 @@ test.describe("parameter guide and simplified sidebar (간단히)", () => {
     await fresh(page);
     await page.getByTestId("adv-groups").locator(".adv-head").click();
     await expect(page.getByTestId("group-calib")).toBeVisible();
-    await expect(page.getByTestId("group-calib")).toContainText("기본값 그대로");
+    await expect(page.getByTestId("group-calib").locator(".group-sum")).toHaveText("기본값");
     await page.getByTestId("group-calib").locator(".group-toggle").click();
     const beta = page.getByTestId("field-beta").locator("input.input");
     await beta.fill("10");
@@ -349,7 +355,11 @@ test.describe("parameter guide and simplified sidebar (간단히)", () => {
     await fresh(page, "#tab=physics&mode=deterministic");
     await expect(page.getByTestId("physics-tab")).toBeVisible();
     expect(await page.locator("[data-testid^=topic-]").count()).toBe(18);
-    const list = page.getByTestId("topic-parameters").getByTestId("guide-list");
+    // the guide comes first, above topic 1, and the TOC starts with it
+    const list = page.getByTestId("physics-guide").getByTestId("guide-list");
+    await expect(list).toBeInViewport();
+    const gy = (await page.getByTestId("physics-guide").boundingBox())!.y;
+    expect((await page.getByTestId("topic-overview").boundingBox())!.y).toBeGreaterThan(gy);
     await page.getByTestId("guide-jump").click();
     await expect(list).toBeInViewport();
     await expect(list.getByTestId("guide-row-vg")).toBeVisible();
@@ -373,7 +383,7 @@ test.describe("parameter guide and simplified sidebar (간단히)", () => {
     await expectInline(page, "vd_max", "en");
     await expect(page.getByTestId("adv-groups")).toContainText("Advanced settings");
     await expect(page.getByTestId("field-adv-bias")).toContainText("2 more settings");
-    await expect(page.getByTestId("dev-more")).toContainText("Tech · save");
+    await expect(page.getByTestId("dev-more")).toContainText("Tech · Save");
     const sidebar = page.getByTestId("sidebar");
     await expect(sidebar).not.toContainText(/\b(guide|adv|dev|group|pw|light)\.[a-z]+/);
     await page.getByTestId("tip-vg").click();

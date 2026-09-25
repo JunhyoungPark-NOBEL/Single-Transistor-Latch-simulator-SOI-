@@ -4,7 +4,7 @@ import type { PhysicsTopic } from "../types";
 
 const topic: PhysicsTopic = {
   id: "parameters",
-  title: { ko: "파라미터 표 p[0]…p[25]", en: "Parameter table p[0]…p[25]" },
+  title: { ko: "전체 파라미터 표 p[0]…p[25]", en: "Full parameter table p[0]…p[25]" },
   summary: {
     ko: "`components()`에 전달되는 26개 파라미터 벡터 각 항목의 의미, 보정값(JSON 원본 값 그대로), 단위, 사용하는 주제를 정리한다. 국소 상태의 진폭과 동역학, 광조사 보정값도 함께 싣는다.",
     en: "Meaning, calibrated value (exactly as in the JSON sources), unit and topic of each of the 26 entries of the parameter vector passed to `components()`, together with the local-state amplitudes and kinetics and the illumination-calibration values.",

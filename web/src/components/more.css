@@ -3,7 +3,7 @@
    ⋯ menu, footnote). Existing :root tokens only — no new colours; light and dark follow the tokens. */
 
 /* ------------------------------------------------------------------ FocusLayout (간단히) */
-.focus-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); align-items: start; }
+.focus-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); align-items: stretch; }
 @media (min-width: 1280px) {
   .focus-grid.side:not(.no-hero) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -69,6 +69,8 @@
 .panel.embedded { border: 0; border-radius: 0 0 var(--r3) var(--r3); box-shadow: none; background: transparent; }
 .panel.embedded > .panel-toolbar { padding: 8px 14px 2px; min-height: 40px; }
 .panel.embedded > .embedded-desc { padding: 8px 14px 0; }
+/* the tab's "what to look for" caption once data is in: at most two muted lines (full text in the title) */
+.panel.embedded > .embedded-desc.caption { font-size: 12px; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .panel.embedded > .panel-body { padding-top: 6px; }
 
 /* empty states: the hero offers the one big Run button; other panels show a quiet one-line placeholder */

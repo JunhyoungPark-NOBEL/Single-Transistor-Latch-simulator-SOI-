@@ -47,6 +47,11 @@
 .sch-menu-pop { position: absolute; top: calc(100% + 6px); z-index: 60; min-width: 280px; max-width: 360px; max-height: 70vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--shadow-3); padding: 6px; display: flex; flex-direction: column; gap: 2px; animation: menuIn .12s ease-out; }
 .sch-menu-pop.right { right: 0; }
 .sch-menu-pop.left { left: 0; }
+/* phone: menus open as a bottom sheet that always fits (16 px gutters, own scroll); example texts clamp to 2 lines */
+@media (max-width: 760px) {
+  .sch-menu-pop, .sch-menu-pop.right, .sch-menu-pop.left { position: fixed; left: 16px; right: 16px; top: auto; bottom: 16px; min-width: 0; max-width: none; max-height: 60dvh; }
+  .sch-menu-item .tpl-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+}
 @keyframes menuIn { from { opacity: 0; transform: translateY(-4px); } }
 .sch-menu-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 8px; font-size: 13px; color: var(--text); }
 .sch-menu-item span { font-size: 11.5px; color: var(--muted); line-height: 1.35; }

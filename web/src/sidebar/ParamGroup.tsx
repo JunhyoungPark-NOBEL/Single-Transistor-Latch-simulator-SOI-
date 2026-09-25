@@ -10,7 +10,7 @@ import { IconAlert, IconChevron } from "../components/icons";
 import { useT } from "../i18n";
 import { GUIDE } from "../i18n/strings.guide";
 import { fill } from "../i18n/strings.ux";
-import { BENCHES } from "../params/benches";
+import { BENCHES, type BenchField } from "../params/benches";
 import { guideFor, isMain } from "../params/guideUi";
 import { groupPaths, LIGHT_FIELDS, type Ctx, type FieldDef, type GroupDef } from "../params/schema";
 import { useIsAll } from "../state/layout";
@@ -89,11 +89,10 @@ function LightBlock({ ctx, simple, group }: { ctx: Ctx; simple: boolean; group: 
   const powers = [...new Set(conds.map((c) => c.power_mW))];
   const mode = device.light.mode;
   const R = device.light.responsivity_pA_per_mW;
+  // one plain line in the text font: "I_PH 1.91 pA ↔ 광 파워 2.55 mW (응답도 R = 0.75 pA/mW)"
   const conv = (
-    <div className="conv mono" data-testid="light-conversion" aria-live="polite">
-      {mode === "power"
-        ? `I_PH = R·P = ${fmtSig(R, 3)} pA/mW × ${fmtSig(device.light.power_mW, 3)} mW = ${fmtSig(iphPA(device), 3)} pA`
-        : `I_PH = ${fmtSig(device.light.iph_pA, 3)} pA ≙ P = I_PH/R = ${fmtSig(powerMW(device), 3)} mW`}
+    <div className="conv" data-testid="light-conversion" aria-live="polite">
+      I<sub>PH</sub> {fmtSig(iphPA(device), 3)} pA ↔ {fill(t.l(GUIDE["light.conv"]), { p: fmtSig(powerMW(device), 3), r: fmtSig(R, 3) })}
     </div>
   );
   const chips = powers.length > 0 && (
@@ -191,10 +190,36 @@ function LocalWarning({ action }: { action: LocalStateAction }) {
   );
 }
 
+/** Where an auto bench value comes from and what it resolves to (see BenchField.autoFrom). */
+const AUTO_SRC = {
+  vg: { ko: "바이어스·스윕의 V_G", en: "V_G in Bias & sweep" },
+  vd_max: { ko: "프리셋의 스윕 최대 전압", en: "the preset's sweep peak" },
+  rate: { ko: "프리셋의 스윕 속도", en: "the preset's sweep rate" },
+  edge: { ko: "서버 기본값", en: "server default" },
+  vref: { ko: "R_S × 1 µA", en: "R_S × 1 µA" },
+} as const;
+
 function BenchFields({ ctx, group }: { ctx: Ctx; group: FieldGroupCtx }) {
   const bench = useStore((s) => s.params.circuit.bench);
   const bp = useStore((s) => s.params.circuit.bench_params[s.params.circuit.bench]) ?? {};
+  // the server resolves v_max / rate from the preset's sweep section (not the edited sidebar sweep)
+  const presetVdMax = useStore((s) => presetDefaults(s).sweep.vd_max_V);
+  const presetRate = useStore((s) => presetDefaults(s).sweep.rate_V_per_s);
   const def = BENCHES[bench];
+  const autoValue = (from: BenchField["autoFrom"]) =>
+    from
+      ? (c: Ctx) => {
+          const rs = bp.R_S_ohm;
+          const v =
+            from === "vg" ? c.root.device.vg
+            : from === "vd_max" ? presetVdMax
+            : from === "rate" ? presetRate
+            : from === "edge" ? (bench === "pbit" ? 20e-6 : 10e-6) // server BENCH_DEFAULTS
+            : typeof rs === "number" ? rs * 1e-6 // v_ref: R_S × 1 µA
+            : NaN;
+          return Number.isFinite(v) ? { v, src: AUTO_SRC[from] } : null;
+        }
+      : undefined;
   return (
     <>
       {def.fields
@@ -208,7 +233,7 @@ function BenchFields({ ctx, group }: { ctx: Ctx; group: FieldGroupCtx }) {
             f={{
               key: `bench_${bf.key}`, path: ["circuit", "bench_params", bench, bf.key], sym: bf.sym, label: bf.label, help: bf.help, unit: bf.unit,
               scale: bf.scale, min: bf.min, max: bf.max, step: bf.step, slider: bf.slider, int: bf.int, auto: bf.auto, type: bf.type,
-              options: bf.options, main: true,
+              options: bf.options, main: true, placeholder: bf.placeholder, autoValue: autoValue(bf.autoFrom),
             }}
           />
         ))}
@@ -216,7 +241,7 @@ function BenchFields({ ctx, group }: { ctx: Ctx; group: FieldGroupCtx }) {
   );
 }
 
-/** One-line value summary of a closed group head: the light condition, else "기본값 그대로". */
+/** One-line value summary of a closed group head: the light condition, else "기본값". */
 function useGroupSummary(g: GroupDef, changed: number): string | null {
   const t = useT();
   const light = useStore((s) => (g.custom?.includes("light") ? s.params.device.light : null));

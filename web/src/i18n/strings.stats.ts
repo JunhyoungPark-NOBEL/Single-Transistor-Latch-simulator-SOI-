@@ -24,15 +24,16 @@ export const STATS_STRINGS = {
   "stats.line.title": { ko: "통계", en: "Statistics" },
   "stats.line.cycles": { ko: "{n} 사이클", en: "{n} cycles" },
   // plain words here; the table and its tooltips keep the technical term (중도절단 / censored)
-  "stats.line.noLatch": { ko: "래치업 안 된 사이클 {n} ({pct})", en: "no latch-up in {n} cycles ({pct})" },
+  "stats.line.noLatch": { ko: "래치업 안 된 사이클(중도절단) {n} ({pct})", en: "no latch-up in {n} cycles ({pct})" },
   "stats.line.noLatch.tip": {
     ko: "스윕 최대 전압까지 래치업하지 않은 사이클입니다. 평균과 분포는 래치업한 사이클만으로 계산합니다 (표의 ‘중도절단’).",
     en: "Cycles that did not latch up before the sweep maximum. Means and distributions use only the cycles that did (‘censored’ in the table).",
   },
-  "stats.line.ks": { ko: "측정 비교 KS p {p}", en: "vs measured KS p {p}" },
+  "stats.line.ks": { ko: "측정과 분포 비교 KS p: {p}", en: "KS p vs measured: {p}" },
+  "stats.line.ks.tip": { ko: "p < 0.05이면 모델 분포가 측정과 통계적으로 다릅니다", en: "p < 0.05: the model distribution differs significantly from the measurement" },
   "stats.line.seed": { ko: "시드 {s}", en: "Seed {s}" },
   "stats.line.running": { ko: "계산 중…", en: "Computing…" },
-  "stats.line.empty": { ko: "확률 모드로 계산하면 사이클 통계가 여기에 한 줄로 요약됩니다.", en: "Run the stochastic model to see a one-line summary of the cycle statistics here." },
+  "stats.line.empty": { ko: "계산을 실행하면 사이클 통계가 여기에 한 줄로 요약됩니다.", en: "Run the model to see a one-line summary of the cycle statistics here." },
   "stats.expand": { ko: "표 보기", en: "Show table" },
   "stats.collapse": { ko: "표 접기", en: "Hide table" },
   "stats.cols.all": { ko: "모든 통계 열 ({n})", en: "All columns ({n})" },
@@ -52,7 +53,7 @@ export const STATS_STRINGS = {
   },
   "stats.row.hazard": { ko: "캐리어 잡음만", en: "carrier noise only" },
   "stats.row.hazard.tip": {
-    ko: "중심 local state에서 hazard h(V_D)로 계산한 V_LU 분포입니다. 캐리어(first-passage) 잡음만 들어 있고 상태 산포와 중도절단은 없습니다. MC 행과의 차이가 곧 local state가 더하는 산포입니다.",
+    ko: "중심 국소 상태에서 켜짐률 h(V_D)로 계산한 V_LU 분포입니다. 캐리어(첫 통과) 잡음만 들어 있고 국소 상태 산포와 중도절단은 없습니다. MC 행과의 차이가 곧 국소 상태가 더하는 산포입니다.",
     en: "V_LU distribution from the hazard h(V_D) at the centre local state: carrier (first-passage) noise only, no state spread and no censoring. The difference from the MC row is the spread added by the local states.",
   },
   "stats.row.hazard.atom": { ko: "폴드 도달 {pct}", en: "{pct} reach the fold" },
@@ -168,15 +169,15 @@ export const STATS_STRINGS = {
   "stats.download": { ko: "CSV 저장", en: "Download CSV" },
   "stats.opt.show": { ko: "{cols} 열 보기", en: "Show {cols}" },
   "stats.opt.hide": { ko: "{cols} 열 숨기기", en: "Hide {cols}" },
-  "stats.units": { ko: "수준 {level} · 퍼짐 {spread}", en: "levels in {level} · spreads in {spread}" },
+  "stats.units": { ko: "값은 {level}, 산포(σ·Δ)는 {spread}", en: "values in {level}, spreads (σ, Δ) in {spread}" },
   "stats.foot.censoring": {
     ko: "통계와 KS 비교는 값이 있는 사이클만 씁니다. 중도절단된 사이클은 개수로만 셉니다.",
     en: "Statistics and the KS comparison use only cycles that have a value; censored cycles are counted but not averaged.",
   },
   "stats.foot.measured": { ko: "측정 기록: {label}", en: "Measured record: {label}" },
   "stats.aria.table": { ko: "기술통계 표", en: "Descriptive statistics table" },
-  "stats.meas.caption": { ko: "측정 기록: V_G = {vg} V, {light}에서 {n}회 사이클", en: "Measured record: {n} cycles at V_G = {vg} V, {light}" },
-  "stats.meas.dark": { ko: "암 조건", en: "dark" },
+  "stats.meas.caption": { ko: "측정 기록: V_G = {vg} V, {light}, 사이클 {n}회", en: "Measured record: {n} cycles at V_G = {vg} V, {light}" },
+  "stats.meas.dark": { ko: "암조건", en: "dark" },
 
   // ---------------------------------------------------------------- distribution panel (CDF)
   "stats.dist.plateau": {
@@ -195,6 +196,10 @@ export const STATS_STRINGS = {
   "stats.vgs.foot": {
     ko: "평균과 σ는 스윕 안에서 래치업하는 사이클만으로 계산합니다. 중도절단 비율은 V_G = {vg} V에서 최대 {max}입니다 (래치 없음 {nl}, 스윕 너머 {bs}).",
     en: "Mean and σ are over the cycles that latch up within the sweep. The censored share peaks at {max} at V_G = {vg} V (no latch {nl}, beyond the sweep {bs}).",
+  },
+  "stats.vgs.masked": {
+    ko: "중도절단이 50 %를 넘는 V_G는 평균·σ가 스윕 한계에 눌려 작게 나오므로 비워 둡니다.",
+    en: "V_G values with more than 50 % censored are left blank: their mean and σ would be squeezed by the sweep limit.",
   },
 
   // ---------------------------------------------------------------- validation (8 conditions)

@@ -9,6 +9,9 @@ import { PHYSICS_TOPICS } from "../content/physics";
 import { takeTrigger } from "../components/DetailsButton";
 import { IconBack, IconExternal, IconGrip, IconX } from "../components/icons";
 import { useT } from "../i18n";
+import { subs } from "../plots/labels";
+import { SubText } from "../plots/SubText";
+import { TopicTag } from "./tags";
 import { GUIDE } from "../i18n/strings.guide";
 import { guideFor } from "../params/guideUi";
 import { useStore } from "../state/store";
@@ -190,7 +193,7 @@ export function PhysicsWindow() {
           )}
           {topic.sections.map((s, i) => (
             <button key={i} type="button" className={`pill${active === i ? " active" : ""}`} aria-current={active === i ? "true" : undefined} onClick={() => goSection(i)}>
-              {t.l(s.heading)}
+              <SubText text={subs(t.l(s.heading))} />
             </button>
           ))}
         </nav>
@@ -207,7 +210,7 @@ export function PhysicsWindow() {
         {topic.tags && topic.tags.length > 0 && (
           <div className="pw-tags" aria-label={t.l(GUIDE["pw.tags"])}>
             {topic.tags.map((g) => (
-              <span key={g} className="badge">{g}</span>
+              <TopicTag key={g} tag={g} lang={t.lang} />
             ))}
           </div>
         )}

@@ -47,6 +47,9 @@ suite("unit plans and cell formatting", () => {
     expect(fmtShare(0.01)).toBe("1.0 %");
     expect(fmtShare(0.91)).toBe("91 %");
     expect(fmtShare(0.0004)).toBe("0.04 %");
+    // never "100 %" for a share below one (99.74 % censored is not "every cycle")
+    expect(fmtShare(0.9974)).toBe("99.7 %");
+    expect(fmtShare(1)).toBe("100 %");
   });
 });
 

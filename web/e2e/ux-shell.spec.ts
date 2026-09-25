@@ -88,13 +88,13 @@ test.describe("shell: header and context strip", () => {
     await expect(page.getByTestId("mode-deterministic")).toHaveText("결정론");
     await expect(page.getByTestId("mode-stochastic")).toHaveText("확률");
     const hint = page.getByTestId("mode-hint");
-    await expect(hint).toContainText("V_LU");
+    await expect(hint).toContainText("VLU"); // V_LU renders as V<sub>LU</sub>
     await page.getByTestId("mode-stochastic").click();
     await expect(hint).toContainText("MC");
     await page.getByTestId("tab-circuit").click();
     await expect(page.getByTestId("mode-toggle")).toBeVisible();
-    await expect(hint).toContainText("Eq. 2");
-    await expect(hint).toContainText("Q_B");
+    await expect(hint).toContainText("QB");
+    await expect(hint).toHaveAttribute("title", /Eq\. 2/);
     await page.getByTestId("mode-deterministic").click();
     await expect(hint).toContainText("MNA");
     await expect(hint).toContainText("BE");

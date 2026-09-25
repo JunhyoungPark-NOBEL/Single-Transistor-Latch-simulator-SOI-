@@ -10,6 +10,9 @@
 /* arrow chips: "키우면  V_LU ↑ 80 mV  V_LD → 그대로" (no fill: the token colours keep AA contrast on --surface) */
 .gchips { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; min-width: 0; }
 .gchips-lead { font-size: 11px; font-weight: 650; color: var(--muted); margin-right: 1px; }
+.gchips-step { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: -3px; }
+.gchips-why { font-size: 11px; color: var(--text-2); }
+.gchips-ref { font-size: 10.5px; color: var(--muted); padding: 0 6px; border: 1px dashed var(--border); border-radius: 999px; line-height: 17px; white-space: nowrap; }
 .gchip {
   display: inline-block; white-space: nowrap;
   padding: 0 7px; height: 19px; line-height: 17px; border-radius: 999px;

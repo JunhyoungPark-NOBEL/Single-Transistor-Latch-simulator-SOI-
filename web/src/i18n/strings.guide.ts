@@ -17,7 +17,13 @@ export const GUIDE = {
   "guide.caveat.more": { ko: "더 보기", en: "More" },
   "guide.caveat.less": { ko: "접기", en: "Less" },
   "guide.basis": { ko: "근거", en: "Basis" },
+  "guide.legend.short": {
+    ko: "화살표는 이 값을 키울 때의 변화, 괄호 안은 키운 폭입니다 (기준 보정: V_G = −2 V, 암조건).",
+    en: "Arrows show what happens when you raise the value; the step is in parentheses (reference calibration: V_G = −2 V, dark).",
+  },
   "guide.tech": { ko: "기술 설명", en: "Technical" },
+  // after the inline chips when another preset is active: the numbers are those of the reference calibration
+  "guide.refTag": { ko: "기준 보정 수치", en: "reference numbers" },
   "guide.physics": { ko: "물리 자세히 보기", en: "Physics in detail" },
   "guide.inline.title": { ko: "눌러서 자세히 보기", en: "Click for the full explanation" },
   "guide.close": { ko: "설명 닫기", en: "Close explanation" },
@@ -27,6 +33,7 @@ export const GUIDE = {
   "guide.list.title": { ko: "파라미터 가이드", en: "Parameter guide" },
   "guide.list.jump": { ko: "파라미터 가이드", en: "Parameter guide" },
   "guide.list.jump.hint": { ko: "값을 키우면 V_LU·V_LD가 어떻게 바뀌는지 파라미터마다 정리했습니다", en: "What raising each parameter does to V_LU and V_LD" },
+  "guide.list.heading": { ko: "파라미터 가이드 · 키우면 V_LU·V_LD는?", en: "Parameter guide · what raising each value does to V_LU and V_LD" },
   "guide.list.lead": {
     ko: "사이드바와 같은 순서입니다. 각 줄의 왼쪽은 쉬운 설명, 오른쪽은 값을 키웠을 때 V_LU·V_LD의 변화입니다.",
     en: "Same order as the sidebar. Each row gives a plain explanation on the left and what raising the value does to V_LU and V_LD on the right.",
@@ -46,14 +53,20 @@ export const GUIDE = {
   "adv.short.solver": { ko: "솔버", en: "Solver" },
   "adv.fields": { ko: "고급 항목 {n}개", en: "{n} more settings" },
   "adv.fields.aria": { ko: "고급 항목 {n}개: {names}", en: "{n} more settings: {names}" },
-  "group.defaults": { ko: "기본값 그대로", en: "at defaults" },
+  "group.defaults": { ko: "기본값", en: "default" },
   "group.changed.title": { ko: "기본값에서 바꾼 항목 수", en: "Values changed from the defaults" },
   "group.sto": { ko: "확률 모드 전용", en: "Stochastic mode only" },
   "light.dark": { ko: "암조건", en: "dark" },
+  "light.conv": { ko: "광 파워 {p} mW (응답도 R = {r} pA/mW)", en: "optical power {p} mW (responsivity R = {r} pA/mW)" },
 
   // ---------------------------------------------------------------- device card
   "dev.head": { ko: "소자 · {tech}", en: "Device · {tech}" },
-  "dev.more": { ko: "기술 · 저장", en: "Tech · save" },
+  "dev.more": { ko: "기술 · 저장", en: "Tech · Save" },
+  "dev.photoDark": { ko: "빛 0 mW에서 시작 (측정 0–{max} mW)", en: "Starts at 0 mW (measured 0–{max} mW)" },
+  "dev.photo.tip": {
+    ko: "광조사 실험 데이터로 보정한 소자입니다. 처음에는 빛이 꺼져 있고, 광조사 그룹에서 측정한 광 파워를 눌러 켤 수 있습니다.",
+    en: "Calibrated on the illumination experiment; it starts with the light off. Pick a measured power in the Illumination group to turn it on.",
+  },
   "dev.more.title": { ko: "공정 선택, 저장한 소자 불러오기, 소자로 저장", en: "Technology, load a saved device, save as a device" },
   "dev.modified": { ko: "{base}에서 수정", en: "Edited from {base}" },
   "dev.reset.aria": { ko: "{base} 값으로 되돌리기", en: "Restore the {base} values" },

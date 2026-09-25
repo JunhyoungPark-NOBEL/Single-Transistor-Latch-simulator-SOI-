@@ -826,7 +826,7 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
         summary += [
             _item("P1", "P(1) (비교기 출력)", "P(1) (comparator output)", p1 if n_bits else None, "1",
                   float(np.nanstd(per_run, ddof=1)) if np.isfinite(per_run).sum() > 1 else None),
-            _item("P_latched", "래치 상태 비율 (클럭 high 끝)", "Latched fraction (end of clock high)", pl if n_bits else None, "1"),
+            _item("P_latched", "래치 상태 비율 (펄스 끝 시점)", "Latched fraction (end of each pulse)", pl if n_bits else None, "1"),
             _item("lag1", "비트열 lag-1 자기상관", "Bit lag-1 autocorrelation", lag1),
             _item("n_bits", "비트 수", "Number of bits", int(n_bits)),
             _item("v_th", "비교기 기준 전압 V_ref (V(R_S)와 비교)", "Comparator reference V_ref (on V(R_S))", float(bp["v_ref_V"]), "V"),

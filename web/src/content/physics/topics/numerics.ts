@@ -4,7 +4,7 @@ import type { PhysicsTopic } from "../types";
 
 const topic: PhysicsTopic = {
   id: "numerics",
-  title: { ko: "수치 해법과 가드", en: "Numerics and guards" },
+  title: { ko: "수치 해법과 안전장치", en: "Numerics and safeguards" },
   summary: {
     ko: "결과의 해상도와 유효 범위를 정하는 수치적 선택을 정리한다: $u$ 격자, $u$마다 $r$을 찾는 로그 이분법, fold의 포물선 보정, 전계 표, 수송 슈팅법, NaN 가드, FPT 전압 창과 hazard 적분.",
     en: "The numerical choices that set the resolution and validity of the results: the $u$ grid, log bisection for $r$ at each $u$, parabolic fold refinement, field tables, transport shooting, NaN guards, and the FPT voltage window and hazard integral.",

@@ -7,7 +7,7 @@ export const UX = {
   // ---------------------------------------------------------------- layout toggle (간단히 | 모두 보기)
   "layout.label": { ko: "화면 구성", en: "Layout" },
   "layout.simple": { ko: "간단히", en: "Simple" },
-  "layout.all": { ko: "모두 보기", en: "Everything" },
+  "layout.all": { ko: "모두 보기", en: "Show all" },
   "layout.simple.title": {
     ko: "핵심 결과와 그래프 2개만 보여 줍니다. 나머지 그래프와 설정은 탭과 ⋯ 메뉴에서 한 번에 열 수 있습니다.",
     en: "Shows the key numbers and two plots. The other plots and settings are one click away in tabs and ⋯ menus.",

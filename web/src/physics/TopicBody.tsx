@@ -6,6 +6,8 @@ import { IconCheck, IconCopy } from "../components/icons";
 import { RichText } from "../components/RichText";
 import { FitTex, Tex } from "../components/Tex";
 import { useT } from "../i18n";
+import { subs } from "../plots/labels";
+import { SubText } from "../plots/SubText";
 import { GUIDE } from "../i18n/strings.guide";
 import "../components/guide.css";
 
@@ -86,7 +88,10 @@ export function TopicBody({ topic, idPrefix, onRelated, showSummary = true }: To
         <section key={i} className="topic-section" id={`${idPrefix}-sec-${i}`} data-section={i}>
           <h3>
             <span className="sec-num">{i + 1}</span>
-            {t.l(s.heading)}
+            {/* one flex item: the h3 is a flex row, so a bare <sub> would become its own item */}
+            <span>
+              <SubText text={subs(t.l(s.heading))} />
+            </span>
           </h3>
           {s.body && <RichText text={t.l(s.body)} />}
           {(s.equations ?? []).map((eq) => (

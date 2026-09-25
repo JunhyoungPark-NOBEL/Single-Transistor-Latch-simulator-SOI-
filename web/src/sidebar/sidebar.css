@@ -6,7 +6,8 @@
 .sidebar .group-head { align-items: center; gap: 4px; padding: 5px 6px 5px 8px; min-height: 38px; }
 .sidebar .group-toggle { align-items: center; gap: 6px; min-width: 0; overflow: hidden; padding: 4px 0; border-radius: 7px; }
 .sidebar .group-toggle .chev { margin-top: 0; }
-.sidebar .group-title { flex: 0 1 auto; min-width: 0; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13.5px; }
+/* the title keeps its width (up to the row); the value summary after it truncates first */
+.sidebar .group-title { flex: 0 0 auto; max-width: 100%; min-width: 0; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13.5px; }
 .sidebar .group-sum { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; color: var(--muted); font-weight: 500; }
 .sidebar .group-sum::before { content: "· "; }
 .sidebar .chg-count { flex: none; white-space: nowrap; line-height: 17px; }
@@ -22,7 +23,8 @@
 .guide-inline:hover .gi-text { color: var(--text-2); }
 .gi-text {
   margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--muted);
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+  /* KO lines are ≤ 3 lines; the longest EN ones (ramp rate, local-state σ ≈ 155 chars) need a 4th */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden;
 }
 .guide-inline .gchips { row-gap: 3px; }
 .sidebar .field:has(.guide-inline) + .field { padding-top: 10px; border-top: 1px dashed var(--border); }

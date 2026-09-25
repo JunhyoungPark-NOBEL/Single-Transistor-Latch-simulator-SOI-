@@ -1,7 +1,7 @@
 // Schematic editor view (lazy chunk): toolbar, canvas + properties panel, ERC bar, results (waveforms,
 // time cursor, statistics) and the read-only netlist (folded in 간단히). The sidebar shows the device library
 // and the simulation settings (./SchematicSidebar.tsx); Run / Ctrl+Enter run this circuit.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Panel } from "../components/Panel";
 import { IconCopy } from "../components/icons";
 import { isStale, useEntry } from "../device/common";
@@ -18,6 +18,7 @@ import { buildRequest, netlistText } from "./netlist";
 import { extractNets, type Connectivity } from "./nets";
 import { annotationsAt, Results } from "./Results";
 import { RESULT_KEY, requestKey, runSchematic, type SchematicRunData } from "./run";
+import { fmtSI } from "./si";
 import { useSch } from "./store";
 import { handleEditorKey, Toolbar } from "./Toolbar";
 import { Segmented, Switch } from "./ui";
@@ -27,6 +28,7 @@ function ErcBar({ erc, hasResult, stale }: { erc: ErcItem[]; hasResult: boolean;
   const t = useT();
   const [open, setOpen] = useState(false);
   const annotate = useSch((s) => s.annotate);
+  const cursorT = useSch((s) => s.cursorT);
   const set = useSch((s) => s.set);
   const errs = erc.filter((i) => i.level === "error");
   const warns = erc.filter((i) => i.level === "warning");
@@ -48,7 +50,11 @@ function ErcBar({ erc, hasResult, stale }: { erc: ErcItem[]; hasResult: boolean;
         {hasResult && (
           <label className="tb-toggle" title={stale ? t("schematic.res.staleHint") : undefined}>
             <Switch on={annotate && !stale} onChange={(v) => set({ annotate: v })} label={t("schematic.res.annotate")} testId="toggle-annotate" />
-            <span className={stale ? "muted" : undefined}>{t("schematic.res.annotate")}</span>
+            <span className={stale ? "muted" : undefined}>
+              {t("schematic.res.annotate")}
+              {/* the instant the values are read (the time cursor, far below in the waveform card) */}
+              {annotate && !stale && cursorT != null && <span className="mono" data-testid="annotate-time"> · t = {fmtSI(cursorT, "s", 4)}</span>}
+            </span>
           </label>
         )}
       </div>
@@ -203,6 +209,26 @@ export default function SchematicView() {
     if (method !== doc.tran.method) setParam(["circuit", "solver", "method"], doc.tran.method);
   }, [doc.tran.method, method, setParam]);
   const all = useIsAll();
+  // 간단히: when a run finishes and its waveform (e.g. the oscillator's sawtooth) is below the fold, bring the
+  // result summary to the top of the view once — the answer should not hide under the editor
+  const wasRunning = useRef(false);
+  const status = entry?.status;
+  useEffect(() => {
+    const running = status === "running" || status === "queued";
+    if (running) {
+      wasRunning.current = true;
+      return;
+    }
+    if (!wasRunning.current || status !== "done" || all) return;
+    wasRunning.current = false;
+    const id = requestAnimationFrame(() => {
+      const waves = document.querySelector('[data-testid="panel-sch-waves"]');
+      if (!waves || waves.getBoundingClientRect().top < window.innerHeight - 160) return;
+      const target = document.querySelector('[data-testid="sch-summary"]') ?? waves;
+      target.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [status, all]);
   const [tall, setTall] = useState(() => (typeof window !== "undefined" ? window.innerHeight > 860 : true));
   useEffect(() => {
     const on = () => setTall(window.innerHeight > 860);
