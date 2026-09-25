@@ -5,7 +5,11 @@ import { isReferenceGeometry, resolveGeometry } from "../params/geometry";
 import { geometryLine } from "./library";
 
 export type Point = readonly [voltage: number, current: number];
-export interface ExportSelection { device: DeviceBlock; sweep: SweepBlock; name?: string }
+export interface ExportSelection {
+  device: DeviceBlock; sweep: SweepBlock; name?: string;
+  /** Embed the calibration descriptors and the engine vector as comments (off by default: the file is shared). */
+  includeCalibration?: boolean;
+}
 export type ExportFormat = "ltspice" | "verilog-a" | "sentaurus";
 export interface VerilogAExport {
   filename: string;
@@ -27,6 +31,7 @@ export class ModelExportError extends Error {
   constructor(public code: ExportErrorCode) { super(code); }
 }
 
+const MIN_DV = 1e-9;
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const num = (v: number) => v.toExponential(16);
 const asciiName = (s: string) => `STL_${s.replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48) || "device"}`;
@@ -38,7 +43,9 @@ function points(curve: XY): Point[] {
   for (let i = 0; i < curve.vd.length; i++) {
     const v = curve.vd[i], current = curve.id[i];
     if (!finite(v) || !finite(current) || v < 0 || current < 0) throw new ModelExportError("noData");
-    if (!out.length || v > out[out.length - 1][0]) out.push([v, current]);
+    // Points closer than 1 nV to the previous one are numerical noise of the u-parameterised locus
+    // (the reference HRS has ~90 below 1 nV, down to 1e-58 V); they carry < 1e-25 A and break table parsers.
+    if (!out.length || v > out[out.length - 1][0] + MIN_DV) out.push([v, current]);
   }
   if (out.length < 2) throw new ModelExportError("noData");
   return out;
@@ -94,8 +101,10 @@ function prepareModelExport(selection: ExportSelection, result: BranchesResult) 
     hrs = points(result.HRS);
     lrs = points(result.LRS);
     // Close both stable segments with the same refined fold values as double_sweep().
-    if (lu! > hrs[hrs.length - 1][0]) hrs.push([lu!, ilu!]);
-    if (ld! < lrs[0][0]) lrs.unshift([ld!, ild!]);
+    if (lu! > hrs[hrs.length - 1][0] + MIN_DV) hrs.push([lu!, ilu!]);
+    else if (lu! > hrs[hrs.length - 1][0]) hrs[hrs.length - 1] = [lu!, ilu!];
+    if (ld! < lrs[0][0] - MIN_DV) lrs.unshift([ld!, ild!]);
+    else if (ld! < lrs[0][0]) lrs[0] = [ld!, ild!];
     if (hrs[0][0] !== 0 || hrs[hrs.length - 1][0] < lu! || lrs[0][0] > ld! ||
         lrs[lrs.length - 1][0] < sweep.vd_max_V || sweep.vd_max_V <= lu!) throw new ModelExportError("range");
   } else {
@@ -129,8 +138,8 @@ export function buildLtspiceExport(selection: ExportSelection, result: BranchesR
     fixed_IPH_A: result.iph_A,
     fixed_geometry: resolveGeometry(device.geometry),
     geometry_model: result.geometry_model ?? null,
-    effective_engine_p: result.p,
-    submitted_device: device,
+    calibration_included: !!selection.includeCalibration,
+    ...(selection.includeCalibration ? { effective_engine_p: result.p, submitted_device: device } : {}),
     sweep,
     folds: result.folds,
     engine_grid: result.grid ?? device.numerics.grid,
@@ -161,7 +170,7 @@ export function buildLtspiceExport(selection: ExportSelection, result: BranchesR
   } else lines.push("Bdrain D S I={Ihrs(V(D,S))}");
   lines.push(`.ends ${modelName}`, "");
   const subcircuit = [...lines,
-    "* Export metadata (submitted calibration and actual engine vector):",
+    "* Export metadata:",
     jsonComments(metadata), ""].join("\n");
   const circuit = [
     `${modelName} - quasi-static triangular ID-VD example`,
@@ -194,7 +203,7 @@ export function buildLtspiceExport(selection: ExportSelection, result: BranchesR
     `Valid drain-source range: **0–${maxVoltage} V**. Stable currents use the web solver's linear interpolation of log(I); the refined folds set a native positive-hysteresis switch. Start at 0 V in HRS. Table endpoints clamp out of range, and VDS ≤ 0 returns zero; neither behavior is a validated extrapolation.\n\n` +
     `Fixed geometry: ${geometryLine(resolveGeometry(device.geometry))}. The tables are computed at this geometry. The exported model has no tunable geometry parameters; regenerate it after changing any dimension or doping.\n\n` +
     `No carrier/local-state noise, body-charge ODE, physical switching delay, oscillator-frequency prediction, temperature scaling or variable gate bias is included. Transient time in the example only traverses the static curve; switching is instantaneous. Regenerate the export after changing calibration or fixed bias. The actual LTspice executable has not been run for validation.\n\n` +
-    `Calibration, geometry provenance and the effective engine parameter vector are embedded as JSON comments in the .cir. Server warnings are preserved there.\n\n` +
+    `Bias, geometry, folds and server warnings are embedded as JSON comments in the .cir${selection.includeCalibration ? ", together with the calibration descriptors and the effective engine parameter vector" : ""}. The tables themselves reproduce the calibrated ID–VD curve: share the file only where that is acceptable.\n\n` +
     `Native switch syntax and Vt/Vh conventions: https://www.analog.com/en/resources/analog-dialogue/articles/how-to-add-a-voltage-controlled-switch.html\n`;
   return { filename: `${modelName}.cir`, circuit, readme, subcircuit, modelName, maxVoltage };
 }
@@ -237,8 +246,8 @@ export function buildVerilogAExport(selection: ExportSelection, result: Branches
     fixed_IPH_A: result.iph_A,
     fixed_geometry: resolveGeometry(selection.device.geometry),
     geometry_model: result.geometry_model ?? null,
-    effective_engine_p: result.p,
-    submitted_device: selection.device,
+    calibration_included: !!selection.includeCalibration,
+    ...(selection.includeCalibration ? { effective_engine_p: result.p, submitted_device: selection.device } : {}),
     sweep: selection.sweep,
     folds: result.folds,
     engine_grid: result.grid ?? selection.device.numerics.grid,
@@ -271,7 +280,7 @@ export function buildVerilogAExport(selection: ExportSelection, result: Branches
     "    I(D,S) <+ (lrs_state == 1) ? i_lrs(V(D,S)) : i_hrs(V(D,S));",
   );
   else lines.push("    I(D,S) <+ i_hrs(V(D,S));");
-  lines.push("  end", "endmodule", "", "// Export metadata (submitted calibration and actual engine vector):",
+  lines.push("  end", "endmodule", "", "// Export metadata:",
     ...JSON.stringify(metadata, null, 2).split("\n").map((line) => `// ${line}`), "");
 
   const readme = `# ${modelName}: Verilog-A export\n\n` +

@@ -55,16 +55,32 @@ describe("LTspice calibration export", () => {
     expect(exported.circuit).toContain(".subckt STL_Reference D S");
   });
 
-  it("keeps every effective calibration value and explicit model scope", () => {
-    const comments = exported.circuit.split("* Export metadata (submitted calibration and actual engine vector):\n")[1].split("\n.end")[0];
-    const metadata = JSON.parse(comments.split("\n").map((line) => line.slice(2)).join("\n"));
-    expect(metadata.effective_engine_p).toEqual(result.p);
-    expect(metadata.submitted_device).toEqual(selection.device);
+  const ltMetadata = (circuit: string) => JSON.parse(circuit.split("* Export metadata:\n")[1].split("\n.end")[0]
+    .split("\n").map((line) => line.slice(2)).join("\n"));
+
+  it("embeds the calibration descriptors and engine vector only on explicit opt-in", () => {
+    const metadata = ltMetadata(exported.circuit);
+    expect(metadata.calibration_included).toBe(false);
+    expect(metadata).not.toHaveProperty("effective_engine_p");
+    expect(metadata).not.toHaveProperty("submitted_device");
+    expect(exported.circuit).not.toContain("tau_bulk_s");
+    const full = ltMetadata(buildLtspiceExport({ ...selection, includeCalibration: true }, result).circuit);
+    expect(full.effective_engine_p).toEqual(result.p);
+    expect(full.submitted_device).toEqual(selection.device);
+  });
+
+  it("drops sub-nanovolt table abscissas that other SPICE parsers reject", () => {
+    const body = exported.circuit.split(".func Ihrs(v)")[1].split("\n+ )))}")[0];
+    const xs = body.split("\n").filter((l) => l.startsWith("+ ")).map((l) => Number(l.slice(2).split(",")[0]));
+    for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeGreaterThan(1e-9);
+  });
+
+  it("keeps the explicit model scope", () => {
+    const metadata = ltMetadata(exported.circuit);
     expect(metadata.valid_VDS_V).toEqual([0, selection.sweep.vd_max_V]);
     expect(metadata.fixed_geometry).toEqual(REFERENCE_GEOMETRY);
     expect(metadata.fixed_VBG_V).toBe(0);
     expect(exported.subcircuit).toContain('"fixed_geometry"');
-    expect(exported.subcircuit).toContain('"effective_engine_p"');
     expect(exported.readme).toContain("body-charge ODE");
     expect(exported.readme).toContain("바디 전하");
     expect(exported.circuit).toContain("No physical body-charge transient");
@@ -177,10 +193,10 @@ describe("Verilog-A calibration export", () => {
   });
 
   it("retains the actual calibration and clearly separates static behavior from CSVM and TCAD", () => {
-    const metadataText = exported.source.split("// Export metadata (submitted calibration and actual engine vector):\n")[1];
+    const metadataText = exported.source.split("// Export metadata:\n")[1];
     const metadata = JSON.parse(metadataText.trim().split("\n").map((line) => line.slice(3)).join("\n"));
-    expect(metadata.effective_engine_p).toEqual(result.p);
-    expect(metadata.submitted_device).toEqual(selection.device);
+    expect(metadata.calibration_included).toBe(false);
+    expect(metadata).not.toHaveProperty("effective_engine_p");
     expect(metadata.fixed_IPH_A).toBe(result.iph_A);
     expect(exported.readme).toContain("No body-charge ODE");
     expect(exported.readme).toContain("CSVM Vtop/Vbottom/frequency");
