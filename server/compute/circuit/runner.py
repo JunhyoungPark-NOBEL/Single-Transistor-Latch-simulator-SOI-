@@ -170,9 +170,10 @@ def _signals(spec: B.BenchSpec, net_c: dict, out, ls_unit: str, stochastic_ls: b
     idx = _decimate_idx(t, feats, n_max)
     r = rec[idx]
     sig = []
-    src_node = "clk" if spec.bench == "pbit" else "src"
-    sig.append(dict(key="v_clk" if spec.bench == "pbit" else "v_src",
-                    label=_L("클럭 전원 전압" if spec.bench == "pbit" else "전원 전압", "Clock supply" if spec.bench == "pbit" else "Source voltage"),
+    pbit = spec.bench == "pbit"
+    src_node = "d" if pbit else "src"
+    sig.append(dict(key="v_clk" if pbit else "v_src",
+                    label=_L("드레인 펄스 전압" if pbit else "전원 전압", "Drain pulse voltage" if pbit else "Source voltage"),
                     unit="V", values=r[:, nodes.index(src_node)], axis="voltage"))
     multi = ns > 1
     for k in range(ns):
@@ -181,7 +182,13 @@ def _signals(spec: B.BenchSpec, net_c: dict, out, ls_unit: str, stochastic_ls: b
         cell_en = f" (cell {k + 1})" if multi else ""
         c0 = base + 7 * k
         vd = r[:, nodes.index(cells[k]["drain"])]
-        sig.append(dict(key=f"v_d{sfx}", label=_L("드레인 전압" + cell_ko, "Drain voltage" + cell_en), unit="V", values=vd, axis="voltage"))
+        if cells[k].get("source"):
+            vs = r[:, nodes.index(cells[k]["source"])]
+            vd = vd - vs
+            sig.append(dict(key=f"v_s{sfx}", label=_L("소스 전압 V(R_S)" + cell_ko, "Source voltage V(R_S)" + cell_en), unit="V",
+                            values=vs, axis="voltage"))
+        sig.append(dict(key=f"v_d{sfx}", label=_L("드레인–소스 전압 V_DS" + cell_ko, "Drain–source voltage V_DS" + cell_en), unit="V",
+                        values=vd, axis="voltage"))
         sig.append(dict(key=f"i_d{sfx}", label=_L("드레인 전류" + cell_ko, "Drain current" + cell_en), unit="A", values=r[:, c0 + 3], axis="current"))
         sig.append(dict(key=f"u{sfx}", label=_L("소스-바디 준페르미 분리 u" + cell_ko, "Source–body splitting u" + cell_en), unit="V", values=r[:, c0], axis="state"))
         sig.append(dict(key=f"r{sfx}", label=_L("드레인 접합 역바이어스 r" + cell_ko, "Drain-junction reverse bias r" + cell_en), unit="V", values=r[:, c0 + 1], axis="state"))
@@ -196,15 +203,20 @@ def _signals(spec: B.BenchSpec, net_c: dict, out, ls_unit: str, stochastic_ls: b
                 sig.append(dict(key=f"dphi_E{sfx}", label=_L("이미터 상태 편차 δφ_E" + cell_ko, "Emitter-state deviation δφ_E" + cell_en),
                                 unit="V", values=r[:, c0 + 6], axis="state"))
     reached = np.isfinite(out.samples[:, 0]).any() if len(out.samples) else False
-    if spec.bench == "pbit" and reached:
-        v_th = spec.meta["v_th"]
+    if pbit:
+        sig.append(dict(key="v_cmp", label=_L("비교기 출력 전압", "Comparator output voltage"), unit="V",
+                        values=r[:, nodes.index("q")], axis="voltage"))
+    if pbit and reached:
         smp = out.samples[np.isfinite(out.samples[:, 0])]          # clocks reached by the run
         ts = smp[:, 0]
-        bits = (smp[:, 2] < v_th).astype(float)
+        bits = (spec.meta["R_S"] * smp[:, 1] > spec.meta["v_ref"]).astype(float)
         j = np.searchsorted(ts, r[:, 0], side="right") - 1
         held = np.where(j >= 0, bits[np.clip(j, 0, len(bits) - 1)], np.nan)
-        sig.append(dict(key="bit", label=_L("비교기 출력 비트", "Comparator bit"), unit="1", values=held, axis="logic"))
+        sig.append(dict(key="bit", label=_L("비교기 출력 비트 (펄스 끝에서 샘플)", "Comparator bit (sampled at the end of each pulse)"),
+                        unit="1", values=held, axis="logic"))
     drain0 = r[:, nodes.index(cells[0]["drain"])]
+    if cells[0].get("source"):
+        drain0 = drain0 - r[:, nodes.index(cells[0]["source"])]
     traj = dict(vd=drain0, id=r[:, base + 3])
     return dict(t=r[:, 0], signals=sig), traj
 
@@ -286,13 +298,14 @@ def _pulse_bits(out, meta, cell: int, key="top_end"):
     return np.where(hit, v, np.nan)
 
 
-def _pbit_bits(out, v_th: float):
-    """(comparator bit, reported latch state) per clock; NaN for clocks the run did not reach."""
+def _pbit_bits(out, meta: dict):
+    """(comparator bit, reported latch state) per clock; NaN for clocks the run did not reach.  The comparator
+    reads the source node, V(R_S) = R_S I_D (the source resistor carries the drain current)."""
     s = out.samples
     if len(s) == 0:
         return np.zeros(0), np.zeros(0)
     ok = np.isfinite(s[:, 0])
-    bit = np.where(ok, (s[:, 2] < v_th).astype(float), np.nan)
+    bit = np.where(ok, (meta["R_S"] * s[:, 1] > meta["v_ref"]).astype(float), np.nan)
     lat = np.where(ok, s[:, 3], np.nan)
     return bit, lat
 
@@ -474,14 +487,13 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
             specs.append(("amp", a, B.build_pulse(bp, p1, vg1, _label(p1), amp=a), st["n_runs"]))
     elif bench == "pbit":
         if bp.get("v_high_V") is None:
-            bp["v_high_V"] = round(fold_lu - 0.02, 4)
+            bp["v_high_V"] = round(fold_lu - 0.015, 4)
         pulse_params(bp, amp_key="v_high_V", base_key="v_low_V", width="clock_width_s", period="clock_period_s",
                      n="n_clocks")
-        B._num(bp, "R_L_ohm", positive=True, hi=1e12)
-        B._num(bp, "C_d_F", 0.0, 1e-6)
-        if bp.get("cmp_threshold_V") is None:
-            bp["cmp_threshold_V"] = round(bp["v_high_V"] - bp["R_L_ohm"] * 1e-7, 6)
-        B._num(bp, "cmp_threshold_V", -B.CAPS["v_abs_max"], B.CAPS["v_abs_max"])
+        B._num(bp, "R_S_ohm", positive=True, hi=1e9)
+        if bp.get("v_ref_V") is None:
+            bp["v_ref_V"] = round(bp["R_S_ohm"] * 1e-6, 6)
+        B._num(bp, "v_ref_V", -B.CAPS["v_abs_max"], B.CAPS["v_abs_max"])
         vgl = B._list(bp, "vg_list_V", warnings, -6.0, 3.0)
         ll = B._list(bp, "light_list_pA", warnings, 0.0, 1e6)
         specs.append(("nominal", None, B.build_pbit(bp, p1, vg1, _label(p1)), st["n_runs"]))
@@ -796,10 +808,9 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
             sweeps.append(dict(key="P_sw_vs_amplitude", label=_L("펄스 진폭에 따른 스위칭 확률", "Switching probability vs pulse amplitude"),
                                x=xs, x_label="V_amp", x_unit="V", y=ys, y_label="P_sw", y_unit="1", y_err=es))
     elif bench == "pbit":
-        v_th = bp["cmp_threshold_V"]
         add_events(main_outs)
 
-        pairs = [_pbit_bits(o, v_th) for o in main_outs]
+        pairs = [_pbit_bits(o, spec0.meta) for o in main_outs]
         bl = [b for b, _ in pairs]
         ll = [lt for _, lt in pairs]
         allb = np.concatenate(bl) if bl else np.zeros(0)
@@ -818,8 +829,9 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
             _item("P_latched", "래치 상태 비율 (클럭 high 끝)", "Latched fraction (end of clock high)", pl if n_bits else None, "1"),
             _item("lag1", "비트열 lag-1 자기상관", "Bit lag-1 autocorrelation", lag1),
             _item("n_bits", "비트 수", "Number of bits", int(n_bits)),
-            _item("v_th", "비교기 문턱 전압", "Comparator threshold", float(v_th), "V"),
-            _item("v_high", "클럭 high 전압", "Clock high level", float(bp["v_high_V"]), "V"),
+            _item("v_th", "비교기 기준 전압 V_ref (V(R_S)와 비교)", "Comparator reference V_ref (on V(R_S))", float(bp["v_ref_V"]), "V"),
+            _item("R_S", "소스 저항 R_S", "Source resistor R_S", float(bp["R_S_ohm"]), "Ω"),
+            _item("v_high", "드레인 펄스 high 전압", "Drain pulse high level", float(bp["v_high_V"]), "V"),
             _item("fold_V_LU", "정상상태 폴드 V_LU", "Steady-state fold V_LU", folds["V_LU"], "V"),
         ]
 
@@ -827,7 +839,7 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
             mask = np.isfinite(bits) & np.isfinite(lat) & (bits > 0.5) & (lat < 0.5)
             if mask.any():
                 warnings.append(f"{label}: the comparator read 1 in {int(mask.sum())} of {int(np.isfinite(bits).sum())} clocks "
-                                "while the cell was not latched (channel/HRS conduction pulls v_D below v_th): P(1) is "
+                                "while the cell was not latched (channel/HRS conduction raises V(R_S) above V_ref): P(1) is "
                                 "then not a latch probability")
 
         _mismatch(allb, alll, "nominal")
@@ -839,7 +851,7 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
         if len(specs) > 1:
             xs, ys, es = [], [], []
             for ci_, (key, xval, spec, nr) in enumerate(specs[1:], start=1):
-                pr = [_pbit_bits(o, v_th) for o in all_outs[ci_]]
+                pr = [_pbit_bits(o, spec.meta) for o in all_outs[ci_]]
                 bits = np.concatenate([b for b, _ in pr])
                 _mismatch(bits, np.concatenate([lt for _, lt in pr]), f"{key} = {xval:g}")
                 pm, err, _n = _frac_err(bits)

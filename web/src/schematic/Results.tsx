@@ -21,6 +21,7 @@ import { subs, withUnit } from "../plots/labels";
 import { runSchematic, type SchematicRunData } from "./run";
 import { fmtSI } from "./si";
 import { useSch } from "./store";
+import { ComparatorPanels } from "./CmpPanel";
 import { Segmented, Switch } from "./ui";
 
 export const axisOf = (s: Pick<Signal, "axis" | "unit">): AxisKind =>
@@ -555,6 +556,7 @@ export function Results({ entry, stale, cells }: { entry: ResultEntry | undefine
       <div className="grid">
         <EventsTable res={res} nRuns={nRuns} cells={cells} stale={stale} />
         <TrajectoryPanel res={res} stale={stale} />
+        <ComparatorPanels res={res} stale={stale} />
         {res.mode === "stochastic" && <DistributionsPanel res={res} stale={stale} />}
       </div>
       <div className="sch-solver small muted mono" data-testid="sch-solver">

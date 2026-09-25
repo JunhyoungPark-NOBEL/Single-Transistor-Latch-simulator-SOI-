@@ -102,6 +102,11 @@ ground. Dense `np.linalg.solve` (the benches have ≤ 12 unknowns).
 
 * STL Jacobian block: forward finite differences of the element in u and r (δ = 1 µV; backward
   difference if the forward point is outside the domain). `components` costs 10–25 µs per call.
+  Cells whose V_GS = v_G − v_S can move (source not grounded, or gate not held by a constant voltage source
+  to ground; custom circuits) also get ∂/∂V_GS columns (δ = 1 µV) at the gate and source nodes of the
+  KCL, E1 and E2 rows — V_GS enters I_D, V_D, F and the charge coordinate (−C_ox V_GS). Without them Newton
+  failed at the latch-up of a cell with a 100 kΩ source resistor (V_S jumps by 0.44 V; time-step underflow).
+  The benches (grounded source, DC gate) do not get them and are unchanged.
 * Damping/limiting: |Δu| ≤ 50 mV and |Δr| ≤ 1 V per iteration (whole step scaled); backtracking
   (halving, ≤ 14×) until every element evaluates finitely (the source barrier must exist and the
   neutral base must not collapse).
@@ -272,7 +277,7 @@ from the previous cycle (e.g. short periods, v_base inside the window) is includ
 ## 5. 벤치 / Benches (defaults in `benches.py`, resolved values returned in `result.bench_params`)
 
 > **KO.** load_line(직렬 R + 삼각파, 사이클별 V_LU/V_LD 분포), pulse(펄스 열, 펄스 끝 래치 비율 P_sw,
-> 진폭 스윕), pbit(부하 저항 + 클럭 + 비교기, P(1)·자기상관, V_G/광 스윕), coupled(저항 결합 두 셀).
+> 진폭 스윕), pbit(드레인 펄스 + 소스 저항 + 비교기, P(1)·자기상관, V_G/광 스윕), coupled(저항 결합 두 셀).
 > 바디 전하는 사이클 사이에 연속 적분되므로 잔류 바디 기억 효과가 자동으로 포함된다.
 
 `None` = automatic. All voltages V, times s, R Ω, C F.
@@ -281,16 +286,17 @@ from the previous cycle (e.g. short periods, v_base inside the window) is includ
 |---|---|---|
 | `load_line` | V_src triangle v_min → v_max → v_min, series R_s, C_d to ground, DC gate | v_min 0, v_max = preset vd_max (paper 4 V, photo 5 V), rate = preset (0.4 / 1200 V/s; stochastic falls back to 1200 V/s when infeasible), n_cycles 1 (≤ 50), R_s 1 kΩ, C_d 2 fF, vg_V = device.vg |
 | `pulse` | trapezoidal pulses through R_s, C_d | v_base 0, v_amp = fold V_LU + 0.10 V, width (flat top) 200 µs, period 1 ms, rise/fall 10 µs, n_pulses 10 (≤ 2000), delay 0, R_s 1 kΩ, C_d 2 fF, amplitudes_V [] (sweep) |
-| `pbit` | clocked supply → R_L → drain (C_d), comparator on v_D | v_low 0, v_high = fold V_LU − 0.02 V, period 1 ms, width 200 µs, rise/fall 20 µs, n_clocks 50 (≤ 5000), R_L 100 kΩ, C_d 2 fF, cmp_threshold = v_high − R_L·100 nA, vg_list_V [], light_list_pA [] |
+| `pbit` | drain pulses (V_clk directly on the drain) → STL → source → R_S → ground; comparator (CMP element) on the source node | v_low 0, v_high = fold V_LU − 0.015 V, period 1 ms, width 200 µs, rise/fall 20 µs, n_clocks 50 (≤ 5000), R_S 100 kΩ, v_ref = R_S · 1 µA (0.1 V), vg_list_V [], light_list_pA [] |
 | `coupled` | common ramp or pulse source; R_s1, R_s2 to the drains d1, d2; R_c between d1 and d2 | source "ramp", ramp and pulse keys as above, R_s1 = R_s2 = 100 kΩ, R_c 1 MΩ, C_d 2 fF each, vg2_V = vg_V, iph2_pA = device light |
 
 * `pulse`: P_sw = fraction of pulses in which the cell is latched (§4 latch state) at the end of the
   flat top; P_retained = still latched at the end of the period; switching delay from the
   pulse start (first latch-up in the period). `amplitudes_V` → sweep `P_sw_vs_amplitude`
   (n_runs per point, binomial error bars).
-* `pbit`: bit = comparator output [v_D < v_th] at the end of the clock-high phase (the latched cell
-  pulls v_D down by R_L I_LRS). P(1) (comparator output), `P_latched` (fraction of clocks with the cell
-  latched), pooled lag-1 autocorrelation. With the channel on (V_G above ≈ −0.5 V) the comparator reads
+* `pbit`: bit = comparator output [V(R_S) = R_S I_D > v_ref] at the end of the pulse's flat top (a latched
+  cell carries its LRS current: V(R_S) ≈ 0.44 V at 100 kΩ; unlatched: µV). P(1) (comparator output),
+  `P_latched` (fraction of clocks with the cell latched), pooled lag-1 autocorrelation. With the channel on
+  (V_G above ≈ −0.5 V) the comparator reads
   1 without a latch; this is warned about per configuration. `vg_list_V` (or, if empty, `light_list_pA`)
   → sweep `P1_vs_vg` / `P1_vs_iph` (comparator P(1)).
 * Truncated runs (step budget or step failure): pulses, clocks and cycles the run did not reach are
@@ -478,8 +484,9 @@ the `coupled` bench carry the suffix 1 / 2):
 
 | key | unit | axis | meaning |
 |---|---|---|---|
-| `v_src` (`v_clk` in pbit) | V | voltage | supply |
-| `v_d` | V | voltage | drain node voltage (= device V_DS, source grounded) |
+| `v_src` (`v_clk` in pbit) | V | voltage | supply (pbit: the drain pulses) |
+| `v_d` | V | voltage | device V_DS (= drain node voltage when the source is grounded) |
+| `v_s`, `v_cmp` | V | voltage | pbit: source node V(R_S) and comparator output |
 | `i_d` | A | current | drain current (log axis recommended) |
 | `u`, `r` | V | state | internal unknowns |
 | `q_b` | C | charge | Q_B(t) − Q_B(0) |
@@ -495,7 +502,7 @@ and cycles), deterministic load_line also `hrs_branch_dev`, `lrs_branch_dev` (de
 adds suffix `_1`/`_2`, `corr_LU`, `dt_LU` (s). pulse: `P_sw` (spread = SD over runs of per-run
 P_sw), `P_retained`, `delay` (s), `amplitude`, `fold_V_LU`; coupled-pulse `P_sw_1/2`, `delay_1/2`,
 `P_both`, `corr_sw`. pbit: `P1` (comparator output), `P_latched`, `lag1`, `n_bits` (observed clocks),
-`v_th`, `v_high`, `fold_V_LU`. Always: `runs`, `steps_per_run`; stochastic with carrier noise:
+`v_th` (= the comparator reference V_ref on V(R_S)), `R_S`, `v_high`, `fold_V_LU`. Always: `runs`, `steps_per_run`; stochastic with carrier noise:
 `t_noise_resolved_frac` (cell-averaged, in [0, 1]).
 
 **Distributions**: `V_LU`, `V_LD`, `V_LU_src`, `V_LD_src` (V; one value per run × cycle, `null` =
@@ -512,11 +519,12 @@ reached pulses only), `bit` (comparator value 0/1 per clock, first 8 runs, reach
 | `element.py` | numba: `stl_eval` (components + charge coordinate + u<0 / r<0 extensions), cluster pmf interpolation |
 | `mna.py` | numba: MNA assembly, Newton, DC point, sensitivities/τ_rel, event draws, the time-stepping loop `run_chunk` |
 | `sim.py` | Python driver for one run (chunks, progress/cancel, buffers) |
-| `netlist.py` | netlist builder (R, C, V, I, STL, CMP), PWL waveforms, compilation to arrays, schematic |
+| `netlist.py` | netlist builder (R, C, V, I, STL, CMP = comparator: behavioural voltage source), PWL waveforms, compilation to arrays, schematic |
 | `benches.py` | bench defaults, builders, statistics helpers (no numba import) |
 | `stochastic.py` | local states, branch profiles (τ_rel, rates, barrier z), noise bands, feasibility estimate |
 | `runner.py` | `run_circuit`: parsing, feasibility, run loop, analysis, result (bench `custom` → `custom.py`) |
 | `custom.py` | user-drawn circuits (§12): netlist/wave parsing, ERC, linear DC estimate, per-cell profiles, streaming signal reduction, statistics |
+| `oscillator.py` | quasi-static load-line walk of high-impedance (current-driven) cells: relaxation-oscillator prediction and feasibility drive (§13) |
 | `validate.py` | validation V1–V6 |
 
 ## 12. 사용자 회로 / Custom circuits (`bench: "custom"`, WEB_CONTRACT §6)
@@ -543,10 +551,13 @@ reached pulses only), `bit` (comparator value 0/1 per clock, first 8 runs, reach
     { "type": "STL", "name": "X1", "nodes": { "d": "d", "g": "g", "s": "0" },
       "device": { ...device block (§1)... },          // each STL may use a different device
       "light_pA": Wave | null,                         // I_PH(t) in pA (≥ 0); null = the device block's light
-      "local_state": { ...§1 local_state... } }        // optional (extension): this cell's local states
+      "local_state": { ...§1 local_state... } },       // optional (extension): this cell's local states
+    { "type": "CMP", "name": "CMP1", "nodes": { "in": "s", "out": "q" /* , "inm": "ref" */ },
+      "v_ref": 0.1, "v_high": 1, "v_low": 0, "hysteresis": 0, "width": 1e-3 }   // comparator (§12.9)
   ] },
   "tran": { "t_stop_s": 5e-3, "t_start_save_s": 0, "dt_max_s": 1e-5, "dt_min_s": 1e-15,
-            "method": "BE" | "TRAP", "reltol": 1e-4 },  // dt_max default t_stop/2000, dt_min max(1e-15, 1e-13 t_stop)
+            "method": "BE" | "TRAP", "reltol": 1e-4,   // dt_max default t_stop/2000, dt_min max(1e-15, 1e-13 t_stop)
+            "initial": "auto" | "op" | "zero" },      // initial state (§13.2), default "auto"
   "stochastic": { "seed", "n_runs" (≤ 200), "carrier_noise", "ld_carrier_noise", "local_state",
                   "local_state_override": false },       // true: stochastic.local_state for every STL
   "solver": { "max_steps", "tau_frac", "max_events_per_step", "noise_dt_min_s", ... },  // optional, §6 of this doc
@@ -588,6 +599,8 @@ reached pulses only), `bit` (comparator value 0/1 per clock, first 8 runs, reach
 | `X1.u`, `X1.r` | V | state | internal unknowns |
 | `X1.q_b` | C | charge | ΔQ_B = Q(t) − Q(0) |
 | `X1.dphi`, `X1.dphi_E` | V or 1 | state | local-state deviations (stochastic, cell with local states) |
+| `I(CMP1)` | A | current | comparator output current through its source, out → ground (SPICE sign: delivering power < 0) |
+| `CMP1.bit` | 1 | logic | comparator digital output (1 = output at v_high) |
 
 Kirchhoff's current law holds for the reported currents at every node to the Newton tolerance
 (≤ 1e-5 of the largest current at the node; the tests check it) plus the numerical GMIN = 1e-18 S from
@@ -625,12 +638,14 @@ stochastic tier parameters may still be given in `solver`.
 **Feasibility** before running: (a) the linear network's node voltages over the union of all source
 breakpoints (with the STLs open, clipped to ±max(10 V, 1.5 max|V source|)) give the Δv/dt_max steps of
 every node plus 60 steps per sharp corner (corner sharpness |Δslope|/(|s−| + |s+|), so a sampled sine
-costs ≈ 1 step per point); (b) per cell, the bench estimator of §6 is walked along the cell's open-circuit
-drive V_DS(t) (Thevenin voltage) at every V_GS/light variant; the cells' own extra steps (transitions,
-resolved noise) are added to the shared part. Refused above 2 × max_steps per run or 4e7 steps per
-request, warned above 0.5 × max_steps. Current-biased cells (no DC path to the drain except the cell,
-R_th > 1e11 Ω) are warned: they can sit on the negative-resistance branch and oscillate (a relaxation
-oscillator), which the estimate cannot foresee (example below: estimate 2.6e3, actual 2.2e5 steps).
+costs ≈ 1 step per point); (b) per cell, the bench estimator of §6 is walked along the cell's drive
+V_DS(t) at every V_GS/light variant — the open-circuit (Thevenin) voltage for low-impedance drives, and for
+**high-impedance cells** (d–s port resistance > 100 MΩ: current sources, large load resistors) with a
+capacitance across the cell the quasi-static load-line walk of §13.3, which predicts relaxation
+oscillations and counts their cycles (the drain/source nodes of such cells are left out of part (a)); the
+cells' own extra steps (transitions, resolved noise) are added to the shared part. Refused above
+2 × max_steps per run (the message names the predicted oscillation cycles when that is the cause) or 4e7
+steps per request, warned above 0.5 × max_steps.
 
 ### 12.5 Output reduction and statistics
 
@@ -650,14 +665,17 @@ Stochastic (`n_runs` ≤ 200, per-run seeds as §4): the first ≤ 8 runs' wavef
 are null); summary per cell `X1.p_any_lu` (P(≥ 1 latch-up)), `X1.p_latched_end` (P(latched at t_stop)),
 `X1.t_first_lu`, `X1.vd_first_lu`, `X1.n_latch_up`, `X1.n_latch_down` (mean, spread = SD over runs).
 Deterministic summary per cell: `X1.n_latch_up`, `X1.n_latch_down`, `X1.t_first_lu`, `X1.vd_first_lu`,
-`X1.latched_end` (0/1), `X1.final_state` ("LRS" | "HRS"); always `X1.fold_V_LU`, `X1.fold_V_LD`
+`X1.latched_end` (0/1), `X1.final_state` ("LRS" | "HRS"); with ≥ 2 latch-ups in a run (oscillator, pulse
+trains) also `X1.period`, `X1.f_osc`, `X1.isi_cv`, `X1.vd_lu_mean`, `X1.vd_ld_mean` (+ stochastic
+`X1.period_cv_runs` and the distribution `X1.isi`; §13.4); always `X1.fold_V_LU`, `X1.fold_V_LD`
 (quasi-static at the cell's V_GS), `runs`, `steps_per_run` (+ `t_noise_resolved_frac` with carrier noise,
 `truncated_runs`). Further result keys: `nodes`, `elements` (resolved echo: values, resolved waves, per STL
 V_GS and its range, folds, latch window, u_i/u_j, noise band, local state, estimated steps), `op` (flat
 {signal key: value} at t = 0, every signal), `probes`, `trajectory` (first STL: V_DS, I_D of run 0),
-`tran`, `solver`, `detect`, `stochastic`, `feasibility`, `regimes`, `schematic` (minimal).
+`tran` (+ `initial`, `initial_used`), `solver`, `detect`, `stochastic`, `feasibility`, `regimes`, `schematic`
+(minimal); per STL in `elements` also `oscillator` (null for low-impedance drives, §13.3).
 
-### 12.6 Validation (server/tests/test_circuit_custom.py, 47 tests, ~15 s warm)
+### 12.6 Validation (server/tests/test_circuit_custom.py, 66 tests, ~40 s warm; + 1 slow)
 
 | check | result |
 |---|---|
@@ -671,7 +689,10 @@ V_GS and its range, folds, latch window, u_i/u_j, noise band, local state, estim
 | n_runs = 5, seed | envelopes/distributions present, p05 ≤ p95, reproducible with the seed, different with another seed |
 | per-cell frozen local states (carrier noise off) | V_LU spread over runs, distinct δ per run |
 | ERC / limits / invalid requests | 28 error messages checked; warnings (single connection, shorted element); ground aliases |
-| feasibility | refused with the cause (dt_max too small for t_stop; event-level noise on a 0.4 V/s ramp with a small max_steps; six 1000-period sines); cancellation between chunks |
+| feasibility | refused with the cause (dt_max too small for t_stop; event-level noise on a 0.4 V/s ramp with a small max_steps; six 1000-period sines; ~8600 predicted oscillation cycles); cancellation between chunks |
+| comparator (§12.9) | switching at v_ref ± hysteresis/2 within 4 µs on a 1 V/ms ramp, output levels exact, SPICE sign of I(CMP1), KCL; differential input and inverted levels; 6 ERC errors |
+| source-degenerated STL, p-bit (§14) | 100 kΩ source resistor: latches without convergence failure, V(s) = R_S I_D, KCL; drain pulses 3.69 / 3.72 V fire never / always (deterministic); stochastic P(fire) in (0.15, 0.85) with the latch-ups = fired pulses, seeded |
+| current-driven oscillator (§13) | inside the window: ten alternating latch-up/latch-down events, period within 1 % of the converged value, peak/valley within the fold lags, KCL, estimate within 0.6–2×; outside (5 pA, 30 nA): no oscillation, settles on the HRS / LRS; initial states op / zero / auto; stochastic jitter > 0, reproducible with the seed; light raises the frequency > 1.4×; (slow) period vs BE/TRAP at reltol 1e-5 within 0.3 % |
 | API (TestClient, POST /api/compute/circuit) | result with the §6 keys; ERC error → job status "error" with the message |
 
 ### 12.7 Performance (4-CPU shared container, warm numba cache)
@@ -685,7 +706,9 @@ V_GS and its range, folds, latch window, u_i/u_j, noise band, local state, estim
 | eight STLs (4 V_G, 8 series R) on one ramp | 3 155 | 1.9 s (≈ 530 µs/step) |
 | stochastic load line, photo condition, 1200 V/s, 20 runs | 3 400 | 5.9 s (20 runs) |
 | stochastic pulse train through 10 kΩ / 5 fF, 5 pulses, 10 runs | 5 800 | 4.1 s (10 runs) |
-| current-biased STL + 10 fF (relaxation oscillator), 5 ms | 2.2e5 | 18 s |
+| current-biased STL + 10 fF (relaxation oscillator, ~450 cycles in 5 ms) | 2.2e5 | 18 s |
+| oscillator template (1 nA, 1 pF, 15 ms: 10 cycles), deterministic | 1.05e4 | 0.6–1.1 s |
+| same, stochastic (carrier noise + evolving local states), per run | 1.1e4 | 0.9 s |
 
 Cost per step ≈ 3 µs without STL, 60–90 µs per STL cell (Newton with finite-difference partials +
 τ_rel sensitivities). The custom path uses the same compiled kernels as the benches (one signature per
@@ -704,6 +727,249 @@ is ≲ 2 % of the run time. Result size: 1 STL deterministic (13 signals) 0.45 M
   equation already falls back to BE on stiff steps).
 * The noise look-ahead uses one drive source per cell and the open-cell gain; cells whose V_DS is set by
   several sources that move simultaneously get the look-ahead of the dominant one only.
-* The feasibility estimate cannot foresee self-oscillation (current-biased cells, large load resistors on
-  the negative-resistance branch); such runs are bounded by `solver.max_steps` (warning, truncated run,
-  censored statistics).
+
+### 12.9 Comparator (`CMP`)
+
+> **KO.** 비교기는 이상적인 입력(전류 0)과, 출력 노드에서 접지로 가는 행동 모델 전압원을 갖는다.
+> 출력 = V(in) − V(inm) > V_ref(± 히스테리시스/2)이면 v_high, 아니면 v_low이며, 뉴턴 수렴을 위해 폭 w = 1 mV의
+> tanh로 부드럽게 바뀐다. 출력은 다른 소자를 구동할 수 있다. 펄스 전원이 있으면 그 주기마다 출력이 high였는지
+> (발화)를 집계해 run × 펄스 래스터, 펄스별 발화 확률, 전체 P(발화), 비트열 lag-1을 준다.
+
+* **Element**: nodes `{in, out}` (+ optional `inm`, default ground; also `[in, out]` / `[in, inm, out]`),
+  `v_ref` (V, required), `v_high` (1), `v_low` (0), `hysteresis` (0; turn-on at v_ref + h/2, turn-off at
+  v_ref − h/2), `width` (1 mV, 1 µV … 0.1 V). Output y = v_low + (v_high − v_low)(1 + tanh((d − thr)/w))/2,
+  d = V(in) − V(inm): stamped as a voltage source (branch current `I(CMP1)`) whose Jacobian row carries
+  −∂y/∂d at the inputs; the hysteresis state is updated after every accepted step. The output node is
+  algebraic and excluded from the node-voltage step control (a switching comparator does not shrink the step).
+* **ERC**: the output is a voltage source to ground: tied to another voltage source or comparator output →
+  "the output of comparator CMP1 … must not be driven by another source"; output on ground → error; an input
+  node needs its own DC path (inputs are ideal); input = output → warning. Limit 8 comparators.
+* **Firing statistics** (`comparators` result key, one entry per comparator): windows = the periods of the
+  periodic `pulse` source (V or I) with the most complete periods (a period counts when its flat top ends
+  before t_stop; ≥ 2 periods); fired = the output was high at any recorded step within the period (tracked at
+  full resolution in the streaming sink). Entry: `name, nodes, v_ref, v_high, v_low, hysteresis, width,
+  window_source, t_windows, bits` (runs × windows, 0/1/null = not reached; capped at 1e5 cells),
+  `p_fire_window, p_fire_window_err` (binomial SE over runs), `p_fire`, `lag1` (pooled over runs, consecutive
+  pulses), `n_bits`, `p_fire_run`. Summary: `CMP1.p_fire` (spread = SD of the per-run fractions), `CMP1.lag1`,
+  `CMP1.n_bits`, and always `CMP1.n_rise` (rising edges per run), `CMP1.duty` (fraction of time high);
+  stochastic distribution `CMP1.p_fire_run`. Events `cmp_rise` / `cmp_fall` (`cell` = comparator name,
+  mid-level crossing time interpolated linearly).
+* The linear DC estimate (V_GS ranges, drives, feasibility) treats a comparator output as fixed at 0 V.
+* Self-oscillation is foreseen by the quasi-static walk only for high-impedance cells (> 100 MΩ port
+  resistance) with a capacitance on the drain; other self-oscillating configurations are still bounded by
+  `solver.max_steps` (warning, truncated run, censored statistics). The oscillator step estimate is within
+  0.8–1.9× of the actual count (conservative at high ramp rates, §13.5).
+
+## 13. 전류 구동 발진기 / Current-driven oscillator (integrate-and-fire)
+
+> **KO.** 직류 전류원 I_in이 노드 V_out(STL 드레인)을 충전하고, 기생 커패시터 C_par가 V_out과 접지 사이에,
+> STL이 V_out과 접지(소스) 사이에 있으며 게이트는 직류 전압원(V_G = −2 V)에 묶인 회로다. I_in이 HRS fold
+> 전류 I_LU(V_G −2 V에서 약 15 pA)와 LRS fold 전류 I_LD(약 16 nA) 사이에 있으면 전류원의 부하선은 음저항
+> branch만 지나므로 이완 발진(적분-발화)이 일어난다: V_out은 (I_in − I_HRS)/C_par의 기울기로 V_LU까지 오르고,
+> 바디가 래치되면 LRS 전류(µA)가 C_par를 V_LD까지 빠르게 방전시키고, 바디가 풀리면 다시 충전한다. 주기는
+> T ≈ C_par(V_LU − V_LD)/I_in에 fold 통과 지연을 더한 값이다. 창 밖(I_in < I_LU: HRS에 정착, I_in > I_LD: LRS에
+> 정착)에서는 발진하지 않는다. 확률 모드에서는 운반자 잡음 때문에 래치업 전압이 흔들려 스파이크 간격에 지터가
+> 생기고(CV 약 1–2 %), 느린 램프에서는 fold 이전 탈출로 주기가 2–6 % 짧아진다. 빛(광조사 보정 소자)은 V_LU를 낮춰
+> 발진 주파수를 올린다(2.63 pA에서 1.7배). 이 회로는 회로도 편집기의 예제 "전류 구동 발진기 (integrate-and-fire)"
+> 로 제공된다(1 nA, 1 pF, 15 ms, 스파이크 10개).
+
+**Summary (EN).** A DC current source I_in charges V_out (the STL drain), C_par sits between V_out and ground,
+the STL between V_out and ground (source), the gate at a DC source. For I_LU < I_in < I_LD the load line of the
+current source crosses only the negative-resistance branch and the cell relaxation-oscillates (integrate and
+fire); outside that window it settles on the HRS or the LRS. Verified quantitatively below (period, sawtooth
+extremes, events, KCL, convergence, jitter, light), with the schematic example "Current-driven oscillator
+(integrate-and-fire)".
+
+### 13.1 Physics and period
+
+Quasi-static cycle (body on its steady-state branches, hysteretic switch at the folds; I_HRS/I_LRS the branch
+currents of `MODEL.classify`, a Norton load I_N − G V in general):
+
+  T_qs = ∫_{V_LD}^{V_LU} C_par dV / (I_in − I_HRS(V))  +  ∫_{V_LD}^{V_LU} C_par dV / (I_LRS(V) − I_in)
+       ≈ C_par (V_LU − V_LD) / I_in          (I_LU ≪ I_in ≪ I_LD; the discharge term is ≲ 2 µs per pF),
+
+V_LU − V_LD = 1.1058 V (reference device, V_G = −2 V; I_LU = 14.9 pA, I_LD = 16.3 nA at the 601-point grid).
+The simulated period adds the slow passage through both folds (§7 V1: the lag grows with the ramp rate
+I_in/C_par): with the measured peak V_pk and valley V_vl,
+
+  T ≈ T_qs + C_par [(V_pk − V_LU) + (V_LD − V_vl)] / I_in,
+
+e.g. 1 nA / 1 pF: T_qs = 1.1093 ms, lags +38.5 / −12.2 mV → 1.1600 ms vs 1.1628 ms simulated. The first
+latch-up after switching on comes at ≈ C_par V_LU / I_in (charging from 0 V).
+
+Stability of the equilibrium on the NDR branch (two state variables V and Q_B): with g_V = ∂I_D/∂V at fixed
+body charge and F_Q = ∂F/∂Q > 0 (the body is unstable at fixed V on that branch) the equilibrium is unstable —
+and the circuit oscillates — when C_par > g_V/F_Q (Hopf condition, trace of the Jacobian). For pF capacitors this
+always holds; at C_par ≈ 1–30 fF (comparable to the body's own charges, whose terminal displacement currents are
+not stamped, §9) the circuit can sit on a stable NDR equilibrium or oscillate around it without unlatching
+(measured at 1 nA: 1 and 3 fF one latch-up then a small-amplitude oscillation of u between 0.62 and 0.84 V;
+10 fF regular cycles). Treat the fF regime as qualitative.
+
+### 13.2 Initial state (`tran.initial`)
+
+The DC operating point of a current-biased cell with I_LU < I_in < I_LD is the equilibrium on the NDR branch
+(I_D = I_in, u_i < u < u_j; e.g. V_out = 3.342 V at 100 pA). It is a legitimate DC solution (SPICE finds it too),
+but an unstable one: the deterministic transient stayed there until round-off grew (first latch-up at 63 ms
+instead of ≈ 37 ms at 100 pA / 1 pF, 821 ms instead of 370 ms at 100 pA / 10 pF), so the sawtooth started at an
+arbitrary time; for I_in ≳ 5 nA (beyond what the HRS
+reached from the empty body can carry) the operating point did not converge at all (error). Now:
+
+| `tran.initial` | t = 0 state |
+|---|---|
+| `"op"` | the DC operating point (§2; capacitors open, bodies from the empty state) — the benches always use it |
+| `"zero"` | discharged capacitors (SPICE UIC with IC = 0): every capacitor held at 0 V by 1 MS while the bodies relax (capacitors whose terminals are fixed by voltage sources alone start at that voltage); the recorded t = 0 capacitor current is the current the circuit pushes into it (KCL) |
+| `"auto"` (default) | `"op"`, except (i) a high-impedance cell (§13.3) whose load line at t = 0 misses the HRS (I_N − G V_LU > I_LU), (ii) an operating point that puts a cell on the NDR branch, (iii) no operating point found: then `"zero"`, as if the sources were switched on at t = 0 (warning) |
+
+The result echoes `tran.initial` and `tran.initial_used`; `op` is the t = 0 state actually used.
+
+### 13.3 Quasi-static walk and feasibility (`oscillator.py`)
+
+For each STL whose d–s port resistance in the linear network (STLs open) exceeds 100 MΩ and with a capacitance
+C_eff on the drain (capacitors from the drain node or nodes tied to it by < 1 MΩ; far ends taken as AC ground),
+the Norton equivalent (I_N(t) = V_oc(t)/R_th, G = 1/R_th − G_OFF) drives the hysteretic walk
+C_eff dV/dt = I_N(t) − G V − I_b(V), b = HRS until V_LU, then LRS until V_LD (semi-implicit Euler, 5 mV per
+step, ≤ 3e5 points, extrapolated beyond). Its V_DS(t) replaces the open-circuit drive in the §6 estimator
+(400 steps per latch transition for these cells, calibrated below), it predicts oscillation (≥ 2 latch-ups) and
+it yields a warning that explains the regime ("relaxation oscillator — fed by 1 nA (current source) with 1 pF
+…, quasi-static period ≈ 1.109 ms", or "crosses the HRS … settles near V_DS ≈ 3.64 V", or "crosses the LRS …
+stays latched"). Echo per STL: `oscillator {predicted, period_qs_s, latch_ups_expected, c_eff_F, i_norton_A
+[min, max], r_ext_ohm}`.
+
+### 13.4 Result keys (additive)
+
+Per STL with ≥ 2 latch-ups in a run (any circuit, e.g. also pulse trains): `X1.period` (s; mean interval
+between consecutive latch-ups, pooled over runs; spread = SD of the intervals), `X1.f_osc` (Hz, 1/period),
+`X1.isi_cv` (CV of the intervals within a run, averaged over the runs: the spike-timing jitter of one
+oscillator; ≈ 1e-5 deterministic), `X1.vd_lu_mean` / `X1.vd_ld_mean` (V_DS at all latch-ups / latch-downs,
+mean ± SD: the sawtooth extremes), stochastic with ≥ 2 runs `X1.period_cv_runs` (CV of the per-run mean periods:
+run-to-run spread, e.g. frozen or slowly evolving local states) and the distribution `X1.isi` (all intervals).
+
+### 13.5 Measurements (reference device, V_G = −2 V; DC current source into V_out; t_stop = C V_LU/I + 10 T_qs inside the window, 3 C V_LU/I outside; default BE, reltol 1e-3, dt_max = t_stop/2000)
+
+**Before** (previous code, same DC source): the run started at the NDR equilibrium (V_out 3.661 / 3.342 /
+2.759 V at 30 pA / 100 pA / 1 nA); first latch-up at 132 ms instead of 124 ms (30 pA, 1 pF), 63 vs 37 ms
+(100 pA, 1 pF), 821 vs 370 ms (100 pA, 10 pF), so only 6–8 of the expected 10 cycles; 5 nA and 30 nA: "DC
+operating point did not converge" (every C_par); the step estimate was 2 256 for every case (0.18–0.30 × the
+actual 7 400–12 300 steps; a 10 fF, 5 ms case: 2.6e3 estimated, 2.2e5 actual). Once running, the sawtooth itself
+(period, extremes, events) was the same as now.
+
+**After** (deterministic; stochastic column: carrier noise only, 4 runs, seed 11):
+
+| C_par | I_in | regime | osc. | latch-ups up/down | 1st latch-up | T (sim) | T_qs | T/T_qs | V_pk − V_LU | V_vl − V_LD | steps | est/actual | time | KCL | stochastic: ISI CV / T_sto/T_det / steps per run / s per run |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0.1 pF | 5 pA | < I_LU | no | 0/0 | – | – | – | – | – | – | 2 009 | 1.00 | 0.3 s | 0 | settles at 3.6365 V (HRS) |
+| 0.1 pF | 30 pA | inside | yes | 10/10 | 12.59 ms | 4.1349 ms | 3.8556 ms | 1.072 | +9.9 mV | −60.2 mV | 10 102 | 1.05 | 0.54 s | 3e-6 | 1.59 % / 0.979 / 1.6e4 / 0.86 s |
+| 0.1 pF | 100 pA | inside | yes | 10/10 | 3.757 ms | 1.2213 ms | 1.1193 ms | 1.091 | +33.2 mV | −58.8 mV | 9 678 | 1.09 | 0.58 s | 3e-6 | 1.45 % / 0.998 / 1.0e4 / 0.72 s |
+| 0.1 pF | 1 nA | inside | yes | 9/9 | 0.3959 ms | 134.53 µs | 110.93 µs | 1.213 | +169.7 mV | −51.5 mV | 8 213 | 1.29 | 0.55 s | 3e-6 | 1.52 % / 1.006 / 6.5e3 / 0.56 s |
+| 0.1 pF | 5 nA | inside | yes | 7/7 | 88.2 µs | 31.49 µs | 22.36 µs | 1.408 | +386.6 mV | −37.0 mV | 6 308 | 1.67 | 0.42 s | 3e-6 | 1.69 % / 1.004 / 5.5e3 / 0.53 s |
+| 0.1 pF | 30 nA | > I_LD | no | 1/0 | 16.9 µs | – | – | – | – | – | 2 575 | 0.95 | 0.08 s | 4e-6 | stays on the LRS at 2.6037 V |
+| 1 pF | 5 pA | < I_LU | no | 0/0 | – | – | – | – | – | – | 2 009 | 1.00 | 0.04 s | 0 | 3.6365 V (HRS) |
+| 1 pF | 30 pA | inside | yes | 10/10 | 125.4 ms | 39.228 ms | 38.556 ms | 1.017 | +2.3 mV | −13.7 mV | 10 884 | 0.97 | 0.62 s | 3e-6 | 1.20 % / 0.960 / 6.9e4 / 1.9 s |
+| 1 pF | 100 pA | inside | yes | 10/10 | 37.27 ms | 11.428 ms | 11.193 ms | 1.021 | +7.8 mV | −13.5 mV | 10 486 | 1.01 | 0.61 s | 3e-6 | 1.12 % / 0.980 / 2.7e4 / 1.2 s |
+| 1 pF | 1 nA | inside | yes | 10/10 | 3.744 ms | 1.1628 ms | 1.1093 ms | 1.048 | +38.5 mV | −12.2 mV | 9 812 | 1.08 | 0.60 s | 4e-6 | 1.62 % / 0.995 / 1.0e4 / 0.79 s |
+| 1 pF | 5 nA | inside | yes | 9/9 | 0.7657 ms | 248.58 µs | 223.62 µs | 1.112 | +108.9 mV | −8.7 mV | 8 488 | 1.24 | 0.60 s | 3e-6 | 1.33 % / 1.003 / 7.3e3 / 0.67 s |
+| 1 pF | 30 nA | > I_LD | no | 1/0 | 0.142 ms | – | – | – | – | – | 2 566 | 0.96 | 0.08 s | 4e-6 | LRS at 2.6037 V |
+| 10 pF | 5 pA | < I_LU | no | 0/0 | – | – | – | – | – | – | 2 009 | 1.00 | 0.04 s | 0 | 3.6365 V (HRS) |
+| 10 pF | 30 pA | inside | yes | 10/10 | 1.252 s | 387.43 ms | 385.56 ms | 1.005 | +0.5 mV | −3.1 mV | 11 855 | 0.89 | 0.82 s | 3e-6 | 1.14 % / 0.942 / 4.6e5 / 8.4 s |
+| 10 pF | 100 pA | inside | yes | 10/10 | 371.9 ms | 112.48 ms | 111.93 ms | 1.005 | +1.8 mV | −3.1 mV | 11 600 | 0.91 | 0.76 s | 4e-6 | 1.11 % / 0.962 / 1.4e5 / 3.2 s |
+| 10 pF | 1 nA | inside | yes | 10/10 | 37.14 ms | 11.217 ms | 11.093 ms | 1.011 | +8.9 mV | −2.9 mV | 10 897 | 0.97 | 0.65 s | 4e-6 | 1.29 % / 0.981 / 2.7e4 / 1.4 s |
+| 10 pF | 5 nA | inside | yes | 10/10 | 7.459 ms | 2.2942 ms | 2.2362 ms | 1.026 | +25.2 mV | −2.1 mV | 10 370 | 1.02 | 0.64 s | 3e-6 | 1.45 % / 0.993 / 1.3e4 / 0.96 s |
+| 10 pF | 30 nA | > I_LD | no | 1/0 | 1.261 ms | – | – | – | – | – | 2 646 | 0.93 | 0.11 s | 4e-6 | LRS at 2.6037 V |
+
+KCL = max relative residual at V_out over the run (Newton tolerance, §12.2). Stochastic est/actual 0.82–1.90.
+Observations: (1) the window is sharp — no oscillation at 5 pA or 30 nA, a regular sawtooth at every current in
+between; (2) T/T_qs − 1 is the fold lag, which grows with the ramp rate I_in/C_par (0.5 % at 3 V/s, 41 % at
+5e4 V/s where the body cannot latch before V_out overshoots V_LU by 0.39 V); the formula of §13.1 with the
+measured extremes reproduces T within 0.3 %; (3) with carrier noise the latch-up happens at a random V_DS below
+the deterministic value (noise-induced escape inside the noise band): ISI CV 1.1–1.7 %, and on slower ramps
+(≤ 100 V/s) the period is 2–6 % shorter; (4) runs of 10 cycles take 0.4–0.8 s deterministic, 0.5–2 s per
+stochastic run (8 s per run at 3 V/s, where event-level noise is resolved for tens of ms per cycle).
+
+**Convergence** (1 nA / 1 pF unless noted; period, peak V_out): default BE 1.16276 ms / 3.74220 V; BE reltol 1e-4
+1.16353 / 3.74267; BE 1e-5 1.16363 / 3.74276; TRAP 1e-3 1.16383 / 3.74286; TRAP 1e-5 1.16381 / 3.74287 → the
+default period is within 0.09 % and its peak 0.6–0.7 mV below the converged value (no numerical overshoot).
+100 pA / 1 pF: −0.03 %; 30 pA / 10 pF: +0.07 %; 5 nA / 0.1 pF (fastest edges): −0.24…−0.28 %, peak −3.4 mV. Events: every
+latch-up/latch-down is reported (strictly alternating), its time equals the interpolated I_D threshold crossing
+of the recorded steps to < 1e-17 s, and V_DS at the latch-up is within 0.22 mV of the sawtooth peak (the peak
+comes 4 ns – 7 µs earlier, when I_D passes I_in).
+
+**Where the steps go** (100 pA / 1 pF, ≈ 1 000 steps per cycle, 60–90 µs per step): HRS ramp ≈ 380 (dt_max and the
+LTE_u = 30 µV control near the fold), latch-up passage ≈ 195, LRS discharge and latch-down ≈ 420 — LTE_u is the
+binding limit in ≈ 90 % of the steps. Loosening it would cost accuracy at the folds (it is what makes the lag
+converge, §3) and the runs already take < 1 s per 10 cycles, so the step control is unchanged.
+
+**Stochastic template run** (1 nA / 1 pF, 15 ms, the reference device's evolving GIDL local states, 6 runs):
+within-run ISI CV 1.1–2.1 %, per-run mean periods 1.07–1.24 ms (the frozen-over-15-ms local state shifts V_LU
+by up to ±0.1 V from run to run: `X1.period_cv_runs` ≈ 4–5 %), 1.2e4 steps and ≈ 1 s per run. Carrier noise
+only: ISI CV 1–2.5 %, periods 1.152–1.162 ms.
+
+**Light** (illumination calibration device, V_G = −1.8 V, 100 pA / 1 pF): I_PH = 0 / 1 / 2.63 / 5 pA → V_LU
+3.804 / 3.633 / 3.279 / 2.934 V, oscillation 80.5 / 91.0 / 123 / 148 Hz (T/T_qs 1.02–1.06); at 10 pA
+I_LU = 0.40 nA exceeds I_in and the cell settles on the HRS (no firing). A light step 0 → 2.63 pA at 8 ms (1 nA / 1 pF) shortens the
+interval from 1.266 ms to 0.748 ms within one cycle (light-to-frequency conversion).
+
+**Template** (schematic example, `web/src/schematic/templates.ts`): I_in = 1 nA DC from ground into `out`,
+C_par = 1 pF, STL (library device) drain `out`, source ground, gate at V_G1 = device V_G (−2 V), t_stop 15 ms,
+dt_max 5 µs → first latch-up 3.74 ms, ten latch-ups, period 1.163 ms (860 Hz), ≈ 1.05e4 steps, ≈ 1 s;
+default traces V(out) and I(X1.d) (the only labelled net is `out`).
+
+### 13.6 Limitations
+
+* The quasi-static walk (estimate, warnings) ignores the fold lags and the body dynamics: its period is 1–40 %
+  short at high ramp rates, its step estimate 0.8–1.9× the actual count; it treats the far end of every drain
+  capacitor as AC ground and uses the nominal V_GS / light variant for the warning.
+* Only cells with > 100 MΩ port resistance and a drain capacitance use the walk; oscillators built otherwise are
+  estimated along the open-circuit drive (bounded by `solver.max_steps` as before).
+* fF-scale C_par: see §13.1 (Hopf regime, displacement currents not stamped).
+* `tran.initial = "zero"` holds capacitors with a 1 MS conductance (≈ 1 µV error per A pushed into the node at
+  t = 0); the schematic editor does not expose `tran.initial` (the server default "auto" applies).
+
+## 14. p-비트: 드레인 펄스 · 소스 저항 · 비교기 / p-bit: drain pulses, source resistor, comparator
+
+> **KO.** 드레인에 일정 간격의 전압 펄스를 걸고, 소스 → R_S → 접지, 소스 저항 양단 전압 V(R_S) = R_S·I_D를
+> 사용자가 정한 V_ref의 비교기에 넣는다. 래치되면 LRS 전류(µA)로 V(R_S) ≈ 0.44 V(100 kΩ), 래치되지 않으면 µV이므로
+> V_ref = 0.1 V가 두 상태를 가른다. 펄스 높이를 latch-up fold 바로 아래(V_LU − 15 mV)로 두면 운반자 잡음에 따라
+> 펄스마다 무작위로 래치되어 비교기가 무작위로 발화한다(P ≈ 0.5, 연속 비트 사이 상관 거의 없음). 결정론 모드에서는
+> 같은 펄스가 전혀 발화하지 않고, 3.72 V 이상에서는 매 펄스 발화한다. 빠른 벤치 `pbit`와 회로도 예제 "p-비트"가
+> 이 구성을 쓴다.
+
+**Summary (EN).** Regular voltage pulses on the drain, source → R_S → ground, and a comparator with a
+user-set V_ref on the source-resistor voltage V(R_S) = R_S I_D. A latched pulse carries the LRS current and
+lifts V(R_S) to ≈ 0.44 V (R_S = 100 kΩ), an unlatched one leaves micro-volts, so V_ref = 0.1 V separates them.
+With the pulse height just below the latch-up fold the carrier noise decides in each pulse whether the cell
+latches: the comparator fires at random.
+
+**Circuit physics.** The latched operating point is the LRS point on the source-degenerated load line
+I = (V_pulse − V_DS)/R_S: at 3.75 V pulses V_S = 0.437 V, V_DS = 3.31 V, I_D = 4.37 µA (V_GS = V_G − V_S =
+−2.44 V while latched); the latched point must keep V_DS above V_LD (≈ 2.6 V) on that load line (source
+degeneration limits the LRS current). The gate is referenced to ground, so the source rise also lowers V_GS; both enter the
+element through the new ∂/∂V_GS Jacobian columns (§2). When the pulse falls (20 µs) the drain passes below
+the source briefly (r < 0: forward drain-junction extension of §1.1, warned).
+
+**Measured** (reference device, V_G = −2 V, 200 µs flat top, 20 µs edges, 1 ms period, R_S = 100 kΩ,
+V_ref = 0.1 V; carrier noise only; 4 runs × 20 pulses unless noted):
+
+| pulse high | 3.60 V | 3.64 V | 3.66 V | 3.68 V | 3.69 V | 3.70 V | 3.72 V | 3.75 V |
+|---|---|---|---|---|---|---|---|---|
+| P(fire), stochastic | 0 | 0 | 0.075 | 0.34 | 0.495 (10 runs; bench auto 3.6887 V: 0.505, 10 × 20) | 0.75 | – | – |
+| lag-1 of the bits | – | – | −0.08 | −0.07 | +0.07 (bench +0.03) | 0.00 | – | – |
+| deterministic | never | never | never | never | never | never | every pulse | every pulse |
+| steps per run / time | 1.5e4 / 1.2 s | 1.5e4 | 1.6e4 | 1.8e4 | 1.9e4 / 1.5 s | 2.0e4 / 1.7 s | 7.5e3 (5 pulses) | 7.5e3 |
+
+The bit stream is practically uncorrelated at 1 ms period (|lag-1| ≤ 0.08 within the sampling error of ±0.1
+for 80–200 bits). Sweeps of the bench (6 runs × 20 pulses at the auto amplitude): P1 vs V_G = −2.02 / −2.00 /
+−1.98 V → 0.90 / 0.53 / 0.17 (the fold moves with V_G), P1 vs I_PH = 0 / 0.1 / 0.3 pA → 0.53 / 0.78 / 1.0.
+Live UI check (schematic example, 8 runs): P(fire) = 0.487, lag-1 −0.03, 1.4 s per run.
+
+**Schematic example** "p-bit (drain pulses, source resistor, comparator)": V_pulse 0 → 3.69 V, 20 pulses (tr = tf
+= 20 µs, pw = 200 µs, per = 1 ms) on the drain node `d`; STL (library device, gate at V_G1 = −2 V); source
+node `s` → R_S = 100 kΩ → ground; comparator CMP1 in = `s`, V_ref = 0.1 V, out `q`; t_stop = 20 ms;
+stochastic settings: carrier noise with the local states overridden to "none" (the library's slowly evolving
+GIDL states would shift V_LU by up to ±0.1 V from run to run and make each run fire almost always or never).
+Results: the comparator panel shows the run × pulse raster and P(fire) per pulse; the default traces include
+`CMP1.bit` as a logic trace.
+
+**Bench `pbit`** uses the same topology (the comparator is a CMP element in the netlist; the bit is sampled at the
+end of each flat top from V(R_S) = R_S I_D); the previous load-resistor variant (clock → R_L → drain,
+comparator on v_D) was replaced — old `R_L_ohm`, `C_d_F` and `cmp_threshold_V` bench parameters are ignored with
+a warning.

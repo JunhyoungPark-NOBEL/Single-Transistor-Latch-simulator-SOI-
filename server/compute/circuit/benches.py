@@ -18,9 +18,11 @@ pulse      supply pulse train (v_base, v_amp, width = flat top, period, rise, fa
            through R_s; P_sw = fraction of pulses latched (I_D >= i_threshold) at the end of the flat
            top; also the fraction still latched at the end of the period (retention) and the
            switching delay.  Optional amplitude list -> sweep of P_sw vs amplitude.
-pbit       STL + load resistor R_L from a clocked supply; comparator on v_D with threshold
-           (default v_high - R_L * 100 nA): bit = 1 when v_D < v_th at the end of the clock high
-           phase (cell latched).  Statistics P(1) and lag-1 autocorrelation; optional list of V_G or
+pbit       drain driven directly by regular voltage pulses (clock), source -> R_S -> ground, comparator
+           on the source node with reference V_ref (default R_S * 1 uA): bit = 1 when V(R_S) = R_S I_D >
+           V_ref at the end of the clock high phase (the latched cell's LRS current fires the comparator;
+           the HRS gives micro-volts).  Amplitude near the latch-up fold (default V_LU - 15 mV) -> random
+           firing from carrier noise.  Statistics P(1) and lag-1 autocorrelation; optional list of V_G or
            light values -> sweep of P(1).
 coupled    two STL cells, each with its own series R to a common ramp or pulse source, coupled by R_c
            between the drains; the second cell may override V_G / light.
@@ -37,7 +39,7 @@ from .netlist import Netlist, pulse_train, triangle
 BENCH_INFO = {
     "load_line": {"ko": "부하선 스윕 (직렬 저항 + 삼각파)", "en": "Load-line sweep (series R, triangular ramp)"},
     "pulse": {"ko": "펄스 열 (스위칭 확률 P_sw)", "en": "Pulse train (switching probability P_sw)"},
-    "pbit": {"ko": "p-비트 (부하 저항 + 클럭 + 비교기)", "en": "p-bit (load resistor, clock, comparator)"},
+    "pbit": {"ko": "p-비트 (드레인 펄스 + 소스 저항 + 비교기)", "en": "p-bit (drain pulses, source resistor, comparator)"},
     "coupled": {"ko": "저항 결합 STL 두 개", "en": "Two resistively coupled STLs"},
 }
 
@@ -68,15 +70,15 @@ BENCH_DEFAULTS: dict[str, dict[str, Any]] = {
     ),
     "pbit": dict(
         v_low_V=0.0,
-        v_high_V=None,          # auto: fold V_LU - 0.02 V (stochastic switching regime)
+        v_high_V=None,          # auto: fold V_LU - 0.015 V (stochastic switching regime: P(1) ~ 0.5 for the
+                                #       reference device with carrier noise, 200 us flat top; deterministic: 0)
         clock_period_s=1e-3,
-        clock_width_s=200e-6,   # flat top of the clock
+        clock_width_s=200e-6,   # flat top of the drain pulse
         rise_s=20e-6,
         fall_s=20e-6,
         n_clocks=50,            # <= 5000
-        R_L_ohm=100e3,
-        C_d_F=2e-15,
-        cmp_threshold_V=None,   # auto: v_high - R_L * 100 nA
+        R_S_ohm=100e3,          # source resistor (source -> R_S -> ground); latched: V(R_S) ~ 0.4 V
+        v_ref_V=None,           # comparator reference on V(R_S); auto: R_S * 1 uA (HRS: uV, LRS: ~0.4 V)
         vg_V=None,
         vg_list_V=[],           # optional sweep of V_G -> P(1)
         light_list_pA=[],       # optional sweep of I_PH -> P(1) (used when vg_list_V is empty)
@@ -234,18 +236,20 @@ def build_pulse(bp: dict, p, vg: float, label: str, amp: float | None = None) ->
 
 
 def build_pbit(bp: dict, p, vg: float, label: str) -> BenchSpec:
+    """Drain pulses -> STL -> source resistor R_S -> ground; comparator on the source node (V(R_S) > V_ref)."""
     net = Netlist()
     t, v, top_end, per_end = pulse_train(bp["v_low_V"], bp["v_high_V"], bp["clock_width_s"], bp["clock_period_s"],
                                          bp["rise_s"], bp["fall_s"], bp["n_clocks"], 0.0)
-    w = net.add_V("Vclk", "clk", "0", t, v, f"clock {bp['v_low_V']:g}/{bp['v_high_V']:g} V, {bp['clock_period_s']:.3g} s")
-    net.add_R("RL", "clk", "d", bp["R_L_ohm"])
-    net.add_C("Cd", "d", "0", bp["C_d_F"])
-    _add_cell(net, 1, "d", "g", p, vg, label)
-    net.add_CMP("CMP", "d", bp["cmp_threshold_V"], f"bit = [v_D < {bp['cmp_threshold_V']:.4g} V] at clock-high end")
+    w = net.add_V("Vclk", "d", "0", t, v, f"drain pulses {bp['v_low_V']:g}/{bp['v_high_V']:g} V, {bp['clock_period_s']:.3g} s")
+    net.add_V("VG1", "g", "0", [0.0], [vg], f"{vg:g} V (DC)")
+    net.add_STL("X1", "d", "g", "s", p, label=label)
+    net.add_R("RS", "s", "0", bp["R_S_ohm"])
+    net.add_CMP("CMP", "s", "q", bp["v_ref_V"], 1.0, 0.0, label=f"bit = [V(R_S) > {bp['v_ref_V']:.4g} V] at the end of the pulse")
     net.samples = list(top_end)
     net.t_end = float(t[-1])
     net.main_wave = w
-    return BenchSpec("pbit", net, w, dict(top_end=top_end, v_th=bp["cmp_threshold_V"], cells=[dict(drain="d", name="X1")]))
+    return BenchSpec("pbit", net, w, dict(top_end=top_end, v_ref=bp["v_ref_V"], R_S=bp["R_S_ohm"],
+                                          cells=[dict(drain="d", source="s", name="X1")]))
 
 
 def build_coupled(bp: dict, p1, p2, vg1: float, vg2: float, label1: str, label2: str) -> BenchSpec:

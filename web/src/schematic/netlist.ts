@@ -4,7 +4,7 @@ import type { CustomCircuitRequest, CustomElement, CustomTran } from "../api/cir
 import type { LocalStateBlock, Mode } from "../api/types";
 import { clone } from "../utils/object";
 import { elementNets } from "./erc";
-import { CIRCUIT_KINDS, type SchematicDoc, type SElement, type TranSettings } from "./model";
+import { CIRCUIT_KINDS, DEFAULT_CMP, type SchematicDoc, type SElement, type TranSettings } from "./model";
 import type { Connectivity } from "./nets";
 import { toSpice } from "./si";
 import { waveSpice } from "./waves";
@@ -49,6 +49,10 @@ export function toCustomElement(e: SElement, conn: Connectivity): CustomElement 
       if (e.stl.local_state) out.local_state = { ...clone(e.stl.local_state), acquisition_trend: false };
       return out;
     }
+    case "CMP": {
+      const c = e.cmp ?? DEFAULT_CMP;
+      return { type: "CMP", name: e.name, nodes: { in: ns[0], out: ns[1] }, v_ref: c.v_ref, v_high: c.v_high, v_low: c.v_low, hysteresis: c.hysteresis };
+    }
     default:
       return null;
   }
@@ -86,9 +90,10 @@ export function buildRequest(doc: SchematicDoc, conn: Connectivity, mode: Mode, 
 export function validProbeKeys(elements: CustomElement[]): Set<string> {
   const keys = new Set<string>(["V(0)"]);
   for (const e of elements) {
-    const nodes = e.type === "STL" ? Object.values(e.nodes) : e.nodes;
+    const nodes = e.type === "STL" || e.type === "CMP" ? Object.values(e.nodes) : e.nodes;
     for (const n of nodes) keys.add(`V(${n})`);
     if (e.type === "STL") for (const k of [`I(${e.name}.d)`, `I(${e.name}.g)`, `I(${e.name}.s)`, `${e.name}.u`, `${e.name}.r`, `${e.name}.q_b`]) keys.add(k);
+    else if (e.type === "CMP") for (const k of [`I(${e.name})`, `${e.name}.bit`]) keys.add(k);
     else keys.add(`I(${e.name})`);
   }
   return keys;
@@ -106,7 +111,7 @@ const fmtV = (v: number) => toSpice(v, 5);
 export function netlistText(doc: SchematicDoc, conn: Connectivity, mode: Mode): string {
   const lines: string[] = [`* ${doc.name || "untitled"} — STL circuit (${mode})`];
   const els = doc.elements.filter((e) => CIRCUIT_KINDS.includes(e.kind));
-  const order: Record<string, number> = { V: 0, I: 1, R: 2, C: 3, STL: 4 };
+  const order: Record<string, number> = { V: 0, I: 1, R: 2, C: 3, STL: 4, CMP: 5 };
   for (const e of [...els].sort((a, b) => order[a.kind] - order[b.kind] || a.name.localeCompare(b.name, "en", { numeric: true }))) {
     const ns = elementNets(e, conn).map(nodeName);
     switch (e.kind) {
@@ -129,6 +134,11 @@ export function netlistText(doc: SchematicDoc, conn: Connectivity, mode: Mode): 
         }
         if (e.stl?.local_state && e.stl.local_state.mode !== "none") parts.push(`local=${e.stl.local_state.mode}`);
         lines.push(parts.join(" "));
+        break;
+      }
+      case "CMP": {
+        const c = e.cmp ?? DEFAULT_CMP;
+        lines.push(`${e.name} ${ns[0]} 0 ${ns[1]} CMP vref=${fmtV(c.v_ref)} vhigh=${fmtV(c.v_high)} vlow=${fmtV(c.v_low)}${c.hysteresis ? ` hyst=${fmtV(c.hysteresis)}` : ""}`);
         break;
       }
     }

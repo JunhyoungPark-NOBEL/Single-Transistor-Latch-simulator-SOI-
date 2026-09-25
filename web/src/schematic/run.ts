@@ -133,7 +133,8 @@ function afterRun(result: CustomCircuitResult) {
     const labels = new Set(st.doc.elements.filter((e) => e.kind === "LABEL" && e.label).map((e) => `V(${e.label})`));
     const volts = [...keys].filter((k) => labels.has(k));
     const stl = [...keys].filter((k) => /^I\(.+\.d\)$/.test(k));
-    traces = [...(volts.length ? volts : [...keys].filter((k) => k.startsWith("V(")).slice(0, 3)), ...stl].slice(0, 6);
+    const bits = [...keys].filter((k) => /\.bit$/.test(k)); // comparator outputs as logic traces
+    traces = [...(volts.length ? volts : [...keys].filter((k) => k.startsWith("V(")).slice(0, 3)), ...stl, ...bits].slice(0, 7);
   }
   const t = result.runs[0]?.t ?? [];
   const tEnd = t[t.length - 1];

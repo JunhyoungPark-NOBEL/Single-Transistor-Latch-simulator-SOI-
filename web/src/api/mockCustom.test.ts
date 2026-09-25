@@ -41,6 +41,30 @@ describe("custom-circuit mock (§6 shape)", () => {
     expect(env.t.length).toBeLessThanOrEqual(1001);
     expect(r.distributions!.some((x) => x.key === "X1.t_first_lu")).toBe(true);
   });
+  it("current-driven oscillator template runs in mock mode", () => {
+    const d = buildTemplate("oscillator", STL, "osc");
+    const r = mockCustomCircuit(buildRequest(d, extractNets(d), "deterministic", null));
+    expect(checkCustomResult(r)).toEqual([]);
+    const keys = r.runs[0].signals.map((s) => s.key);
+    for (const k of ["V(out)", "I(X1.d)", "I(Iin)", "I(Cpar)"]) expect(keys).toContain(k);
+    const iin = r.runs[0].signals.find((s) => s.key === "I(Iin)")!.values;
+    expect(valueAt(r.runs[0].t, iin, 1e-3)!).toBeCloseTo(1e-9, 15);
+  });
+  it("p-bit template runs in mock mode: comparator output, bit trace and per-pulse firing raster", () => {
+    const d = buildTemplate("pbit", STL, "p");
+    d.stoch.n_runs = 4;
+    const r = mockCustomCircuit(buildRequest(d, extractNets(d), "stochastic", null));
+    expect(checkCustomResult(r)).toEqual([]);
+    const keys = r.runs[0].signals.map((s) => s.key);
+    for (const k of ["V(q)", "V(s)", "I(CMP1)", "CMP1.bit"]) expect(keys).toContain(k);
+    const cmp = r.comparators![0];
+    expect(cmp.name).toBe("CMP1");
+    expect(cmp.window_source).toBe("Vpulse");
+    expect(cmp.t_windows.length).toBe(20);
+    expect(cmp.bits.length).toBe(4);
+    expect(cmp.bits[0].length).toBe(20);
+    expect(cmp.p_fire_window.length).toBe(20);
+  });
   it("probe keys", () => {
     expect(parseProbe("V(d)")).toEqual({ type: "V", node: "d" });
     expect(parseProbe("I(X1.d)")).toEqual({ type: "I", el: "X1", terminal: "d" });

@@ -3,7 +3,9 @@ integer/float arrays consumed by the MNA kernel (``mna.py``).
 
 Element kinds: R (ohm), C (F), V (piecewise-linear source, V), I (piecewise-linear source, A),
 STL (terminals d, g, s; device parameter vector; optional light waveform I_PH(t) in A) and CMP
-(comparator: schematic/post-processing only, no electrical stamp).
+(comparator: ideal inputs in / inm, output = behavioural voltage source from ``out`` to ground,
+v_low + (v_high - v_low)(1 + tanh((v_in - v_inm - thr)/w))/2 with a hysteresis threshold; stamped as a
+voltage source whose wave index is -1 - j, see ``mna.cmp_value``).
 Node "0" is ground.
 """
 from __future__ import annotations
@@ -87,13 +89,25 @@ class Netlist:
         self.STL.append(dict(name=name, d=self.node(d), g=self.node(g), s=self.node(s),
                              p=np.asarray(p, float).copy(), light_wave=lw, label=label))
 
-    def add_CMP(self, name, node, threshold, label=""):
-        self.CMP.append(dict(name=name, node=self.node(node), threshold=float(threshold), label=label))
+    def add_CMP(self, name, inp, out, v_ref, v_high=1.0, v_low=0.0, hysteresis=0.0, width=1e-3, inm="0", label=""):
+        """Comparator: out (to ground) = v_high when v(inp) - v(inm) > v_ref (+- hysteresis/2), else v_low
+        (smooth over ~ +-2 width for Newton).  Its output is a voltage-source branch (current I(name)).
+        Add comparators after every independent voltage source (their branch index follows the sources)."""
+        if not (float(width) > 0):
+            raise ValueError(f"comparator {name}: width must be > 0")
+        j = len(self.CMP)
+        self.CMP.append(dict(name=name, inp=self.node(inp), inm=self.node(inm), out=self.node(out), v_ref=float(v_ref),
+                             v_high=float(v_high), v_low=float(v_low), hysteresis=float(hysteresis), width=float(width),
+                             label=label))
+        self.V.append((name, self.node(out), 0, -1 - j, label or f"comparator v_ref = {float(v_ref):.4g} V"))
+        return len(self.V) - 1
 
     # ---- views ------------------------------------------------------------------------
     def schematic(self) -> dict:
         els = []
         for name, a, b, w, label in self.V:
+            if w < 0:
+                continue                                  # comparator output (listed as CMP below)
             els.append(dict(kind="V", name=name, nodes=[self.nodes[a], self.nodes[b]], value=label))
         for name, a, b, w, label in self.I:
             els.append(dict(kind="I", name=name, nodes=[self.nodes[a], self.nodes[b]], value=label))
@@ -105,8 +119,10 @@ class Netlist:
             els.append(dict(kind="STL", name=s["name"], nodes=[self.nodes[s["d"]], self.nodes[s["g"]], self.nodes[s["s"]]],
                             value=s["label"]))
         for c in self.CMP:
-            els.append(dict(kind="CMP", name=c["name"], nodes=[self.nodes[c["node"]]],
-                            value=c["label"] or f"v_th = {c['threshold']:.4g} V"))
+            # the bench schematic draws a single-ended comparator as a probe on its input node (output "bit")
+            nd = [self.nodes[c["inp"]]] if c["inm"] == 0 else [self.nodes[c["inp"]], self.nodes[c["inm"]]]
+            els.append(dict(kind="CMP", name=c["name"], nodes=nd, out=self.nodes[c["out"]],
+                            value=c["label"] or f"out = [v_in > {c['v_ref']:.4g} V]"))
         return dict(nodes=list(self.nodes), elements=els)
 
     def breakpoints(self) -> np.ndarray:
@@ -141,6 +157,8 @@ class Netlist:
             sW=np.array([s["light_wave"] for s in self.STL], np.int64),
             wt=wt.astype(np.float64), wv=wv.astype(np.float64), woff=woff,
             bp=self.breakpoints().astype(np.float64), samp=samples.astype(np.float64), P=P,
+            cmp=np.array([[c["inp"], c["inm"], c["v_ref"], c["v_high"], c["v_low"], c["hysteresis"], c["width"], 0.0]
+                          for c in self.CMP], dtype=np.float64).reshape(len(self.CMP), 8),
         )
 
     def wave_eval(self, w: int, t) -> np.ndarray:

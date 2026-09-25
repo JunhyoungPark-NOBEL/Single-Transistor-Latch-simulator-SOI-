@@ -20,11 +20,11 @@ export const LIMITS = { elements: 40, stl: 8, nodes: 30, pwlPoints: 2000 };
 export const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
 export const LABEL_RE = /^[A-Za-z0-9_+-]{1,32}$/;
 
-const PIN_LABEL: Record<string, string> = { p: "+", n: "−", d: "D", g: "G", s: "S", o: "" };
+const PIN_LABEL: Record<string, string> = { p: "+", n: "−", d: "D", g: "G", s: "S", o: "", i: "IN", q: "OUT" };
 
 /** Nets of an element's pins in pin order (undefined when not found). */
 export function elementNets(el: SElement, conn: Connectivity): (NetInfo | undefined)[] {
-  const pins = el.kind === "STL" ? ["d", "g", "s"] : ["p", "n"];
+  const pins = el.kind === "STL" ? ["d", "g", "s"] : el.kind === "CMP" ? ["i", "q"] : ["p", "n"];
   return pins.map((p) => conn.pinNet.get(pinId(el.id, p)));
 }
 
@@ -78,6 +78,10 @@ export function runErc(doc: SchematicDoc, conn: Connectivity): ErcItem[] {
       for (const iss of waveIssues(w!)) (iss.level === "error" ? err : warn)(`wave.${iss.key}`, [e.id], { name: e.name, ...(iss.vars ?? {}) });
     }
     if (e.kind === "STL" && !e.stl?.device) err("noDevice", [e.id], { name: e.name });
+    if (e.kind === "CMP") {
+      const c = e.cmp;
+      if (!c || ![c.v_ref, c.v_high, c.v_low, c.hysteresis].every((x) => Number.isFinite(x)) || c.v_high === c.v_low || c.hysteresis < 0) err("cmpBad", [e.id], { name: e.name });
+    }
   }
 
   const nets = new Map(els.map((e) => [e.id, elementNets(e, conn)] as const));
@@ -86,15 +90,34 @@ export function runErc(doc: SchematicDoc, conn: Connectivity): ErcItem[] {
   for (const e of els) {
     if (e.kind === "STL") continue;
     const [a, b] = nets.get(e.id)!;
+    if (e.kind === "CMP") {
+      if (a && b && a === b) warn("cmpFeedback", [e.id], { name: e.name, node: a.name });
+      continue;
+    }
     if (a && b && a === b) (e.kind === "V" ? err : warn)(e.kind === "V" ? "vShort" : "shorted", [e.id], { name: e.name, node: a.name });
   }
 
-  // ---- voltage-source loops (V sources only, incl. ground)
+  // ---- voltage-source loops (V sources and comparator outputs, which are voltage sources to ground)
   const vuf = new UnionFind();
+  const cmpOut = new Map<string, SElement>();
+  for (const e of els.filter((x) => x.kind === "CMP")) {
+    const q = nets.get(e.id)![1];
+    if (!q || !gnd) continue;
+    if (q.id === gnd.id) err("cmpDriven", [e.id], { name: e.name, other: "GND" });
+    else if (cmpOut.has(q.id)) err("cmpDriven", [e.id, cmpOut.get(q.id)!.id], { name: e.name, other: cmpOut.get(q.id)!.name });
+    else {
+      cmpOut.set(q.id, e);
+      vuf.union(q.id, gnd.id);
+    }
+  }
   for (const e of els.filter((x) => x.kind === "V")) {
     const [a, b] = nets.get(e.id)!;
     if (!a || !b || a === b) continue;
-    if (!vuf.union(a.id, b.id)) err("vLoop", [e.id], { name: e.name });
+    if (!vuf.union(a.id, b.id)) {
+      const c = cmpOut.get(a.id) ?? cmpOut.get(b.id);
+      if (c) err("cmpDriven", [c.id, e.id], { name: c.name, other: e.name });
+      else err("vLoop", [e.id], { name: e.name });
+    }
   }
 
   // ---- DC path to ground (R, V and the STL drain–source path conduct; C, I and the gate do not)
@@ -112,6 +135,7 @@ export function runErc(doc: SchematicDoc, conn: Connectivity): ErcItem[] {
       const ns = nets.get(e.id)!;
       if (e.kind === "R" || e.kind === "V") link(ns[0], ns[1]);
       if (e.kind === "STL") link(ns[0], ns[2]);
+      if (e.kind === "CMP") link(ns[1], gnd); // the output is a voltage source to ground; the input is ideal
     }
     reach.add(gnd.id);
     const stack = [gnd.id];
@@ -149,6 +173,7 @@ export function runErc(doc: SchematicDoc, conn: Connectivity): ErcItem[] {
   for (const n of circuitNets) {
     if (n.ground || n.pins.length !== 1) continue;
     const p = n.pins[0];
+    if (p.el.kind === "CMP" && p.pin === "q") continue; // an unloaded comparator output is fine (probe it)
     if (unconnectedIds.has(pinId(p.el.id, p.pin))) continue; // already reported
     (reach.has(n.id) ? warn : err)("floating", [p.el.id], { node: n.name, name: p.el.name, pin: PIN_LABEL[p.pin] ?? p.pin }, n.wires.map((w) => w.id));
   }

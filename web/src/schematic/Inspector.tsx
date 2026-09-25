@@ -11,7 +11,7 @@ import { deepEqual } from "../utils/object";
 import { iphPA } from "../utils/payload";
 import { deleteItems, duplicateItems, mirrorItems, rotateItems } from "./edit";
 import { LABEL_RE, NAME_RE } from "./erc";
-import { CIRCUIT_KINDS, pinPositions, type SElement } from "./model";
+import { CIRCUIT_KINDS, DEFAULT_CMP, pinPositions, type CmpParams, type SElement } from "./model";
 import type { Connectivity } from "./nets";
 import { pinId } from "./nets";
 import { fmtSI } from "./si";
@@ -22,8 +22,32 @@ import { Row, Segmented, SIInput, TextInput } from "./ui";
 import { WaveEditor } from "./WaveEditor";
 
 const KIND_KEY: Record<SElement["kind"], StrKey> = {
-  R: "schematic.tool.R", C: "schematic.tool.C", V: "schematic.tool.V", I: "schematic.tool.I", STL: "schematic.tool.STL", GND: "schematic.tool.GND", LABEL: "schematic.tool.LABEL",
+  R: "schematic.tool.R", C: "schematic.tool.C", V: "schematic.tool.V", I: "schematic.tool.I", STL: "schematic.tool.STL", CMP: "schematic.tool.CMP", GND: "schematic.tool.GND", LABEL: "schematic.tool.LABEL",
 };
+
+/** Comparator parameters: V_ref, output levels and hysteresis (SPICE numbers). */
+function CmpSection({ el }: { el: SElement }) {
+  const t = useT();
+  const c = el.cmp ?? DEFAULT_CMP;
+  const set = (patch: Partial<CmpParams>) => update(el.id, { cmp: { ...c, ...patch } });
+  return (
+    <>
+      <Row label={t("schematic.insp.cmpRef")} hint={t("schematic.insp.cmpRefHint")}>
+        <SIInput value={c.v_ref} unit="V" min={-1000} max={1000} onCommit={(v) => set({ v_ref: v ?? 0 })} testId="insp-cmp-ref" ariaLabel={t("schematic.insp.cmpRef")} />
+      </Row>
+      <Row label={t("schematic.insp.cmpHigh")}>
+        <SIInput value={c.v_high} unit="V" min={-1000} max={1000} onCommit={(v) => set({ v_high: v ?? 1 })} testId="insp-cmp-high" ariaLabel={t("schematic.insp.cmpHigh")} />
+      </Row>
+      <Row label={t("schematic.insp.cmpLow")}>
+        <SIInput value={c.v_low} unit="V" min={-1000} max={1000} onCommit={(v) => set({ v_low: v ?? 0 })} testId="insp-cmp-low" ariaLabel={t("schematic.insp.cmpLow")} />
+      </Row>
+      <Row label={t("schematic.insp.cmpHyst")} hint={t("schematic.insp.cmpHystHint")}>
+        <SIInput value={c.hysteresis} unit="V" min={0} max={10} onCommit={(v) => set({ hysteresis: v ?? 0 })} testId="insp-cmp-hyst" ariaLabel={t("schematic.insp.cmpHyst")} />
+      </Row>
+      <div className="insp-note subtle">{t("schematic.insp.cmpNote")}</div>
+    </>
+  );
+}
 
 function update(id: string, patch: Partial<SElement>) {
   useSch.getState().commit((d) => ({ ...d, elements: d.elements.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
@@ -252,6 +276,7 @@ export function Inspector({ conn }: { conn: Connectivity }) {
       )}
       {(el.kind === "V" || el.kind === "I") && el.wave && <WaveEditor wave={el.wave} unit={el.kind === "V" ? "V" : "A"} tStop={tStop} onChange={(w) => update(el.id, { wave: w })} testId="insp-wave" />}
       {el.kind === "STL" && <StlSection el={el} />}
+      {el.kind === "CMP" && <CmpSection el={el} />}
       {el.kind === "LABEL" && (
         <div ref={nameRef}>
           <Row label={t("schematic.insp.label")} hint={t("schematic.insp.labelHint")} htmlFor="insp-label">
@@ -266,7 +291,7 @@ export function Inspector({ conn }: { conn: Connectivity }) {
           <div className="chips">
             {pinPositions(el).map((p) => (
               <span key={p.pin} className="chip" title={t(`schematic.pin.${p.pin}` as StrKey)}>
-                {p.pin === "p" ? "+" : p.pin === "n" ? "−" : p.pin.toUpperCase()} → {conn.pinNet.get(pinId(el.id, p.pin))?.name ?? "—"}
+                {p.pin === "p" ? "+" : p.pin === "n" ? "−" : p.pin === "i" ? "IN" : p.pin === "q" ? "OUT" : p.pin.toUpperCase()} → {conn.pinNet.get(pinId(el.id, p.pin))?.name ?? "—"}
               </span>
             ))}
           </div>

@@ -56,17 +56,17 @@ export function BenchIcon({ bench }: { bench: BenchId }) {
         </svg>
       );
     case "pbit":
+      // drain pulses → STL; source → R_S → ground; comparator on the source node → random firing
       return (
         <svg viewBox="0 0 200 70" aria-hidden>
-          <path d="M20 12 H40" {...S} />
-          <text x={6} y={16} fontSize={10} fill="currentColor">V</text>
-          <Zig x={40} y={12} />
-          <path d="M70 12 H90 V20" {...S} />
-          <Fet x={90} y={36} />
-          <path d="M90 52 V60 M84 60 H96" {...S} />
-          <path d="M90 16 H120" {...S} />
-          <path d="M120 4 L146 16 L120 28 Z" {...S} />
-          <path d="M146 16 H158 M158 16 V30 H166 V8 H174 V30 H182 V16 H192" {...S} strokeWidth={1.3} />
+          <path d="M6 18 H12 V6 H22 V18 H28 V6 H38 V18 H44" {...S} strokeWidth={1.3} />
+          <path d="M44 18 H56 V6 H80 V14" {...S} />
+          <Fet x={80} y={30} />
+          <polyline points="80,46 80,48 75,50 85,53 75,56 85,59 80,61 80,63" {...S} />
+          <Gnd x={80} y={64} />
+          <path d="M80 47 H112" {...S} />
+          <path d="M112 35 L136 47 L112 59 Z" {...S} />
+          <path d="M136 47 H146 M146 47 H152 V36 H160 V58 H166 V36 H174 V58 H180 V47 H194" {...S} strokeWidth={1.3} />
         </svg>
       );
     case "coupled":

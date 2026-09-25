@@ -239,6 +239,60 @@ describe("netlist serialisation", () => {
     expect(text).toMatch(/X1 d g 0 STL/);
     expect(text).toContain(".tran 0 10m 0 5u");
   });
+  it("current-driven oscillator template: I_in into out, C_par and the STL drain on out, gate at a DC source", () => {
+    const d = buildTemplate("oscillator", STL, "osc");
+    const c = extractNets(d);
+    expect(runErc(d, c).filter((i) => i.level === "error")).toEqual([]);
+    const req = buildRequest(d, c, "deterministic", null);
+    const byName = Object.fromEntries(req.netlist.elements.map((e) => [e.name, e]));
+    // the source is drawn from ground (rotated 180°): the current flows 0 → out through it, i.e. INTO out
+    expect(byName.Iin).toMatchObject({ type: "I", nodes: ["0", "out"], wave: { kind: "dc", value: 1e-9 } });
+    expect(byName.Cpar).toMatchObject({ type: "C", nodes: ["out", "0"], value: 1e-12 });
+    const x1 = byName.X1;
+    expect(x1.type).toBe("STL");
+    if (x1.type === "STL") {
+      expect(x1.nodes.d).toBe("out");
+      expect(x1.nodes.s).toBe("0");
+      expect(byName.VG1).toMatchObject({ type: "V", nodes: [x1.nodes.g, "0"], wave: { kind: "dc", value: -2 } });
+    }
+    expect(req.tran).toMatchObject({ t_stop_s: 15e-3, dt_max_s: 5e-6, method: "BE" });
+    const text = netlistText(d, c, "deterministic");
+    expect(text).toContain("Iin 0 out DC 1n");
+    expect(text).toContain("Cpar out 0 1p");
+    expect(text).toContain(".tran 0 15m 0 5u");
+    // the only labelled net is "out": the default traces after a run are V(out) and I(X1.d)
+    expect(d.elements.filter((e) => e.kind === "LABEL").map((e) => e.label)).toEqual(["out"]);
+    expect(estimate(d, "deterministic").level).toBe("ok");
+    expect(estimate(d, "stochastic").level).not.toBe("refuse");
+  });
+  it("p-bit template: drain pulses, source resistor, comparator on the source node (carrier noise only)", () => {
+    const d = buildTemplate("pbit", STL, "pbit");
+    const c = extractNets(d);
+    expect(runErc(d, c).filter((i) => i.level === "error")).toEqual([]);
+    const req = buildRequest(d, c, "stochastic", null);
+    const byName = Object.fromEntries(req.netlist.elements.map((e) => [e.name, e]));
+    expect(byName.Vpulse).toMatchObject({ type: "V", nodes: ["d", "0"], wave: { kind: "pulse", v2: 3.69, tr: 20e-6, pw: 200e-6, per: 1e-3, ncycles: 20 } });
+    expect(byName.RS).toMatchObject({ type: "R", nodes: ["s", "0"], value: 100e3 });
+    expect(byName.CMP1).toMatchObject({ type: "CMP", nodes: { in: "s", out: "q" }, v_ref: 0.1, v_high: 1, v_low: 0, hysteresis: 0 });
+    const x1 = byName.X1;
+    if (x1.type === "STL") expect([x1.nodes.d, x1.nodes.s]).toEqual(["d", "s"]);
+    expect(req.stochastic?.local_state_override).toBe(true);
+    expect(req.stochastic?.local_state.mode).toBe("none");
+    expect(req.tran.t_stop_s).toBeCloseTo(20e-3, 12);
+    const text = netlistText(d, c, "stochastic");
+    expect(text).toContain("CMP1 s 0 q CMP vref=100m vhigh=1 vlow=0");
+    expect(text).toContain("RS s 0 100k");
+    expect(estimate(d, "stochastic").level).not.toBe("refuse");
+    // the comparator persists (export → import)
+    const back = parseDoc(JSON.parse(exportDocJson(d)))!;
+    expect(back.elements.find((e) => e.kind === "CMP")?.cmp).toEqual({ v_ref: 0.1, v_high: 1, v_low: 0, hysteresis: 0 });
+    // ERC: a comparator output must not be driven by another source (Vx on the output net q)
+    const bad = clone(d);
+    bad.elements.push(el("V", "Vx", 700, 300, { wave: { kind: "dc", value: 1 } }), el("GND", "", 700, 340));
+    bad.wires.push(w(660, 260, 700, 260));
+    const codes = runErc(bad, extractNets(bad)).map((i) => i.code);
+    expect(codes).toContain("cmpDriven");
+  });
   it("auto time steps", () => {
     expect(effectiveTran({ t_stop_s: 1, t_start_save_s: 0, dt_max_s: null, dt_min_s: null, method: "TRAP", reltol: 1e-4 })).toEqual({ t_stop_s: 1, t_start_save_s: 0, dt_max_s: 5e-4, dt_min_s: 1e-13, method: "TRAP", reltol: 1e-4 });
   });

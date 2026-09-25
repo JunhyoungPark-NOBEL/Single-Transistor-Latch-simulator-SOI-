@@ -4,12 +4,12 @@ import { sanitizeDevice, sanitizeLocal } from "../devices/library";
 import { validationBase } from "../devices/store";
 import { DEFAULT_CIRCUIT_STOCH } from "../params/benches";
 import { clone } from "../utils/object";
-import { DOC_VERSION, GRID, newId, type ElKind, type Rot, type SchematicDoc, type SElement, type StlRef, type Wire } from "./model";
+import { DEFAULT_CMP, DOC_VERSION, GRID, newId, type ElKind, type Rot, type SchematicDoc, type SElement, type StlRef, type Wire } from "./model";
 import { parseWave } from "./waves";
 
 export const SCHEMATIC_KEY = "stl-websim:schematic";
 export const CIRCUIT_FORMAT = "stl-circuit";
-const KINDS: ElKind[] = ["R", "C", "V", "I", "STL", "GND", "LABEL"];
+const KINDS: ElKind[] = ["R", "C", "V", "I", "STL", "CMP", "GND", "LABEL"];
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const fin = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
@@ -62,6 +62,16 @@ function parseElement(v: unknown): SElement | null {
     el.light = v.light == null ? null : parseWave(v.light);
   }
   if (kind === "LABEL") el.label = typeof v.label === "string" ? v.label.slice(0, 40) : "";
+  if (kind === "CMP") {
+    const c = isObj(v.cmp) ? v.cmp : {};
+    const num = (x: unknown, d: number, lo: number, hi: number) => (fin(x) && x >= lo && x <= hi ? x : d);
+    el.cmp = {
+      v_ref: num(c.v_ref, DEFAULT_CMP.v_ref, -1000, 1000),
+      v_high: num(c.v_high, DEFAULT_CMP.v_high, -1000, 1000),
+      v_low: num(c.v_low, DEFAULT_CMP.v_low, -1000, 1000),
+      hysteresis: num(c.hysteresis, DEFAULT_CMP.hysteresis, 0, 10),
+    };
+  }
   return el;
 }
 

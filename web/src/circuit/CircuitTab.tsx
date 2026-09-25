@@ -37,13 +37,13 @@ function defaultSchematic(bench: BenchId, vg: number): CircuitResult["schematic"
   ];
   if (bench === "pbit")
     return {
-      nodes: ["clk", "d", "g", "0"],
+      nodes: ["d", "g", "s", "0"],
       elements: [
-        { kind: "V", name: "Vclk", nodes: ["clk", "0"], value: "clock" },
-        { kind: "R", name: "RL", nodes: ["clk", "d"], value: "100 kΩ" },
-        { kind: "C", name: "Cd", nodes: ["d", "0"], value: "2 fF" },
-        ...cell(1, "d", "g"),
-        { kind: "CMP", name: "CMP", nodes: ["d"], value: "bit = [v_D < v_th]" },
+        { kind: "V", name: "Vclk", nodes: ["d", "0"], value: "drain pulses" },
+        { kind: "V", name: "VG1", nodes: ["g", "0"], value: `${vg} V (DC)` },
+        { kind: "STL", name: "X1", nodes: ["d", "g", "s"] },
+        { kind: "R", name: "RS", nodes: ["s", "0"], value: "100 kΩ" },
+        { kind: "CMP", name: "CMP", nodes: ["s"], value: "bit = [V(R_S) > V_ref]" },
       ],
     };
   if (bench === "coupled")

@@ -267,7 +267,7 @@ export const STRINGS = {
   "c.bench.pulse": { ko: "펄스 열", en: "Pulse train" },
   "c.bench.pulse.desc": { ko: "진폭·폭·간격에 따른 스위칭 확률과 잔류 Q_B 기억", en: "Switching probability vs amplitude, width and interval; residual Q_B memory" },
   "c.bench.pbit": { ko: "p-bit", en: "p-bit" },
-  "c.bench.pbit.desc": { ko: "STL + 부하 + 비교기 — 출력 비트 통계", en: "STL + load + comparator — output-bit statistics" },
+  "c.bench.pbit.desc": { ko: "STL + 소스 저항 + 비교기 — 펄스마다 무작위 발화", en: "STL + source resistor + comparator — random firing per pulse" },
   "c.bench.coupled": { ko: "결합 쌍", en: "Coupled pair" },
   "c.bench.coupled.desc": { ko: "저항으로 결합한 STL 두 개 — Ising/p-bit 네트워크의 기본 단위", en: "Two resistively coupled STLs — a building block of Ising/p-bit networks" },
   "c.schematic": { ko: "회로도", en: "Schematic" },

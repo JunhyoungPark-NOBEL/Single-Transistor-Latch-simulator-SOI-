@@ -142,6 +142,16 @@ def branch_profile(p: np.ndarray, grid: int = 301) -> dict | None:
         Vs, Qs = np.asarray(Vs)[o], np.asarray(Qs)[o]
     out = dict(folds=folds, latch=cl is not None, gap=bool(gap),
                u_fold=(float(b[i, 17]), float(b[j, 17])) if cl is not None else (np.inf, np.inf))
+    # quasi-static I-V of the stable branches (sorted by V_D; used by the quasi-static drive walk of
+    # current-biased / high-impedance cells, ``oscillator.qs_drive``)
+    iv = {}
+    for name, part in parts:
+        ok = np.isfinite(part[:, 0]) & np.isfinite(part[:, 1]) & (part[:, 1] > 0)
+        o = np.argsort(part[ok, 0], kind="stable")
+        Vv, Iv = part[ok, 0][o], part[ok, 1][o]
+        keep = np.r_[True, np.diff(Vv) > 1e-9] if len(Vv) else np.zeros(0, bool)
+        iv[name] = (Vv[keep], Iv[keep])
+    out["iv"] = iv
     if cl is not None:
         # branch currents at the folds: the reporting thresholds must lie between the branches there
         H, L_ = b[:i + 1], b[j:]
@@ -258,7 +268,7 @@ def estimate_steps(wave_t: np.ndarray, wave_v: np.ndarray, t_end: float, profile
                    noise_dt_min: float, n_breakpoints: int, ld_noise: bool = False,
                    gauss_tau_min: float = 2e-9, gauss_tau_frac: float = 0.5,
                    window: tuple = (-np.inf, np.inf, -np.inf, np.inf), n_look: float = 4.0,
-                   corner_weights: np.ndarray | None = None) -> float:
+                   corner_weights: np.ndarray | None = None, transition_steps: float | None = None) -> float:
     """Expected number of accepted steps for one run (drain voltage ~ source voltage).
 
     The drive is sampled on a voltage-resolved grid (<= 2 mV per point on ramps, one point per flat
@@ -269,7 +279,9 @@ def estimate_steps(wave_t: np.ndarray, wave_v: np.ndarray, t_end: float, profile
     LRS with ld_carrier_noise).  Fixed costs per latch transition, waveform corner and other breakpoint
     cover the resolved switching transients.  Typically within about +-30 % of the actual count.
     ``corner_weights`` (one per interior waveform point, in [0, 1]; custom circuits): how sharp each
-    corner is (1 = a pulse corner, ~0 = a sampled smooth waveform); default: every point is a corner."""
+    corner is (1 = a pulse corner, ~0 = a sampled smooth waveform); default: every point is a corner.
+    ``transition_steps``: fixed cost per latch transition (default 250, calibrated on the benches; the
+    quasi-static oscillator drive of custom circuits uses its own calibration)."""
     V_LU, V_LD = profile["folds"]
     latch = bool(profile["latch"]) and np.isfinite(V_LU) and np.isfinite(V_LD)
     wt = np.asarray(wave_t, float)
@@ -311,7 +323,8 @@ def estimate_steps(wave_t: np.ndarray, wave_v: np.ndarray, t_end: float, profile
     if corner_weights is not None:
         corners = float(np.sum(corner_weights))
     other = max(int(n_breakpoints) - corners, 0)
-    return float(steps + _STEPS_PER_TRANSITION * trans + _STEPS_PER_CORNER * corners + _STEPS_PER_BREAKPOINT * other)
+    per_tr = _STEPS_PER_TRANSITION if transition_steps is None else float(transition_steps)
+    return float(steps + per_tr * trans + _STEPS_PER_CORNER * corners + _STEPS_PER_BREAKPOINT * other)
 
 
 def noise_bands(profile: dict, ls_cfg: "LocalStateConfig | None", stochastic: bool,

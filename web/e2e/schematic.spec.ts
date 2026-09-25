@@ -1,5 +1,5 @@
 // Schematic editor + device library (mock mode, no backend needed): draw a circuit (V + R + ground +
-// wire), run it, probe a node, time-cursor annotations, the load-line example, keyboard shortcuts, ERC,
+// wire), run it, probe a node, time-cursor annotations, the load-line, oscillator and p-bit examples, keyboard shortcuts, ERC,
 // stochastic statistics and the device library (save → reload → load, place in a schematic).
 import { expect, test, type Page } from "@playwright/test";
 
@@ -119,6 +119,47 @@ test.describe("schematic editor (mock mode)", () => {
     await page.screenshot({ path: `${SHOTS}/schematic-loadline.png`, fullPage: true });
   });
 
+  test("current-driven oscillator example: I_in into out, repeated latch-ups", async ({ page }) => {
+    await fresh(page);
+    await page.getByTestId("menu-examples").click();
+    await page.getByTestId("tpl-oscillator").click();
+    await expect(page.locator("[data-testid=sch-svg] [data-kind=STL]")).toHaveCount(1);
+    await expect(page.locator("[data-testid=sch-svg] [data-kind=I]")).toHaveCount(1);
+    await expect(page.locator("[data-testid=sch-svg] [data-kind=LABEL]")).toHaveCount(1);
+    await expect(page.getByTestId("erc-pill")).toHaveClass(/ok/);
+    const nl = page.getByTestId("netlist-text");
+    await expect(nl).toContainText("Iin 0 out DC 1n");
+    await expect(nl).toContainText("Cpar out 0 1p");
+    await expect(nl).toContainText(/X1 out \S+ 0 STL/);
+    await expect(nl).toContainText(".tran 0 15m 0 5u");
+    await page.getByTestId("run-button").click();
+    await expect(page.getByTestId("sch-summary")).toBeVisible({ timeout: 20_000 });
+    const n = Number(await page.getByTestId("kpi-sch-X1.n_latch_up-value").textContent());
+    expect(n).toBeGreaterThan(1);
+    await expect(page.getByTestId("sch-events-table")).toContainText("X1");
+    await page.screenshot({ path: `${SHOTS}/schematic-oscillator.png`, fullPage: true });
+  });
+
+  test("p-bit example (stochastic): comparator on the source resistor, firing raster and P(fire)", async ({ page }) => {
+    await fresh(page, "#tab=circuit&mode=stochastic");
+    await page.getByTestId("menu-examples").click();
+    await page.getByTestId("tpl-pbit").click();
+    await expect(page.locator("[data-testid=sch-svg] [data-kind=CMP]")).toHaveCount(1);
+    await expect(page.getByTestId("erc-pill")).toHaveClass(/ok/);
+    const nl = page.getByTestId("netlist-text");
+    await expect(nl).toContainText("RS s 0 100k");
+    await expect(nl).toContainText("CMP1 s 0 q CMP vref=100m");
+    await page.getByTestId("sto-runs").fill("4");
+    await page.getByTestId("sto-runs").press("Enter");
+    await page.getByTestId("run-button").click();
+    const confirm = page.getByTestId("sch-confirm-run");
+    if (await confirm.isVisible({ timeout: 1500 }).catch(() => false)) await confirm.click();
+    await expect(page.getByTestId("sch-cmp-stats-CMP1")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("sch-cmp-stats-CMP1")).toContainText("P(");
+    await expect(page.getByTestId("panel-sch-cmp-CMP1").locator(".js-plotly-plot")).toBeVisible();
+    await page.screenshot({ path: `${SHOTS}/schematic-pbit.png`, fullPage: true });
+  });
+
   test("keyboard shortcuts: place, rotate, undo/redo, delete, Esc", async ({ page }) => {
     await fresh(page);
     await newCircuit(page);
@@ -141,6 +182,13 @@ test.describe("schematic editor (mock mode)", () => {
     await expect(page.locator("[data-testid=sch-svg] [data-kind=R]")).toHaveCount(2);
     await page.keyboard.press("Delete");
     await expect(page.locator("[data-testid=sch-svg] [data-kind=R]")).toHaveCount(1);
+    // K places a comparator
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("k");
+    await expect(page.getByTestId("tool-CMP")).toHaveAttribute("aria-pressed", "true");
+    await page.mouse.click(at(200, 0).x, at(200, 0).y);
+    await expect(page.locator("[data-testid=sch-svg] [data-kind=CMP]")).toHaveCount(1);
+    await expect(page.getByTestId("netlist-text")).toContainText("CMP1");
   });
 
   test("ERC blocks the run and highlights the problem", async ({ page }) => {

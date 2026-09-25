@@ -345,7 +345,9 @@ Request:
       { "type": "I", "name": "I1", "nodes": ["n+", "n-"], "wave": Wave },              // amperes; flows n+ → (through source) → n-,
                                                                                        //   i.e. it is pushed OUT of n- into the circuit … see §6.1
       { "type": "STL", "name": "X1", "nodes": { "d": "d", "g": "g", "s": "0" },
-        "device": { ...device block §1... }, "light_pA": Wave | null }                  // light waveform in pA (null = device light)
+        "device": { ...device block §1... }, "light_pA": Wave | null },                 // light waveform in pA (null = device light)
+      { "type": "CMP", "name": "CMP1", "nodes": { "in": "s", "out": "q" }, "v_ref": 0.1,
+        "v_high": 1, "v_low": 0, "hysteresis": 0 }                                     // comparator (§6.3), extension
     ] },
   "tran": { "t_stop_s": 5e-3, "t_start_save_s": 0, "dt_max_s": 1e-5, "dt_min_s": 1e-12,
             "method": "BE" | "TRAP", "reltol": 1e-4 },
@@ -409,6 +411,22 @@ Details: `docs/CIRCUIT_SIMULATOR.md` §12. Everything above holds; these are the
   iph_pA, label}`, `light_pA`, `vgs_V`, `vgs_range_V`, `folds`, `latch_window`, `u_fold`, `local_state`,
   `noise_band_V`, `estimated_steps`). Extra keys: `probes`, `trajectory {vd, id, cell}` (first STL), `tran`, `solver`,
   `detect`, `stochastic`, `feasibility`, `regimes`; `sweeps` = [], `distributions`/`envelopes` = [] when deterministic.
+- **Initial state and oscillators** (additive; `docs/CIRCUIT_SIMULATOR.md` §13): optional `tran.initial` =
+  `"auto"` (default) | `"op"` (DC operating point) | `"zero"` (discharged capacitors, SPICE UIC); "auto" uses the
+  operating point unless a current-biased cell would sit on its negative-resistance branch (or none is found), then
+  "zero"; echoed as `tran.initial` / `tran.initial_used`. Per STL echo `oscillator` ({predicted, period_qs_s,
+  latch_ups_expected, c_eff_F, i_norton_A, r_ext_ohm} for high-impedance drives, else null). Per STL with ≥ 2
+  latch-ups in a run: summary `X1.period` (s), `X1.f_osc` (Hz), `X1.isi_cv`, `X1.vd_lu_mean`, `X1.vd_ld_mean` (V);
+  stochastic also `X1.period_cv_runs` and the distribution `X1.isi` (s, all intervals).
+- **Comparator `CMP`** (additive; `docs/CIRCUIT_SIMULATOR.md` §12.9): nodes `{in, out}` (+ optional `inm`, default
+  ground), `v_ref` (V), `v_high` (1 V), `v_low` (0 V), `hysteresis` (0), `width` (1 mV smoothing). Ideal inputs; the
+  output is a behavioural voltage source out → ground (it can drive other elements; ERC: not tied to another
+  source or ground). Signals `I(CMP1)` (output current, SPICE sign) and `CMP1.bit` (unit "1", axis logic); events
+  `cmp_rise` / `cmp_fall` (`cell` = comparator name). Result key `comparators`: per comparator `{name, nodes, v_ref,
+  v_high, v_low, hysteresis, width, window_source, t_windows, bits (runs × pulse periods, 0/1/null), p_fire_window,
+  p_fire_window_err, p_fire, lag1, n_bits, p_fire_run}` — windows = periods of the periodic pulse source with the
+  most periods (fired = output high within the period); summary `CMP1.p_fire`, `CMP1.lag1`, `CMP1.n_bits`,
+  `CMP1.n_rise`, `CMP1.duty`; stochastic distribution `CMP1.p_fire_run`. Limit 8 comparators.
 
 ## 7. Device library (frontend, device-library package)
 

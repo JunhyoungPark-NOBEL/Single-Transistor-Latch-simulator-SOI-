@@ -510,13 +510,13 @@ export function mockCircuit(payload: {
         }
       : bench === "pbit"
         ? {
-            nodes: ["clk", "d", "g", "0"],
+            nodes: ["d", "g", "s", "0"],
             elements: [
-              { kind: "V", name: "Vclk", nodes: ["clk", "0"], value: "clock 0/3.68 V, 0.001 s" },
-              { kind: "R", name: "RL", nodes: ["clk", "d"], value: "100 kΩ" },
-              { kind: "C", name: "Cd", nodes: ["d", "0"], value: "2 fF" },
-              ...cell(1, "d", "g"),
-              { kind: "CMP", name: "CMP", nodes: ["d"], value: "bit = [v_D < 3.67 V]" },
+              { kind: "V", name: "Vclk", nodes: ["d", "0"], value: "drain pulses 0/3.689 V, 0.001 s" },
+              { kind: "V", name: "VG1", nodes: ["g", "0"], value: `${dev.vg} V (DC)` },
+              { kind: "STL", name: "X1", nodes: ["d", "g", "s"], value: "FDSOI reference calibration" },
+              { kind: "R", name: "RS", nodes: ["s", "0"], value: "100 kΩ" },
+              { kind: "CMP", name: "CMP", nodes: ["s"], value: "bit = [V(R_S) > 0.1 V]" },
             ],
           }
         : {

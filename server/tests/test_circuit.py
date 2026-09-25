@@ -311,6 +311,29 @@ def test_channel_conduction_is_not_latch_up(progress):
     assert _summary(res)["P_latched"] == 0.0
 
 
+def test_pbit_bench_source_resistor_and_comparator(progress):
+    """p-bit topology: drain pulses -> STL -> R_S -> ground, comparator on V(R_S) with V_ref (auto R_S x 1 uA).
+    Amplitude V_LU - 15 mV: never fires deterministically, fires at random with carrier noise (P1 ~ 0.5)."""
+    det = run_circuit({"bench": "pbit", "mode": "deterministic", "device": {"preset": "paper"},
+                       "bench_params": {"n_clocks": 3}}, progress)
+    s = _summary(det)
+    assert det["bench_params"]["v_high_V"] == pytest.approx(round(FOLD_LU - 0.015, 4), abs=1e-3)
+    assert s["P1"] == 0.0 and s["v_th"] == pytest.approx(0.1) and s["R_S"] == 1e5
+    keys = [x["key"] for x in det["runs"][0]["signals"]]
+    assert {"v_clk", "v_d", "v_s", "v_cmp", "bit", "i_d"} <= set(keys)
+    kinds = {e["kind"]: e for e in det["schematic"]["elements"]}
+    assert kinds["CMP"]["nodes"] == ["s"] and kinds["R"]["nodes"] == ["s", "0"]
+    hi = run_circuit({"bench": "pbit", "mode": "deterministic", "device": {"preset": "paper"},
+                      "bench_params": {"n_clocks": 3, "v_high_V": 3.72}}, progress)
+    assert _summary(hi)["P1"] == 1.0 and _summary(hi)["P_latched"] == 1.0
+    sig = {x["key"]: np.asarray(x["values"], float) for x in hi["runs"][0]["signals"]}
+    assert 0.35 < sig["v_s"].max() < 0.5 and sig["v_cmp"].max() == pytest.approx(1.0, abs=1e-6)
+    sto = run_circuit({"bench": "pbit", "mode": "stochastic", "device": {"preset": "paper"},
+                       "bench_params": {"n_clocks": 10}, "stochastic": {"n_runs": 4, "seed": 9}}, progress)
+    p1 = _summary(sto)["P1"]
+    assert 0.1 < p1 < 0.9, p1                                          # measured 0.505 (10 runs x 20 clocks)
+
+
 def test_noise_resolved_in_post_fold_passage(progress):
     """#2: an unlatched cell beyond V_LU + 0.25 V (supra-fold pulses, fast ramps) keeps its carrier
     noise; the band cut-offs made the delays of 3.98 V pulses nearly deterministic (SD 0.1 µs)."""

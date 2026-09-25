@@ -169,6 +169,11 @@ def _kcl_residual(res, run=0):
                         i = s[f"I({e['name']}.{term})"]
                         tot += i
                         scale = np.maximum(scale, np.abs(i))
+            elif e["type"] == "CMP":                       # ideal inputs; output = voltage source out -> ground
+                if e["nodes"]["out"] == n:
+                    i = s[f"I({e['name']})"]
+                    tot += i
+                    scale = np.maximum(scale, np.abs(i))
             else:
                 a, b = e["nodes"]
                 i = s[f"I({e['name']})"]
@@ -403,6 +408,250 @@ def test_feasibility_refusal():
     with pytest.raises(ValueError, match="event-level carrier noise"):
         run_circuit(_custom(_load_line_elements(4.0, T, {"preset": "paper"}, -2.0), {"t_stop_s": T}, mode="stochastic",
                             stochastic={"n_runs": 1}, solver={"max_steps": 20000}))
+
+
+# ---- current-driven relaxation oscillator (integrate-and-fire, docs/CIRCUIT_SIMULATOR.md §13) ---------
+def _osc_elements(i_in, c_par, device=None, vg=-2.0, light=None):
+    """The owner's circuit: DC current source into 'out', C_par to ground, STL drain on 'out', source grounded,
+    gate at a DC source."""
+    return [
+        {"type": "I", "name": "Iin", "nodes": ["0", "out"], "wave": {"kind": "dc", "value": i_in}},
+        {"type": "C", "name": "Cpar", "nodes": ["out", "0"], "value": c_par},
+        {"type": "STL", "name": "X1", "nodes": {"d": "out", "g": "g", "s": "0"}, "device": device or {"preset": "paper"},
+         "light_pA": light},
+        {"type": "V", "name": "VG", "nodes": ["g", "0"], "wave": {"kind": "dc", "value": vg}},
+    ]
+
+
+# 1 nA into 1 pF, reference device at V_G = -2 V (the schematic template): converged period (BE reltol 1e-5:
+# 1.16363 ms, TRAP reltol 1e-5: 1.16381 ms), quasi-static period C (V_LU - V_LD)/I-type integral 1.1093 ms
+OSC_T_REF = 1.1637e-3
+OSC_T_QS = 1.1093e-3
+
+
+def test_current_driven_oscillator_inside_the_window():
+    res = run_circuit(_custom(_osc_elements(1e-9, 1e-12), {"t_stop_s": 15e-3, "dt_max_s": 5e-6}))
+    _check_result(res, "deterministic")
+    sm = _summary(res)
+    # the DC operating point would be the unstable equilibrium on the NDR branch: 'auto' starts discharged
+    assert res["tran"]["initial"] == "auto" and res["tran"]["initial_used"] == "zero"
+    assert res["op"]["V(out)"] == pytest.approx(0.0, abs=1e-6) and res["op"]["I(Cpar)"] == pytest.approx(1e-9, rel=1e-6)
+    assert any("relaxation oscillator" in w for w in res["warnings"])
+    osc = {e["name"]: e for e in res["elements"]}["X1"]["oscillator"]
+    assert osc["predicted"] and osc["period_qs_s"] == pytest.approx(OSC_T_QS, rel=0.01) and osc["c_eff_F"] == 1e-12
+    # every latch-up is followed by a latch-down: ten sawtooth teeth in 15 ms
+    kinds = [e["kind"] for e in res["events"]]
+    assert kinds == ["latch_up", "latch_down"] * 10
+    t_up = np.array([e["t"] for e in res["events"] if e["kind"] == "latch_up"])
+    assert t_up[0] == pytest.approx(1e-12 * sm["X1.fold_V_LU"] / 1e-9, rel=0.02)     # C V_LU / I_in from 0 V
+    assert sm["X1.period"] == pytest.approx(OSC_T_REF, rel=0.01)                     # converged within 1 %
+    assert 1.0 < sm["X1.period"] / OSC_T_QS < 1.1                                   # + fold lags (4.8 %)
+    assert sm["X1.f_osc"] == pytest.approx(1.0 / sm["X1.period"])
+    assert sm["X1.isi_cv"] < 1e-3                                                   # deterministic: periodic
+    # sawtooth between the folds (+ slow-passage lags): peak just above V_LU, valley just below V_LD
+    t, s = _sig(res)
+    v = s["V(out)"]
+    after = t > t_up[0]
+    assert sm["X1.fold_V_LU"] < v[after].max() < sm["X1.fold_V_LU"] + 0.06
+    assert sm["X1.fold_V_LD"] - 0.03 < v[after].min() < sm["X1.fold_V_LD"]
+    assert sm["X1.vd_lu_mean"] == pytest.approx(v[after].max(), abs=1e-3)           # event timing at the peak
+    # the latch-up current spike discharges C_par: I(X1.d) reaches ~µA while I_in = 1 nA
+    assert s["I(X1.d)"].max() > 1e-6
+    assert _kcl_residual(res) < 1e-5
+    fe = res["feasibility"]["estimated_steps_per_run"] / res["solver_stats"]["steps"]
+    assert 0.6 < fe < 2.0, fe                                                       # was 0.2 before the oscillator walk
+
+
+@pytest.mark.parametrize("i_in,t_stop,final", [(5e-12, 2.0, "HRS"), (30e-9, 4e-4, "LRS")])
+def test_current_driven_cell_outside_the_window_does_not_oscillate(i_in, t_stop, final):
+    res = run_circuit(_custom(_osc_elements(i_in, 1e-12), {"t_stop_s": t_stop}))
+    sm = _summary(res)
+    osc = {e["name"]: e for e in res["elements"]}["X1"]["oscillator"]
+    assert not osc["predicted"]
+    assert sm["X1.final_state"] == final and sm["X1.n_latch_down"] == 0 and "X1.period" not in sm
+    t, s = _sig(res)
+    v = s["V(out)"]
+    tail = t > 0.8 * t_stop
+    assert np.ptp(v[tail]) < 2e-3                                                    # settled, no sawtooth
+    if final == "HRS":      # I_in < I_LU: the load line crosses the HRS below the fold
+        assert sm["X1.n_latch_up"] == 0 and 3.5 < v[-1] < sm["X1.fold_V_LU"]
+    else:                   # I_in > I_LD: latches once and stays on the LRS (I_LRS(V) = I_in just above V_LD)
+        assert sm["X1.n_latch_up"] == 1 and sm["X1.fold_V_LD"] < v[-1] < sm["X1.fold_V_LD"] + 0.05
+        assert s["I(X1.d)"][-1] == pytest.approx(i_in, rel=1e-3)
+
+
+def test_initial_state_modes():
+    els = _osc_elements(100e-12, 1e-12)
+    # 'op': the DC operating point is the equilibrium on the negative-resistance branch (I_D = I_in, u_i < u < u_j);
+    # it is unstable but the deterministic run stays there for many ms (no kick)
+    op = run_circuit(_custom(els, {"t_stop_s": 10e-3, "initial": "op"}))
+    assert op["tran"]["initial_used"] == "op"
+    assert 3.2 < op["op"]["V(out)"] < 3.5 and op["op"]["I(X1.d)"] == pytest.approx(100e-12, rel=1e-4)
+    assert _summary(op)["X1.n_latch_up"] == 0
+    zero = run_circuit(_custom(els, {"t_stop_s": 10e-3, "initial": "zero"}))
+    assert zero["tran"]["initial_used"] == "zero" and zero["op"]["V(out)"] == pytest.approx(0.0, abs=1e-6)
+    assert zero["op"]["I(Cpar)"] == pytest.approx(100e-12, rel=1e-6)                 # KCL at t = 0: I_in charges C_par
+    # a circuit without a current-biased cell keeps the operating point under 'auto'
+    rc = run_circuit(_custom([V1, R1, RB, {"type": "C", "name": "C1", "nodes": ["b", "0"], "value": 1e-9}], {"t_stop_s": 1e-3}))
+    assert rc["tran"]["initial_used"] == "op" and rc["op"]["V(b)"] == pytest.approx(0.5)
+    with pytest.raises(ValueError, match="tran.initial"):
+        run_circuit(_custom(els, {"t_stop_s": 1e-3, "initial": "uic"}))
+
+
+def test_oscillator_stochastic_jitter_and_seed():
+    pl = _custom(_osc_elements(1e-9, 1e-12), {"t_stop_s": 9e-3, "dt_max_s": 5e-6}, mode="stochastic",
+                 stochastic={"n_runs": 2, "seed": 404}, probes=["V(out)"])
+    a = run_circuit(pl)
+    sm = {x["key"]: x for x in a["summary"]}
+    assert sm["X1.n_latch_up"]["value"] >= 4
+    # carrier noise: the latch-up happens at a random V_DS near V_LU -> spike-timing jitter (measured ~2 % CV)
+    assert 2e-3 < sm["X1.isi_cv"]["value"] < 0.1
+    assert sm["X1.vd_lu_mean"]["spread"] > 2e-3
+    assert sm["X1.period"]["value"] == pytest.approx(OSC_T_REF, rel=0.05)
+    isi = {d["key"]: d for d in a["distributions"]}["X1.isi"]["values"]
+    assert len(isi) >= 6 and np.all(np.asarray(isi) > 0)
+    b = run_circuit(pl)
+    assert [e["t"] for e in a["events"]] == [e["t"] for e in b["events"]]
+    c = run_circuit(dict(pl, stochastic={"n_runs": 2, "seed": 405}))
+    assert [e["t"] for e in a["events"]] != [e["t"] for e in c["events"]]
+
+
+def test_light_shifts_the_oscillation_frequency():
+    """Illumination calibration device (V_G = -1.8 V): the photocurrent lowers V_LU, the window shrinks and the
+    oscillator fires faster (light-to-frequency conversion)."""
+    f = {}
+    for iph in (0.0, 2.63):
+        dev = {"preset": "photo", "vg": -1.8, "light": {"mode": "iph", "iph_pA": iph}}
+        res = run_circuit(_custom(_osc_elements(1e-9, 1e-12, dev, -1.8), {"t_stop_s": 12e-3, "dt_max_s": 5e-6}))
+        f[iph] = _summary(res)["X1.f_osc"]
+    assert f[2.63] > 1.4 * f[0.0]
+
+
+def test_oscillator_feasibility_refusal_names_the_cycles():
+    with pytest.raises(ValueError, match="relaxation oscillation: ~\\d+ predicted"):
+        run_circuit(_custom(_osc_elements(1e-9, 1e-12), {"t_stop_s": 10.0}))
+
+
+@pytest.mark.slow
+def test_oscillator_period_converges_with_the_time_step():
+    """Default BE step control vs much finer steps (BE reltol 1e-5, TRAP): period within 0.3 %, peak within 5 mV,
+    no numerical overshoot (the default peak lies below the converged one)."""
+    out = {}
+    for key, tran in (("default", {}), ("be_fine", {"reltol": 1e-5}), ("trap_fine", {"method": "TRAP", "reltol": 1e-5})):
+        res = run_circuit(_custom(_osc_elements(1e-9, 1e-12), dict({"t_stop_s": 8e-3}, **tran)))
+        sm = _summary(res)
+        t, s = _sig(res)
+        out[key] = (sm["X1.period"], s["V(out)"][t > 4e-3].max(), s["V(out)"][t > 4e-3].min())
+    for ref in ("be_fine", "trap_fine"):
+        assert out["default"][0] == pytest.approx(out[ref][0], rel=3e-3)
+        assert -5e-3 < out["default"][1] - out[ref][1] <= 1e-4
+        assert abs(out["default"][2] - out[ref][2]) < 2e-3
+    assert out["be_fine"][0] == pytest.approx(OSC_T_REF, rel=1e-3)
+
+
+# ---- comparator (CMP) and the p-bit (drain pulses, source resistor, comparator) -----------------------
+def _cmp(name="CMP1", inp="a", out="q", v_ref=0.5, **kw):
+    return dict({"type": "CMP", "name": name, "nodes": {"in": inp, "out": out}, "v_ref": v_ref}, **kw)
+
+
+def test_comparator_switching_hysteresis_and_sign():
+    tri = {"kind": "pwl", "t": [0, 1e-3, 2e-3], "v": [0, 1, 0]}
+    els = [{"type": "V", "name": "V1", "nodes": ["a", "0"], "wave": tri}, _r("RA", "a", "0"),
+           _cmp(v_ref=0.5, hysteresis=0.2), _r("RQ", "q", "0", 1e3)]
+    res = run_circuit(_custom(els, {"t_stop_s": 2e-3, "dt_max_s": 2e-6}))
+    t, s = _sig(res)
+    assert {"V(q)", "I(CMP1)", "CMP1.bit"} <= set(s)
+    ev = [(e["kind"], e["t"]) for e in res["events"] if e["cell"] == "CMP1"]
+    assert [k for k, _ in ev] == ["cmp_rise", "cmp_fall"]
+    assert ev[0][1] == pytest.approx(0.6e-3, abs=4e-6) and ev[1][1] == pytest.approx(2e-3 - 0.4e-3, abs=4e-6)  # 0.6 V up, 0.4 V down
+    hi = (t > 0.62e-3) & (t < 1.58e-3)
+    assert np.allclose(s["V(q)"][hi], 1.0, atol=1e-6) and np.all(s["CMP1.bit"][hi] == 1)
+    assert np.allclose(s["V(q)"][t < 0.58e-3], 0.0, atol=1e-6)
+    # the output is a voltage source delivering power into RQ: SPICE sign (negative), and KCL at q
+    assert np.allclose(s["I(CMP1)"][hi], -1e-3, rtol=1e-6) and np.allclose(s["I(RQ)"][hi], 1e-3, rtol=1e-6)
+    sm = _summary(res)
+    assert sm["CMP1.n_rise"] == 1 and sm["CMP1.duty"] == pytest.approx(0.5, abs=5e-3)      # high 0.6 … 1.6 ms of 2 ms
+    el = {e["name"]: e for e in res["elements"]}["CMP1"]
+    assert el["nodes"] == {"in": "a", "inm": "0", "out": "q"} and el["v_ref"] == 0.5 and el["hysteresis"] == 0.2
+    assert res["comparators"][0]["window_source"] is None                       # no pulse source: no windows
+
+
+def test_comparator_differential_input_and_inverted_levels():
+    els = [{"type": "V", "name": "V1", "nodes": ["a", "0"], "wave": {"kind": "pwl", "t": [0, 1e-3], "v": [0, 2]}},
+           {"type": "V", "name": "V2", "nodes": ["b", "0"], "wave": {"kind": "dc", "value": 1.0}},
+           _r("RA", "a", "0"), _r("RB", "b", "0"),
+           {"type": "CMP", "name": "U1", "nodes": ["a", "b", "q"], "v_ref": 0.2, "v_high": -1.0, "v_low": 2.5}]
+    res = run_circuit(_custom(els, {"t_stop_s": 1e-3, "dt_max_s": 2e-6}))
+    t, s = _sig(res)
+    # V(a) - V(b) > 0.2 V from V(a) = 1.2 V (t = 0.6 ms): output -1 V ("high" state), 2.5 V before
+    assert np.allclose(s["V(q)"][t < 0.58e-3], 2.5, atol=1e-6) and np.allclose(s["V(q)"][t > 0.62e-3], -1.0, atol=1e-6)
+    assert np.all(s["U1.bit"][t > 0.62e-3] == 1) and np.all(s["U1.bit"][t < 0.58e-3] == 0)
+
+
+@pytest.mark.parametrize("elements,match", [
+    ([V1, _r("R1", "a", "0"), _cmp(out="a")], "comparator output .*must not be driven|output of comparator CMP1"),
+    ([V1, _r("R1", "a", "0"), _cmp(), {"type": "V", "name": "V2", "nodes": ["q", "0"], "wave": {"kind": "dc", "value": 1}}],
+     "must not be driven by another source"),
+    ([V1, _r("R1", "a", "0"), _cmp(out="0")], "output cannot be ground"),
+    ([V1, _r("R1", "a", "0"), _cmp(inp="x")], "node 'x' has no DC path.*CMP1.in"),
+    ([V1, _r("R1", "a", "0"), _cmp(v_high=1.0, v_low=1.0)], "v_high and v_low must differ"),
+    ([V1, _r("R1", "a", "0"), {"type": "CMP", "name": "CMP1", "nodes": {"in": "a"}, "v_ref": 0.1}], "out not connected"),
+])
+def test_comparator_erc(elements, match):
+    with pytest.raises(ValueError, match=match):
+        run_circuit(_custom(elements, {"t_stop_s": 1e-3}))
+
+
+def _pbit_elements(amp, n=5, rs=100e3, v_ref=0.1):
+    return [
+        {"type": "V", "name": "Vp", "nodes": ["d", "0"],
+         "wave": {"kind": "pulse", "v1": 0, "v2": amp, "td": 0, "tr": 20e-6, "tf": 20e-6, "pw": 200e-6, "per": 1e-3, "ncycles": n}},
+        {"type": "STL", "name": "X1", "nodes": {"d": "d", "g": "g", "s": "s"}, "device": {"preset": "paper"}, "light_pA": None},
+        {"type": "V", "name": "VG", "nodes": ["g", "0"], "wave": {"kind": "dc", "value": -2.0}},
+        _r("RS", "s", "0", rs),
+        _cmp(inp="s", out="q", v_ref=v_ref),
+    ]
+
+
+def test_source_degenerated_stl_converges():
+    """A 100 kΩ source resistor moves V_S by ~0.4 V when the cell latches: V_GS = v_g - v_s enters the element
+    Jacobian (d/dV_GS columns); without them Newton failed at the latch-up (time-step underflow)."""
+    res = run_circuit(_custom(_pbit_elements(3.75, n=2), {"t_stop_s": 2e-3}))
+    assert not any("underflow" in w for w in res["warnings"]) and "truncated_runs" not in _summary(res)
+    t, s = _sig(res)
+    assert 0.40 < s["V(s)"].max() < 0.48                                             # R_S I_LRS
+    assert np.allclose(s["V(s)"], 1e5 * s["I(X1.d)"], rtol=1e-4, atol=1e-9)
+    assert _kcl_residual(res) < 1e-5
+    assert _summary(res)["X1.n_latch_up"] == 2
+
+
+@pytest.mark.parametrize("amp,p", [(3.69, 0.0), (3.72, 1.0)])
+def test_pbit_deterministic_fires_never_or_always(amp, p):
+    res = run_circuit(_custom(_pbit_elements(amp), {"t_stop_s": 5e-3}))
+    c = res["comparators"][0]
+    assert c["window_source"] == "Vp" and len(c["t_windows"]) == 5 and c["n_bits"] == 5
+    assert c["p_fire"] == p and c["bits"] == [[int(p)] * 5]
+    sm = _summary(res)
+    assert sm["CMP1.p_fire"] == p and sm["X1.n_latch_up"] == 5 * p
+
+
+def test_pbit_stochastic_random_firing_seeded():
+    pl = _custom(_pbit_elements(3.69, n=10), {"t_stop_s": 10e-3}, mode="stochastic", stochastic={"n_runs": 4, "seed": 17},
+                 probes=["V(s)", "CMP1.bit"])
+    a = run_circuit(pl)
+    c = a["comparators"][0]
+    B = np.array(c["bits"], float)
+    assert B.shape == (4, 10) and c["n_bits"] == 40
+    assert 0.15 < c["p_fire"] < 0.85                                                  # measured 0.50 (200 bits)
+    assert len(c["p_fire_window"]) == 10 and len(c["p_fire_run"]) == 4
+    # every fired pulse is a latch-up of the cell (the comparator reads the LRS current through R_S)
+    n_lu = sum(1 for e in a["events"] if e["kind"] == "latch_up")
+    assert n_lu == int(B.sum())
+    assert any(d["key"] == "CMP1.p_fire_run" for d in a["distributions"])
+    b = run_circuit(pl)
+    assert b["comparators"][0]["bits"] == c["bits"]
+    other = run_circuit(dict(pl, stochastic={"n_runs": 4, "seed": 18}))
+    assert other["comparators"][0]["bits"] != c["bits"]
 
 
 # ---- API --------------------------------------------------------------------------------------

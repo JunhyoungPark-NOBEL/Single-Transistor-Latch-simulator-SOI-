@@ -14,6 +14,7 @@ from . import mna as K
 REC_CAP = 20000
 EV_CAP = 4096
 CHUNK_STEPS = 4000
+G_HOLD = 1e6          # S, conductance that holds a capacitor at 0 V in the initial state 'zero'
 
 
 @dataclass
@@ -127,6 +128,23 @@ class RunOutput:
     hrs_crossings: int = 0          # I_D up-crossings of i_threshold with the body on the HRS (not latch-up)
     warnings: list[str] = field(default_factory=list)
     diag: list[int] = field(default_factory=list)
+    initial: str = "op"             # initial state used: "op" (DC operating point) or "zero" (discharged capacitors)
+    ndr_op: list = field(default_factory=list)   # 'auto': cells whose DC operating point was on the NDR branch
+                                                 # [(cell, V_DS, I_D)] (the run then started from 'zero')
+
+
+def _vgs_moves(net: dict, k: int) -> bool:
+    if int(net["sS"][k]) != 0:
+        return True
+    g = int(net["sG"][k])
+    if g == 0:
+        return False
+    for e in range(int(net["nV"])):
+        a, b, w = int(net["vA"][e]), int(net["vB"][e]), int(net["vW"][e])
+        if w >= 0 and ((a == g and b == 0) or (b == g and a == 0)):
+            vals = net["wv"][net["woff"][w]:net["woff"][w + 1]]
+            return bool(np.ptp(vals) > 0)
+    return True
 
 
 def _tables():
@@ -137,7 +155,7 @@ def _tables():
 
 def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wave: int, seed: int,
              ls_init: np.ndarray | None = None, progress=None, window: np.ndarray | None = None,
-             rec_sink=None) -> RunOutput:
+             rec_sink=None, initial: str = "op", cap_hold: np.ndarray | None = None) -> RunOutput:
     """One transient run.  ``progress(fraction_of_run)`` is called between chunks (it may raise
     JobCancelled).  ``window`` (n_STL x 4, 6, 9 or 15 columns, see ``mna.W_*``): noise bands (lu_lo,
     lu_hi, ld_lo, ld_hi), optionally the fold u values (u_i, u_j) of the physical latch state (missing:
@@ -145,7 +163,12 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
     (wave, gain, mode; default: ``main_wave``, 1, 0 = the benches) and the per-cell local-state
     configuration (default: the global ``cfg`` values for every cell).
     ``rec_sink(rows, events)``: when given, every flushed block of recorded rows (and the latch events
-    of that block) is passed to it instead of being accumulated (``RunOutput.rec`` is then empty)."""
+    of that block) is passed to it instead of being accumulated (``RunOutput.rec`` is then empty).
+    ``initial``: "op" = DC operating point (the benches); "zero" = discharged capacitors (every capacitor
+    with ``cap_hold`` > 0 — default all — held at 0 V by G_HOLD while the bodies relax; SPICE UIC with IC = 0);
+    "auto" = "op" unless the operating point puts a cell on the unstable (negative-resistance) branch of its
+    quasi-static curve (u_i < u < u_j: an equilibrium that exists only because the cell is current-biased),
+    then "zero" (``RunOutput.ndr_op`` names the cells)."""
     tic = time.perf_counter()
     na, vbi, rg, fg, table, rv, pmf = _tables()
     ci, cf = cfg.arrays(net, t_end, main_wave)
@@ -161,7 +184,11 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
     xp = x.copy()
     ls = np.zeros((ns, 2)) if ls_init is None else np.ascontiguousarray(ls_init, dtype=np.float64).reshape(ns, 2).copy()
     ss = np.zeros((ns, K.N_SS))
-    part = np.zeros((ns, 8))
+    part = np.zeros((ns, K.N_PART))
+    # cells whose V_GS can move (source not grounded, or gate not held by a constant voltage source to ground) get
+    # the d/dV_GS columns in their Jacobian; the benches (grounded source, DC gate source) do not
+    for k in range(ns):
+        part[k, K.P_VGSJ] = 1.0 if _vgs_moves(net, k) else 0.0
     sens = np.zeros((ns, n))
     cv = np.zeros(nc)
     cI = np.zeros(nc)
@@ -207,18 +234,56 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
                 ix = int(win[k, K.W_LSIDX])
                 Pdc[k, ix] = Pbase[k, ix] + ls[k, 0]
                 Pdc[k, 10] = Pbase[k, 10] + ls[k, 1]
-    ok = K.dc_op(x, ci, cf, a["rA"], a["rB"], a["rG"], a["cA"], a["cB"], a["cC"], a["vA"], a["vB"], a["vW"],
-                 a["iA"], a["iB"], a["iW"], a["sD"], a["sG"], a["sS"], a["sW"], a["wt"], a["wv"], a["woff"],
-                 Pdc, Pbase if not (cfg.stochastic and cfg.ls_mode > 0) else Pdc, na, vbi, rg, fg, table,
-                 np.zeros((ns, K.N_EV)), part, 0.0)
+    if initial not in ("op", "zero", "auto"):
+        raise ValueError(f"initial state must be 'op', 'zero' or 'auto', got {initial!r}")
+    hold_z = np.full(nc, G_HOLD) if cap_hold is None else np.ascontiguousarray(cap_hold, dtype=np.float64).reshape(nc)
+    cmp = np.ascontiguousarray(net.get("cmp", np.zeros((0, K.N_CMPC))), dtype=np.float64).copy()
+    x_start = x.copy()
+
+    def _dc(hold):
+        return K.dc_op(x, ci, cf, a["rA"], a["rB"], a["rG"], a["cA"], a["cB"], a["cC"], a["vA"], a["vB"], a["vW"],
+                       a["iA"], a["iB"], a["iW"], a["sD"], a["sG"], a["sS"], a["sW"], a["wt"], a["wv"], a["woff"],
+                       Pdc, Pbase if not (cfg.stochastic and cfg.ls_mode > 0) else Pdc, na, vbi, rg, fg, table,
+                       np.zeros((ns, K.N_EV)), part, 0.0, hold, cmp)
+
+    used = "zero" if initial == "zero" else "op"
+    ok = _dc(hold_z if used == "zero" else np.zeros(nc))
+    ndr_op = []
+    if not ok and initial == "auto" and nc:
+        # no operating point from the empty body (e.g. a current source forcing more current than the HRS
+        # can carry): start from discharged capacitors
+        x[:] = x_start
+        used = "zero"
+        ndr_op.append((-1, float("nan"), float("nan")))
+        ok = _dc(hold_z)
+    elif ok and initial == "auto" and ns:
+        ev_ = np.zeros(K.N_EV)
+        from .element import stl_eval
+        for k in range(ns):
+            ku = nn - 1 + nv + 2 * k
+            if win[k, K.W_UI] < x[ku] < win[k, K.W_UJ]:
+                pk = Pdc[k].copy()
+                pk[11] = (x[a["sG"][k] - 1] if a["sG"][k] > 0 else 0.0) - (x[a["sS"][k] - 1] if a["sS"][k] > 0 else 0.0)
+                stl_eval(x[ku], x[ku + 1], pk, na, vbi, rg, fg, table, ev_)
+                vds = (x[a["sD"][k] - 1] if a["sD"][k] > 0 else 0.0) - (x[a["sS"][k] - 1] if a["sS"][k] > 0 else 0.0)
+                ndr_op.append((k, float(vds), float(ev_[1])))
+        if ndr_op:
+            x[:] = x_start
+            used = "zero"
+            ok = _dc(hold_z)
     if not ok:
+        hint = " or start from discharged capacitors (tran.initial = 'zero')" if (used == "op" and nc) else ""
         raise ValueError("DC operating point at t = 0 did not converge (check the bias: the STL model is "
-                         "valid only where the source barrier and the neutral base exist)")
+                         f"valid only where the source barrier and the neutral base exist{hint})")
     ok = K.init_state(x, ci, cf, a["rA"], a["rB"], a["rG"], a["cA"], a["cB"], a["cC"], a["vA"], a["vB"], a["vW"],
                       a["iA"], a["iB"], a["iW"], a["sD"], a["sG"], a["sS"], a["sW"], a["wt"], a["wv"], a["woff"],
-                      P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, 0.0, win)
+                      P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, 0.0, win, cmp)
     if not ok:
         raise ValueError("element evaluation failed at the initial operating point")
+    if used == "zero":
+        # a held capacitor absorbs the current the rest of the circuit pushes into it at t = 0 (KCL-consistent
+        # initial capacitor current; also the TRAP companion's i_n)
+        cI[:] = hold_z * cv
     xp[:] = x
     sf[K.SF_T] = 0.0
     sf[K.SF_HNEXT] = cfg.h_init
@@ -241,7 +306,7 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
         stl_eval(x[ku], x[ku + 1], P[k], na, vbi, rg, fg, table, ev0)
         row[c:c + 7] = [x[ku], x[ku + 1], ev0[3], ev0[1], ev0[2], ls[k, 0], ls[k, 1]]
         c += 7
-    row[c:c + nc] = 0.0                          # capacitor currents at the DC operating point
+    row[c:c + nc] = cI                           # capacitor currents at t = 0 (0 at the DC operating point)
     if rec_sink is not None:
         rec_sink(row[None, :].copy(), np.zeros((0, K.N_EVC)))
     else:
@@ -252,7 +317,7 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
         status = K.run_chunk(x, xp, ci, cf, a["rA"], a["rB"], a["rG"], a["cA"], a["cB"], a["cC"], a["vA"], a["vB"],
                              a["vW"], a["iA"], a["iB"], a["iW"], a["sD"], a["sG"], a["sS"], a["sW"], a["wt"], a["wv"],
                              a["woff"], a["bp"], a["samp"] if nsamp else np.zeros(0), P, Pbase, na, vbi, rg, fg, table,
-                             rv, pmf, ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win)
+                             rv, pmf, ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win, cmp)
         nr = int(si[K.SI_NREC])
         ne = int(si[K.SI_NEV])
         if rec_sink is not None:
@@ -287,4 +352,4 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
                      t_gauss=float(sf[K.SF_TGAUSS]), t_lrs_drift=float(sf[K.SF_TLRS]), t_band_drift=float(sf[K.SF_TBAND]), min_u=float(sf[K.SF_MINU]), min_r=float(sf[K.SF_MINR]),
                      t_neg_u=float(sf[K.SF_TNEGU]), t_neg_r=float(sf[K.SF_TNEGR]), trap_be=int(si[K.SI_TRAPBE]),
                      runtime_s=time.perf_counter() - tic, hrs_crossings=int(si[K.SI_HRSX]), warnings=warnings,
-                     diag=[int(v) for v in si[K.SI_DIAG:K.SI_DIAG + 18]])
+                     diag=[int(v) for v in si[K.SI_DIAG:K.SI_DIAG + 18]], initial=used, ndr_op=ndr_op)

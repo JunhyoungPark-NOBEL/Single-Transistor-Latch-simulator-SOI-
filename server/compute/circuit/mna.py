@@ -8,6 +8,9 @@ Residuals:
       R: (v_a - v_b)/R; C: companion (BE: C/h dv, TRAP: 2C/h dv - i_n); V: branch current;
       I: source value; STL: I_D(u,r) leaves the drain node and enters the source node.
   V source:  v_a - v_b - V(t) = 0
+  comparator output (a V source whose wave index is -1 - j, j = comparator row of ``cmp``):
+             v_out - y_j(v_in - v_inm) = 0,  y = v_low + (v_high - v_low) (1 + tanh((d - thr)/w))/2,
+             thr = v_ref + hyst/2 (output low) or v_ref - hyst/2 (output high), w = smoothing width
   STL, E1:   V_D(u,r) - (v_d - v_s) = 0                               (V)
   STL, E2:   [Q(u,r;V_GS) - Qc - th*h*F(u,r)] / C_ox = 0               (V)
       deterministic BE: Qc = Q_n, th = 1;  TRAP: Qc = Q_n + h/2 F_n, th = 1/2
@@ -93,11 +96,44 @@ W_LULO, W_LUHI, W_LDLO, W_LDHI, W_UI, W_UJ, W_LAW, W_LAG, W_LAMODE, \
 N_WIN = 15
 # sample buffer: t, then per STL k: I_D (1 + 3k), v_DS (2 + 3k), reported latch state (3 + 3k)
 N_SAMPC = 3
-# partial derivative columns (part)
-P_VU, P_VR, P_IU, P_IR, P_FU, P_FR, P_QU, P_QR = range(8)
+# partial derivative columns (part): d/du, d/dr and, for cells whose V_GS can move (P_VGSJ = 1: source not grounded
+# or gate not held by a constant source), d/dV_GS; the V_GS columns enter the Jacobian at the gate and source nodes
+P_VU, P_VR, P_IU, P_IR, P_FU, P_FR, P_QU, P_QR, P_VG, P_IG, P_FG, P_QG, P_VGSJ = range(13)
+N_PART = 13
+FD_VGS = 1e-6         # V, finite-difference step in V_GS
 # event columns
 EV_KIND, EV_STL, EV_T, EV_VDS, EV_VSRC, EV_I = range(6)
 N_EVC = 6
+# comparator rows (cmp): input node, inverting input node (0 = ground), v_ref, v_high, v_low, hysteresis,
+# smoothing width, output state (0 low / 1 high; selects the hysteresis threshold)
+K_IN, K_INM, K_REF, K_HI, K_LO, K_HYST, K_W, K_STATE = range(8)
+N_CMPC = 8
+
+
+@njit(cache=True)
+def cmp_value(x, cmp, j):
+    """Comparator j output y and dy/d(v_in - v_inm) at the node voltages x."""
+    ni = int(cmp[j, K_IN])
+    nm = int(cmp[j, K_INM])
+    d = (0.0 if ni == 0 else x[ni - 1]) - (0.0 if nm == 0 else x[nm - 1])
+    thr = cmp[j, K_REF] + (-0.5 if cmp[j, K_STATE] > 0.5 else 0.5) * cmp[j, K_HYST]
+    w = cmp[j, K_W]
+    z = (d - thr) / w
+    if z > 40.0:
+        z = 40.0
+    elif z < -40.0:
+        z = -40.0
+    th = np.tanh(z)
+    span = cmp[j, K_HI] - cmp[j, K_LO]
+    return cmp[j, K_LO] + span * 0.5 * (1.0 + th), span * 0.5 * (1.0 - th * th) / w
+
+
+@njit(cache=True)
+def cmp_update_state(x, cmp):
+    """After an accepted time point: output state = output above the mid level (hysteresis memory)."""
+    for j in range(cmp.shape[0]):
+        y, _ = cmp_value(x, cmp, j)
+        cmp[j, K_STATE] = 1.0 if y > 0.5 * (cmp[j, K_HI] + cmp[j, K_LO]) else 0.0
 
 
 @njit(cache=True)
@@ -208,12 +244,27 @@ def fd_partials(x, ci, P, na, vbi, rg, fg, table, ev, part, tmp):
                 part[k, P_QR] = (ev[k, 3] - tmp[3]) / FD_R
         if not (okU and okR):
             return False
+        if part[k, P_VGSJ] > 0.5:
+            vgs = P[k, 11]
+            P[k, 11] = vgs + FD_VGS
+            okG = stl_eval(u, r, P[k], na, vbi, rg, fg, table, tmp)
+            P[k, 11] = vgs
+            if okG:
+                part[k, P_VG] = (tmp[0] - ev[k, 0]) / FD_VGS
+                part[k, P_IG] = (tmp[1] - ev[k, 1]) / FD_VGS
+                part[k, P_FG] = (tmp[2] - ev[k, 2]) / FD_VGS
+                part[k, P_QG] = (tmp[3] - ev[k, 3]) / FD_VGS
+            else:
+                part[k, P_VG] = 0.0
+                part[k, P_IG] = 0.0
+                part[k, P_FG] = 0.0
+                part[k, P_QG] = 0.0
     return True
 
 
 @njit(cache=True)
 def assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-             sD, sG, sS, ev, part, emode, qc, tha, h, J, f):
+             sD, sG, sS, ev, part, emode, qc, tha, h, J, f, vW, cmp):
     """Residual f(x) and Jacobian J.  emode 0: charge equation, 1: u fixed at qc[k]."""
     nn = ci[CI_NN]
     nv = ci[CI_NV]
@@ -269,7 +320,19 @@ def assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
             f[b - 1] -= cur
             J[b - 1, iv] -= 1.0
             J[iv, b - 1] -= 1.0
-        f[iv] = _nv(x, a) - _nv(x, b) - vval[e]
+        if vW[e] >= 0:
+            f[iv] = _nv(x, a) - _nv(x, b) - vval[e]
+        else:
+            # comparator output: behavioural (input-controlled) voltage source
+            j = -1 - vW[e]
+            y, dy = cmp_value(x, cmp, j)
+            f[iv] = _nv(x, a) - _nv(x, b) - y
+            ni = int(cmp[j, K_IN])
+            nm = int(cmp[j, K_INM])
+            if ni > 0:
+                J[iv, ni - 1] -= dy
+            if nm > 0:
+                J[iv, nm - 1] += dy
     for e in range(iA.shape[0]):
         a = iA[e]
         b = iB[e]
@@ -306,12 +369,24 @@ def assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
         else:
             f[kr] = x[ku] - qc[k]
             J[kr, ku] = 1.0
+        if part[k, P_VGSJ] > 0.5:
+            # V_GS = v_g - v_s enters I_D, V_D, F and Q (the element re-evaluates it at every iteration)
+            gq = (part[k, P_QG] - tha[k] * h * part[k, P_FG]) / COX if emode == 0 else 0.0
+            for node, sgn in ((sG[k], 1.0), (s, -1.0)):
+                if node > 0:
+                    c = node - 1
+                    if d > 0:
+                        J[d - 1, c] += sgn * part[k, P_IG]
+                    if s > 0:
+                        J[s - 1, c] -= sgn * part[k, P_IG]
+                    J[ku, c] += sgn * part[k, P_VG]
+                    J[kr, c] += sgn * gq
 
 
 @njit(cache=True)
 def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
            sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, emode, qc, tha, h,
-           refresh, maxit, J, f, xt, evt, tolmul=1.0):
+           refresh, maxit, J, f, xt, evt, vW, cmp, tolmul=1.0):
     """Solve the nonlinear system at one time point in place (x, ev, part).
     Returns (converged, iterations)."""
     nn = ci[CI_NN]
@@ -327,7 +402,7 @@ def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival
             if not fd_partials(x, ci, P, na, vbi, rg, fg, table, ev, part, tmp):
                 return False, it + 1
         assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                 sD, sG, sS, ev, part, emode, qc, tha, h, J, f)
+                 sD, sG, sS, ev, part, emode, qc, tha, h, J, f, vW, cmp)
         for i in range(n):
             if not np.isfinite(f[i]):
                 return False, it + 1
@@ -403,7 +478,7 @@ def cap_companion(ci, method_cap, h, cA, cB, cC, cv, cI, cGeq, cIeq):
 @njit(cache=True)
 def sources_at(t, vW, iW, sW, wt, wv, woff, vval, ival, P, Pbase):
     for e in range(vW.shape[0]):
-        vval[e] = wave_value(vW[e], t, wt, wv, woff)
+        vval[e] = wave_value(vW[e], t, wt, wv, woff) if vW[e] >= 0 else 0.0
     for e in range(iW.shape[0]):
         ival[e] = wave_value(iW[e], t, wt, wv, woff)
     for k in range(sW.shape[0]):
@@ -415,7 +490,7 @@ def sources_at(t, vW, iW, sW, wt, wv, woff, vval, ival, P, Pbase):
 
 @njit(cache=True)
 def sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                  sD, sG, sS, ev, part, J, f, qc0, sens, ss):
+                  sD, sG, sS, ev, part, J, f, qc0, sens, ss, vW, cmp):
     """dx/dQ_k (charge fixed, theta = 0) and the local relaxation time
     tau_k = 1/|dF_k/dQ_k| along the circuit constraints."""
     nn = ci[CI_NN]
@@ -425,7 +500,7 @@ def sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, i
     if ns == 0:
         return
     assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-             sD, sG, sS, ev, part, 0, qc0, np.zeros(ns), 0.0, J, f)
+             sD, sG, sS, ev, part, 0, qc0, np.zeros(ns), 0.0, J, f, vW, cmp)
     B = np.zeros((n, ns))
     for k in range(ns):
         B[nn - 1 + nv + 2 * k + 1, k] = 1.0 / COX
@@ -524,9 +599,12 @@ def total_event_rate(unit, gq, lq, r, rv, pmf, pk):
 
 @njit(cache=True)
 def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS, sW,
-          wt, wv, woff, P, Pbase, na, vbi, rg, fg, table, ev, part, t0):
+          wt, wv, woff, P, Pbase, na, vbi, rg, fg, table, ev, part, t0, hold, cmp):
     """DC operating point at t0: u fixed at 0 (empty body) -> pseudo-transient BE continuation
-    of the charge equation (finds the low-current state reachable from an empty body)."""
+    of the charge equation (finds the low-current state reachable from an empty body).
+    ``hold`` (one conductance per capacitor, S): 0 = capacitor open (the DC operating point); > 0 =
+    the capacitor is held at 0 V by that conductance (initial state 'zero', SPICE UIC with IC = 0:
+    discharged capacitors, the bodies relax to their steady state at the resulting terminal voltages)."""
     nn = ci[CI_NN]
     nv = ci[CI_NV]
     ns = ci[CI_NS]
@@ -545,12 +623,17 @@ def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS,
     cI = np.zeros(nc)
     qc = np.zeros(ns)
     sources_at(t0, vW, iW, sW, wt, wv, woff, vval, ival, P, Pbase)
-    # phase 1: u = 0, capacitors open (h = inf)
+    held = False
+    for e in range(nc):
+        cGeq[e] = hold[e]
+        if hold[e] > 0.0:
+            held = True
+    # phase 1: u = 0, capacitors open (h = inf) or held at 0 V
     for k in range(ns):
         qc[k] = 0.0
     ok, it = newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
                     sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 1, qc, np.ones(ns), 0.0,
-                    True, 60, J, f, xt, evt)
+                    True, 60, J, f, xt, evt, vW, cmp)
     if not ok:
         return False
     # phase 2: pseudo-transient
@@ -561,10 +644,15 @@ def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS,
     for e in range(nc):
         cv[e] = _nv(x, cA[e]) - _nv(x, cB[e])
     for itr in range(600):
-        cap_companion(ci, 0, h, cA, cB, cC, cv, cI, cGeq, cIeq)
+        if held:
+            for e in range(nc):
+                cGeq[e] = hold[e]
+                cIeq[e] = 0.0
+        else:
+            cap_companion(ci, 0, h, cA, cB, cC, cv, cI, cGeq, cIeq)
         ok, it = newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
                         sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 0, qc, np.ones(ns), h,
-                        True, 40, J, f, xt, evt)
+                        True, 40, J, f, xt, evt, vW, cmp)
         if not ok:
             for i in range(n):
                 x[i] = xold[i]
@@ -620,7 +708,7 @@ def _set_pending(ss, k, a, t_old, h, xp, x, sD, sS, i0, i1, mainw, wt, wv, woff)
 @njit(cache=True)
 def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS, sW,
               wt, wv, woff, bp, samp, P, Pbase, na, vbi, rg, fg, table, rv, pmf,
-              ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win):
+              ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win, cmp):
     """Advance the transient from sf[SF_T] to sf[SF_TSTOP] (or until a budget is hit).
     All state is kept in the arrays; returns the status code (also stored in si[SI_STATUS])."""
     nn = ci[CI_NN]
@@ -672,6 +760,11 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
     lat_prev = np.zeros(ns)
     te_step = np.zeros(ns)
     ldnoise = ci[CI_LDNOISE] == 1
+    # comparator output nodes are algebraic (ideal controlled source): not part of the node-voltage error control
+    algn = np.zeros(max(nn - 1, 1), np.bool_)
+    for e in range(vA.shape[0]):
+        if vW[e] < 0 and vA[e] > 0:
+            algn[vA[e] - 1] = True
     si[SI_CHUNKSTEPS] = 0
     t = sf[SF_T]
     # current element outputs at the accepted state
@@ -862,7 +955,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             tolmul = 20.0 if (carrier and sreg <= 2) else 1.0
             ok, iters = newton(x0, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
                                sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 0, qc, tha, h,
-                               refresh, 14, J, f, xt, evt, tolmul)
+                               refresh, 14, J, f, xt, evt, vW, cmp, tolmul)
             si[SI_NEWT] += iters
             si[SI_DIAG + 3 * sreg + 1] += iters
             if not ok:
@@ -878,7 +971,8 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             # ---- error control ---------------------------------------------------------
             dvm = 0.0
             for i in range(nn - 1):
-                dvm = max(dvm, abs(x0[i] - x[i]))
+                if not algn[i]:
+                    dvm = max(dvm, abs(x0[i] - x[i]))
             err = dvm / dv_max
             for k in range(ns):
                 ku = nn - 1 + nv + 2 * k
@@ -898,6 +992,8 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                 hp = sf[SF_HPREV]
                 wl = h / (h + hp)
                 for i in range(nn - 1):
+                    if algn[i]:
+                        continue
                     pred = x[i] + (x[i] - xp[i]) * (h / hp)
                     tolv = cf[CF_LTEV] * max(abs(x0[i]), abs(x[i])) + cf[CF_LTEVABS]
                     ev_ = abs(x0[i] - pred) * wl / tolv
@@ -981,7 +1077,8 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                 sf[SF_TNEGR] += h
             qc[k] = ev[k, 3]
         sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                      sD, sG, sS, ev, part, J, f, qc, sens, ss)
+                      sD, sG, sS, ev, part, J, f, qc, sens, ss, vW, cmp)
+        cmp_update_state(x, cmp)
         # ---- latch state and event detection ---------------------------------------------
         # The latch state is the body's branch (hysteresis on u between the fold values u_i and u_j);
         # an event is the switch of that state, timed at the I_D threshold crossing when it lies inside
@@ -1112,7 +1209,7 @@ def seed_rng(seed):
 
 @njit(cache=True)
 def init_state(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS, sW,
-               wt, wv, woff, P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, t0, win):
+               wt, wv, woff, P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, t0, win, cmp):
     """Element state, partials, sensitivities and latch flags at the (DC) initial point
     (latched = physically on the LRS, u >= u_j, independent of the current threshold)."""
     nn = ci[CI_NN]
@@ -1159,5 +1256,6 @@ def init_state(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG
         ss[k, SS_LNI_REC] = np.log(abs(ev[k, 1]) + cf[CF_IFLOOR])
         qc[k] = ev[k, 3]
     sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                  sD, sG, sS, ev, part, J, f, qc, sens, ss)
+                  sD, sG, sS, ev, part, J, f, qc, sens, ss, vW, cmp)
+    cmp_update_state(x, cmp)
     return True

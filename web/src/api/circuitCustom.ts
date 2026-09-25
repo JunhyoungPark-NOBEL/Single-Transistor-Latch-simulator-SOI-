@@ -24,6 +24,17 @@ export type CustomElement =
       light_pA: Wave | null;
       /** Extension (not in §6): the library device's local-state settings for stochastic runs. */
       local_state?: LocalStateBlock;
+    }
+  | {
+      /** Comparator (§6.3): output (behavioural voltage source to ground) = v_high when V(in) − V(inm) > v_ref. */
+      type: "CMP";
+      name: string;
+      nodes: { in: string; out: string; inm?: string };
+      v_ref: number;
+      v_high?: number;
+      v_low?: number;
+      hysteresis?: number;
+      width?: number;
     };
 
 export interface CustomTran {
@@ -80,8 +91,29 @@ export interface ResolvedElement {
   wave?: unknown;
   [k: string]: unknown;
 }
+/** Per-comparator firing statistics (§6.3): one window per period of the periodic pulse source. */
+export interface ComparatorStats {
+  name: string;
+  nodes: { in: string; inm: string; out: string };
+  v_ref: number;
+  v_high: number;
+  v_low: number;
+  hysteresis: number;
+  window_source: string | null;
+  t_windows: number[];
+  /** runs × windows: 1 = the output was high within that window, null = not reached (may be capped in windows). */
+  bits: (number | null)[][];
+  p_fire_window: (number | null)[];
+  p_fire_window_err: (number | null)[];
+  p_fire: number | null;
+  lag1: number | null;
+  n_bits: number;
+  p_fire_run: (number | null)[];
+}
+
 export interface CustomCircuitResult extends Omit<CircuitResult, "events" | "schematic"> {
   events: CustomEvent[];
+  comparators?: ComparatorStats[];
   nodes?: string[];
   elements?: ResolvedElement[];
   /** Operating point at t = 0. Shape not fixed by the contract: flat {"V(n)": v} or {nodes:{}, currents:{}}. */

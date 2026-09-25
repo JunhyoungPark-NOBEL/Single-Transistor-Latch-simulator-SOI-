@@ -21,6 +21,7 @@ const PARTS: { kind: ElKind; key: string; label: StrKey }[] = [
   { kind: "GND", key: "G", label: "schematic.tool.GND" },
   { kind: "LABEL", key: "N", label: "schematic.tool.LABEL" },
   { kind: "STL", key: "X", label: "schematic.tool.STL" },
+  { kind: "CMP", key: "K", label: "schematic.tool.CMP" },
 ];
 
 export function placeTool(kind: ElKind) {
@@ -377,6 +378,10 @@ export function handleEditorKey(e: React.KeyboardEvent) {
     case "d":
       done();
       placeTool("STL");
+      return;
+    case "k":
+      done();
+      placeTool("CMP");
       return;
     case "w":
       done();

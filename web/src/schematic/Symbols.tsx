@@ -35,6 +35,16 @@ function Body({ kind }: { kind: ElKind }) {
       );
     case "GND":
       return <path d="M0 0 V8 M-13 8 H13 M-8 13 H8 M-3 18 H3" className="sch-stroke" />;
+    case "CMP":
+      return (
+        <>
+          {/* comparator: leads, triangle, + input mark and a step (digital output) mark */}
+          <path d="M-40 0 H-22 M22 0 H40" className="sch-stroke" />
+          <path d="M-22 -24 L22 0 L-22 24 Z" className="sch-stroke sch-fill" />
+          <path d="M-17 -9 H-9 M-13 -13 V-5 M-17 9 H-9" className="sch-stroke thin" />
+          <path d="M-4 5 H1 V-5 H8" className="sch-accent" />
+        </>
+      );
     case "STL":
       return (
         <>
@@ -83,12 +93,14 @@ export function elementText(el: SElement): string[] {
       return [el.name, waveShort(el.wave, "A")];
     case "STL":
       return [el.name, shortName(el.stl?.name ?? "—")];
+    case "CMP":
+      return [el.name, `V_ref ${fmtSI(el.cmp?.v_ref ?? 0, "V", 3)}`];
     default:
       return [];
   }
 }
 
-const TEXT_OFF: Partial<Record<ElKind, number>> = { R: 16, C: 22, V: 26, I: 26, STL: 28 };
+const TEXT_OFF: Partial<Record<ElKind, number>> = { R: 16, C: 22, V: 26, I: 26, STL: 28, CMP: 30 };
 
 export interface ElementViewProps {
   el: SElement;
@@ -125,7 +137,8 @@ function ElementViewImpl({ el, selected, hovered, flagged, ghost, probing }: Ele
   }
   const lines = elementText(el);
   const off = TEXT_OFF[el.kind] ?? 20;
-  const o = rotatePt(off, 0, el.rot, el.mirror);
+  // horizontal parts (comparator) carry their text above the body, the vertical ones to the right
+  const o = el.kind === "CMP" ? rotatePt(0, -off, el.rot, el.mirror) : rotatePt(off, 0, el.rot, el.mirror);
   let texts: { x: number; y: number; anchor: "start" | "middle" | "end"; t: string; k: number }[] = [];
   if (lines.length) {
     if (Math.abs(o.x) >= Math.abs(o.y)) {
@@ -202,6 +215,14 @@ export function PartIcon({ kind, size = 18 }: { kind: ElKind | "wire" | "select"
           <path d="M9 5 V19" strokeWidth={2.2} />
           <path d="M6 7.5 V16.5" strokeWidth={2.2} />
           <path d="M16 13 H19 V10 M18 13 V10 H21" strokeWidth={1.4} />
+        </svg>
+      );
+    case "CMP":
+      return (
+        <svg {...common}>
+          <path d="M2 12 H6 M18 12 H22" />
+          <path d="M6 4 L18 12 L6 20 Z" />
+          <path d="M8.5 9 H11.5 M10 7.5 V10.5" strokeWidth={1.3} />
         </svg>
       );
   }

@@ -8,9 +8,18 @@ export const GRID = 10;
 export const DOC_VERSION = 1;
 
 export type Rot = 0 | 1 | 2 | 3; // multiples of 90° clockwise
-export type ElKind = "R" | "C" | "V" | "I" | "STL" | "GND" | "LABEL";
+export type ElKind = "R" | "C" | "V" | "I" | "STL" | "CMP" | "GND" | "LABEL";
 /** Kinds that become netlist elements (GND and LABEL are connectivity symbols only). */
-export const CIRCUIT_KINDS: ElKind[] = ["R", "C", "V", "I", "STL"];
+export const CIRCUIT_KINDS: ElKind[] = ["R", "C", "V", "I", "STL", "CMP"];
+
+/** Comparator parameters (§6.3 CMP element): output = v_high when V(in) > v_ref (± hysteresis/2), else v_low. */
+export interface CmpParams {
+  v_ref: number;
+  v_high: number;
+  v_low: number;
+  hysteresis: number;
+}
+export const DEFAULT_CMP: CmpParams = { v_ref: 0.1, v_high: 1, v_low: 0, hysteresis: 0 };
 
 export interface StlRef {
   /** Library id the snapshot was taken from ("current" = the Device tab's unsaved device). */
@@ -40,6 +49,8 @@ export interface SElement {
   light?: Wave | null;
   /** Net label text (LABEL). */
   label?: string;
+  /** Comparator parameters (CMP). */
+  cmp?: CmpParams;
 }
 
 export interface Wire {
@@ -88,7 +99,7 @@ export interface Pt {
   y: number;
 }
 
-export type PinName = "p" | "n" | "d" | "g" | "s" | "o";
+export type PinName = "p" | "n" | "d" | "g" | "s" | "o" | "i" | "q";
 export interface PinDef {
   name: PinName;
   x: number;
@@ -102,6 +113,8 @@ export const PINS: Record<ElKind, PinDef[]> = {
   V: [{ name: "p", x: 0, y: -40 }, { name: "n", x: 0, y: 40 }],
   I: [{ name: "p", x: 0, y: -40 }, { name: "n", x: 0, y: 40 }],
   STL: [{ name: "d", x: 0, y: -40 }, { name: "g", x: -40, y: 0 }, { name: "s", x: 0, y: 40 }],
+  // comparator: input (compared with V_ref, referenced to ground) on the left, output on the right
+  CMP: [{ name: "i", x: -40, y: 0 }, { name: "q", x: 40, y: 0 }],
   GND: [{ name: "o", x: 0, y: 0 }],
   LABEL: [{ name: "o", x: 0, y: 0 }],
 };
@@ -113,6 +126,7 @@ const BOX: Record<ElKind, [number, number, number, number]> = {
   V: [-20, -40, 20, 40],
   I: [-20, -40, 20, 40],
   STL: [-40, -40, 26, 40],
+  CMP: [-40, -26, 40, 26],
   GND: [-14, -2, 14, 22],
   LABEL: [-4, -12, 64, 12],
 };
@@ -180,7 +194,7 @@ export function distToSeg(px: number, py: number, w: Wire): number {
 }
 
 /** Default name prefix per kind (SPICE convention: X for subcircuit-like devices). */
-export const NAME_PREFIX: Record<ElKind, string> = { R: "R", C: "C", V: "V", I: "I", STL: "X", GND: "GND", LABEL: "L" };
+export const NAME_PREFIX: Record<ElKind, string> = { R: "R", C: "C", V: "V", I: "I", STL: "X", CMP: "CMP", GND: "GND", LABEL: "L" };
 
 export function nextName(els: SElement[], kind: ElKind): string {
   const pre = NAME_PREFIX[kind];

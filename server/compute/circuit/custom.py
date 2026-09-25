@@ -35,11 +35,12 @@ import numpy as np
 from server import params as PR
 
 from .netlist import Netlist, _fmt
+from .oscillator import R_HIGH, qs_drive, quasi_static_period
 
-LIMITS = dict(elements=40, stl=8, nodes=30, wave_points=2000, generated_points=20000)
+LIMITS = dict(elements=40, stl=8, cmp=8, nodes=30, wave_points=2000, generated_points=20000)
 # wave_points: user PWL lists; generated_points: PULSE corners / SINE samples generated server-side
 GROUND_ALIASES = ("0", "gnd", "GND", "Gnd")
-ELEMENT_TYPES = ("R", "C", "V", "I", "STL")
+ELEMENT_TYPES = ("R", "C", "V", "I", "STL", "CMP")
 _NAME_RE = re.compile(r"^[^\s().,;\"'\[\]{}]{1,32}$")
 _NODE_RE = re.compile(r"^[^\s()\"'\[\]{},;]{1,32}$")
 V_ABS_MAX = 1000.0             # V, source values
@@ -50,6 +51,7 @@ TRTOL = 7.0                    # SPICE: allowed node-voltage LTE = TRTOL (reltol
 VNTOL = 1e-6                   # V
 G_OFF = 1e-12                  # S, STL drain-source in the linear DC estimate (open cell)
 MAX_TOTAL_STEPS = 4e7
+OSC_TRANSITION_STEPS = 400.0   # steps per latch transition of a quasi-static oscillator walk (calibrated, §13)
 MAX_STORED_RUNS = 8
 MAX_EVENTS_OUT = 20000
 BUDGET_RUN0 = 400_000          # output values (points x signals) of run 0
@@ -255,6 +257,7 @@ class El:
     light: Wave | None = None
     ls_block: dict | None = None
     p: np.ndarray | None = None
+    cmp: dict | None = None                # CMP: v_ref, v_high, v_low, hysteresis, width (nodes = [in, inm, out])
     idx: int = -1                          # index within its kind in the compiled netlist (-1: not stamped)
     wave_idx: int = -1
 
@@ -285,7 +288,7 @@ def parse_elements(netlist: Any, t_stop: float, edge0: float, warnings: list[str
             raise ValueError(f"netlist.elements[{i}] must be an object")
         typ = e.get("type")
         if typ not in ELEMENT_TYPES:
-            raise ValueError(f"netlist.elements[{i}]: unknown element type {typ!r} (R | C | V | I | STL)")
+            raise ValueError(f"netlist.elements[{i}]: unknown element type {typ!r} (R | C | V | I | STL | CMP)")
         name = e.get("name")
         if not isinstance(name, str) or not _NAME_RE.match(name.strip()):
             raise ValueError(f"netlist.elements[{i}] ({typ}): invalid name {str(name)[:40]!r} "
@@ -306,6 +309,18 @@ def parse_elements(netlist: Any, t_stop: float, edge0: float, warnings: list[str
             if missing:
                 raise ValueError(f"{where}: STL terminal(s) {', '.join(missing)} not connected (nodes needs d, g and s)")
             nodes = [_canon_node(nd[k], f"{where}.{k}") for k in ("d", "g", "s")]
+        elif typ == "CMP":
+            if isinstance(nd, (list, tuple)) and len(nd) in (2, 3):
+                nd = dict(zip(("in", "out"), nd)) if len(nd) == 2 else dict(zip(("in", "inm", "out"), nd))
+            if not isinstance(nd, dict):
+                raise ValueError(f"{where}: comparator nodes must be an object {{in, out}} (optionally inm)")
+            missing = [k for k in ("in", "out") if nd.get(k) in (None, "")]
+            if missing:
+                raise ValueError(f"{where}: comparator terminal(s) {', '.join(missing)} not connected (nodes needs in and out)")
+            nodes = [_canon_node(nd["in"], f"{where}.in"), _canon_node(nd.get("inm") or "0", f"{where}.inm"),
+                     _canon_node(nd["out"], f"{where}.out")]
+            if nodes[2] == "0":
+                raise ValueError(f"{where}: the comparator output cannot be ground (it is a voltage source to ground)")
         else:
             if not isinstance(nd, (list, tuple)) or len(nd) != 2:
                 raise ValueError(f"{where}: {typ} needs exactly two nodes [n1, n2]")
@@ -315,6 +330,15 @@ def parse_elements(netlist: Any, t_stop: float, edge0: float, warnings: list[str
             el.value = _f(e, "value", where + " (ohm)", lo=1e-3, hi=1e15)
         elif typ == "C":
             el.value = _f(e, "value", where + " (F)", lo=0.0, hi=1.0)
+        elif typ == "CMP":
+            vref = _f(e, "v_ref", where + " v_ref (V)", lo=-V_ABS_MAX, hi=V_ABS_MAX)
+            vhi = _f(e, "v_high", where + " v_high (V)", 1.0, -V_ABS_MAX, V_ABS_MAX)
+            vlo = _f(e, "v_low", where + " v_low (V)", 0.0, -V_ABS_MAX, V_ABS_MAX)
+            hyst = _f(e, "hysteresis", where + " hysteresis (V)", 0.0, 0.0, 10.0)
+            wid = _f(e, "width", where + " width (V)", 1e-3, 1e-6, 0.1)
+            if vhi == vlo:
+                raise ValueError(f"{where}: v_high and v_low must differ")
+            el.cmp = dict(v_ref=vref, v_high=vhi, v_low=vlo, hysteresis=hyst, width=wid)
         elif typ in ("V", "I"):
             w = e.get("wave")
             if w is None and "value" in e:
@@ -339,6 +363,8 @@ def parse_elements(netlist: Any, t_stop: float, edge0: float, warnings: list[str
         els.append(el)
     if sum(1 for e in els if e.type == "STL") > LIMITS["stl"]:
         raise ValueError(f"the circuit has {sum(1 for e in els if e.type == 'STL')} STL cells (limit {LIMITS['stl']})")
+    if sum(1 for e in els if e.type == "CMP") > LIMITS["cmp"]:
+        raise ValueError(f"the circuit has {sum(1 for e in els if e.type == 'CMP')} comparators (limit {LIMITS['cmp']})")
     return els
 
 
@@ -376,9 +402,12 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
         raise ValueError(f"the circuit has {len(nodes) - 1} nodes besides ground (limit {LIMITS['nodes']})")
     conns: dict[str, list[str]] = {n: [] for n in nodes}
     for e in els:
-        labels = ("d", "g", "s") if e.type == "STL" else ("+", "-") if e.type in ("V", "I") else ("1", "2")
+        labels = ("d", "g", "s") if e.type == "STL" else ("in", "inm", "out") if e.type == "CMP" else \
+            ("+", "-") if e.type in ("V", "I") else ("1", "2")
         for lab, n in zip(labels, e.nodes):
-            conns[n].append(f"{e.name}.{lab}" if e.type == "STL" else e.name)
+            if e.type == "CMP" and lab == "inm" and n == "0":
+                continue                          # single-ended comparator: inm is ground implicitly
+            conns[n].append(f"{e.name}.{lab}" if e.type in ("STL", "CMP") else e.name)
     if not conns["0"]:
         raise ValueError("no ground reference: no element is connected to node 0 (gnd). Connect the circuit to "
                          "ground (node '0', 'gnd' or 'GND')")
@@ -386,9 +415,10 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
     dsu = _DSU(nodes)
     vadj: dict[str, list[tuple[str, str]]] = {n: [] for n in nodes}
     for e in els:
-        if e.type != "V":
+        if e.type not in ("V", "CMP"):
             continue
-        a, b = e.nodes
+        # a comparator output is an ideal voltage source from 'out' to ground
+        a, b = (e.nodes[2], "0") if e.type == "CMP" else e.nodes
         if a == b:
             raise ValueError(f"voltage source {e.name} is short-circuited: both terminals on node {_q(a)}")
         if not dsu.union(a, b):
@@ -409,7 +439,12 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
                 loop.append(nm)
             names = ", ".join(sorted(set(loop))) or "?"
             kind = "in parallel with" if len(loop) == 1 else "in a loop with"
-            raise ValueError(f"voltage source {e.name} is {kind} {names} (between nodes {_q(a)} and {_q(b)}): "
+            what = f"the output of comparator {e.name}" if e.type == "CMP" else f"voltage source {e.name}"
+            if e.type == "CMP" or any(x.type == "CMP" and x.name in loop for x in els):
+                raise ValueError(f"{what} is {kind} {names} (between nodes {_q(a)} and {_q(b)}): a comparator output "
+                                 "is an ideal voltage source and must not be driven by another source — connect it "
+                                 "through a resistor or use another node")
+            raise ValueError(f"{what} is {kind} {names} (between nodes {_q(a)} and {_q(b)}): "
                              "a loop of ideal voltage sources has no unique solution — add a series resistor or "
                              "remove one source")
         vadj[a].append((b, e.name))
@@ -421,20 +456,23 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
             dc.union(e.nodes[0], e.nodes[1])
         elif e.type == "STL":
             dc.union(e.nodes[0], e.nodes[2])
+        elif e.type == "CMP":
+            dc.union(e.nodes[2], "0")             # the output is a voltage source to ground; the inputs are ideal
     floating = [n for n in nodes[1:] if dc.find(n) != dc.find("0")]
     if floating:
         n = floating[0]
         others = [m for m in floating[1:6]]
         srcs = [e.name for e in els if e.type == "I" and n in e.nodes]
         caps = [e.name for e in els if e.type == "C" and n in e.nodes]
-        gates = [f"{e.name}.g" for e in els if e.type == "STL" and e.nodes[1] == n]
+        gates = [f"{e.name}.g" for e in els if e.type == "STL" and e.nodes[1] == n] + \
+            [f"{e.name}.{lab}" for e in els if e.type == "CMP" for lab, m in (("in", e.nodes[0]), ("inm", e.nodes[1])) if m == n]
         via = []
         if caps:
             via.append("capacitors " + ", ".join(caps))
         if srcs:
             via.append("current sources " + ", ".join(srcs))
         if gates:
-            via.append("STL gates " + ", ".join(gates))
+            via.append("STL gates / comparator inputs " + ", ".join(gates))
         extra = f" (also: {', '.join(repr(m) for m in others)}{' ...' if len(floating) > 6 else ''})" if others else ""
         if srcs and not caps and not gates and all(c in srcs for c in conns[n]):
             raise ValueError(f"current source {srcs[0]} drives node {n!r}, which has no other connection (open circuit): "
@@ -444,7 +482,7 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
                          f"a DC path (resistor, voltage source or STL drain-source) to ground{extra}")
     # warnings: single connections, shorted terminals
     for n in nodes[1:]:
-        if len(conns[n]) == 1:
+        if len(conns[n]) == 1 and not conns[n][0].endswith(".out"):      # an unloaded comparator output is fine
             warnings.append(f"node {n!r} has only one connection ({conns[n][0]}): no current flows into it")
     for e in els:
         if e.type in ("R", "C", "I") and e.nodes[0] == e.nodes[1]:
@@ -458,6 +496,13 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
             if g == s:
                 warnings.append(f"{e.name}: gate and source on the same node {_q(g)} (V_GS = 0 V: channel-on regime, "
                                 "usually no latch window)")
+        if e.type == "CMP":
+            i_, m_, o_ = e.nodes
+            if o_ in (i_, m_):
+                warnings.append(f"{e.name}: the output drives its own input node {_q(o_)} (feedback through an ideal "
+                                "comparator: the solution may not be unique)")
+            if i_ == m_:
+                warnings.append(f"{e.name}: both inputs on node {_q(i_)} (the output is constant)")
     return nodes
 
 
@@ -468,7 +513,7 @@ def linear_dc(nodes: list[str], els: list[El]):
     source).  Returns (S_src (N x n_src), src_list, S_stl (N x n_stl)) with rows = nodes[1:]."""
     N = len(nodes) - 1
     idx = {n: i - 1 for i, n in enumerate(nodes)}          # ground -> -1
-    Vs = [e for e in els if e.type == "V"]
+    Vs = [e for e in els if e.type in ("V", "CMP")]        # comparator outputs: fixed node (value 0 here)
     srcs = [e for e in els if e.type in ("V", "I")]
     stls = [e for e in els if e.type == "STL"]
     M = N + len(Vs)
@@ -492,7 +537,7 @@ def linear_dc(nodes: list[str], els: list[El]):
         elif e.type == "STL":
             stamp(e.nodes[0], e.nodes[2], G_OFF)
     for j, e in enumerate(Vs):
-        ia, ib = idx[e.nodes[0]], idx[e.nodes[1]]
+        ia, ib = (idx[e.nodes[2]], -1) if e.type == "CMP" else (idx[e.nodes[0]], idx[e.nodes[1]])
         r = N + j
         if ia >= 0:
             G[ia, r] += 1
@@ -594,6 +639,13 @@ def _signal_specs(nodes: list[str], els: list[El], layout: dict, cell_ls: list, 
         elif e.type == "I":
             out.append(SigSpec(f"I({e.name})", _L(f"전류원 {e.name} 전류 (+ → −)", f"Current of {e.name} (+ → −)"),
                                "A", "current", ("wave", e.wave.t, e.wave.v)))
+        elif e.type == "CMP":
+            out.append(SigSpec(f"I({e.name})", _L(f"비교기 {e.name} 출력 전류 (출력 → 접지, 소스 내부)",
+                                                  f"Output current of comparator {e.name} (out → ground, inside the source)"),
+                               "A", "current", ("col", nn + e.idx)))
+            mid = 0.5 * (e.cmp["v_high"] + e.cmp["v_low"])
+            out.append(SigSpec(f"{e.name}.bit", _L(f"비교기 {e.name} 디지털 출력 (1 = high)", f"Comparator {e.name} digital output (1 = high)"),
+                               "1", "logic", ("bit", col[e.nodes[2]], mid, e.cmp["v_high"] > e.cmp["v_low"])))
         else:
             c0 = base + 7 * e.idx
             out.append(SigSpec(f"I({e.name}.d)", _L(f"{e.name} 드레인 전류 (단자로 유입)", f"{e.name} drain current (into the terminal)"),
@@ -645,6 +697,9 @@ def _convert(rows: np.ndarray, specs: list[SigSpec], q0: dict) -> np.ndarray:
             va = rows[:, r[1]] if r[1] > 0 else 0.0
             vb = rows[:, r[2]] if r[2] > 0 else 0.0
             out[:, j] = va - vb
+        elif k == "bit":
+            v = rows[:, r[1]] if r[1] > 0 else np.zeros(len(rows))
+            out[:, j] = ((v > r[2]) if r[3] else (v < r[2])).astype(float)
         else:
             out[:, j] = 0.0
     return out
@@ -698,6 +753,7 @@ class _Sink:
         self.prev: tuple[float, np.ndarray] | None = None
         self.started = False
         self.ev_t: list[float] = []
+        self.cmp: _CmpTrack | None = None
         ncol = max(len(specs), 1)
         self.max_rows = int(np.clip(4e6 / ncol, 8000, 60000))
         self.keep_rows = self.max_rows // 2
@@ -726,6 +782,8 @@ class _Sink:
             self.ev_t.extend(events[:, 2].tolist())
         if not len(rows):
             return
+        if self.cmp is not None:
+            self.cmp.feed(rows)
         if self.first_raw is None:
             self.first_raw = rows[0].copy()
             self.q0 = {c: float(rows[0, c]) for c in self.qcols}
@@ -765,6 +823,109 @@ class _Sink:
                 return np.array([self.prev[0]]), self.prev[1][None, :]
             return np.zeros(0), np.zeros((0, len(self.specs)))
         return np.concatenate(self.tp), np.vstack(self.sp)
+
+
+class _CmpTrack:
+    """Full-resolution comparator bookkeeping of one run (fed with every raw row block by the sink): output
+    edges (mid-level crossings, linearly interpolated), time spent high, and whether the output was high at
+    any time within each window (one window per period of the pulse source)."""
+
+    def __init__(self, cmps: list[dict], windows: tuple | None):
+        self.cmps = cmps
+        self.win = windows
+        nw = len(windows[1]) if windows else 0
+        self.fired = np.zeros((len(cmps), nw), bool)
+        self.edges: list[list[tuple[float, int]]] = [[] for _ in cmps]
+        self.t_high = np.zeros(len(cmps))
+        self.prev: list[tuple[float, float, bool] | None] = [None] * len(cmps)
+        self.t_last = 0.0
+
+    def feed(self, rows: np.ndarray) -> None:
+        if not len(rows):
+            return
+        t = rows[:, 0]
+        self.t_last = float(t[-1])
+        for j, c in enumerate(self.cmps):
+            v = rows[:, c["col"]] if c["col"] > 0 else np.zeros(len(rows))
+            hi = (v > c["mid"]) if c["up"] else (v < c["mid"])
+            pv = self.prev[j]
+            tt, vv, hh = (np.r_[pv[0], t], np.r_[pv[1], v], np.r_[pv[2], hi]) if pv is not None else (t, v, hi)
+            if len(tt) > 1:
+                ch = np.flatnonzero(hh[1:] != hh[:-1]) + 1
+                for i in ch:
+                    dv = vv[i] - vv[i - 1]
+                    a = (c["mid"] - vv[i - 1]) / dv if dv != 0 else 1.0
+                    self.edges[j].append((float(tt[i - 1] + min(max(a, 0.0), 1.0) * (tt[i] - tt[i - 1])), 1 if hh[i] else 0))
+                self.t_high[j] += float(np.sum(np.diff(tt)[hh[:-1]]))
+            if self.win is not None and hi.any():
+                starts, ends = self.win[1], self.win[2]
+                th = t[hi]
+                k = np.searchsorted(starts, th, side="right") - 1
+                ok = (k >= 0) & (th < ends[np.clip(k, 0, len(ends) - 1)])
+                self.fired[j, k[ok]] = True
+            self.prev[j] = (float(t[-1]), float(v[-1]), bool(hi[-1]))
+
+
+def _pulse_windows(els: list[El], t_stop: float) -> tuple | None:
+    """Firing windows of the comparators: one per period of the periodic pulse source with the most complete
+    periods (a window counts when the pulse's flat top ends before t_stop).  (source name, starts, ends)."""
+    best = None
+    for e in els:
+        if e.type not in ("V", "I") or e.wave is None or e.wave.resolved.get("kind") != "pulse":
+            continue
+        r = e.wave.resolved
+        if not (r["per"] > 0) or r["v1"] == r["v2"]:
+            continue
+        n = int(np.floor((t_stop - r["td"] - r["tr"] - r["pw"]) / r["per"])) + 1
+        if r["ncycles"] > 0:
+            n = min(n, r["ncycles"])
+        if n >= 2 and (best is None or n > len(best[1])):
+            starts = r["td"] + r["per"] * np.arange(n)
+            best = (e.name, starts, np.minimum(starts + r["per"], t_stop))
+    return best
+
+
+def _drain_capacitance(e: El, els: list[El]) -> float:
+    """Capacitance across a cell for the quasi-static walk: every capacitor from the drain node — or from a node
+    tied to it by a resistor below 1 MΩ — to any other node (approximation: the far end is taken as AC ground)."""
+    d = e.nodes[0]
+    grp = {d}
+    grow = True
+    while grow:
+        grow = False
+        for x in els:
+            if x.type == "R" and x.value is not None and x.value < 1e6:
+                a, b = x.nodes
+                if (a in grp) != (b in grp) and "0" not in (a, b):
+                    grp |= {a, b}
+                    grow = True
+    return float(sum(x.value for x in els if x.type == "C" and x.value and ((x.nodes[0] in grp) != (x.nodes[1] in grp))))
+
+
+def _osc_warning(e: El, osc: dict, prof: dict, t_stop: float, warnings: list[str]) -> None:
+    """Explain what a high-impedance cell is expected to do (quasi-static load-line analysis, cell's nominal V_GS)."""
+    w = osc["walks"][0]
+    fi = prof.get("fold_I") or {}
+    lo, hi = osc["i_n"]
+    feed = _fmt(lo, "A") if abs(hi - lo) <= 1e-3 * max(abs(hi), 1e-30) else f"{_fmt(lo, 'A')} … {_fmt(hi, 'A')}"
+    rx = f"R_ext ≈ {_fmt(osc['r_ext'], 'Ω')}" if osc["r_ext"] and osc["r_ext"] < 1e13 else "current source"
+    if not prof.get("latch"):
+        return
+    ilu, ild = fi.get("hrs_at_lu"), fi.get("lrs_at_ld")
+    win = (f" (fold currents I_LU = {_fmt(ilu, 'A')}, I_LD = {_fmt(ild, 'A')})" if ilu and ild else "")
+    if w["oscillating"]:
+        tc, td = quasi_static_period(0.5 * (lo + hi), osc["g_ext"], osc["c_eff"], prof)
+        per = w["period"] if w["period"] else tc + td
+        warnings.append(f"{e.name}: relaxation oscillator — fed by {feed} ({rx}) with {_fmt(osc['c_eff'], 'F')} across "
+                        f"the cell, the load line crosses only the negative-resistance branch{win}: V_DS saws between "
+                        f"≈ V_LD and V_LU with a quasi-static period ≈ {_fmt(per, 's')} (~{w['n_lu'] * w['scale']:.0f} "
+                        "latch-ups in t_stop; the fold lags lengthen it by a few %)")
+    elif w["n_lu"] == 0 and hi > 0:
+        warnings.append(f"{e.name}: high-impedance drive ({feed}, {rx}): the load line crosses the HRS{win}, the cell "
+                        f"settles near V_DS ≈ {w['v'][-1]:.3g} V without latching (no oscillation)")
+    elif w["n_lu"] == 1 and w["n_ld"] == 0:
+        warnings.append(f"{e.name}: high-impedance drive ({feed}, {rx}): the load line crosses the LRS{win}, the cell "
+                        "latches and stays latched (no oscillation)")
 
 
 # ================================================================== profiles (cached)
@@ -845,6 +1006,11 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     if method not in ("BE", "TRAP"):
         raise ValueError("tran.method must be 'BE' or 'TRAP'")
     reltol = _f(tran_in, "reltol", "tran", 1e-3, 1e-5, 0.1)
+    initial = tran_in.get("initial", "auto")
+    initial = "auto" if initial in (None, "") else initial
+    if initial not in ("auto", "op", "zero"):
+        raise ValueError("tran.initial must be 'auto' (default), 'op' (DC operating point) or 'zero' (discharged "
+                         "capacitors, SPICE UIC)")
     sol_in = dict(payload.get("solver") or {})
     for k in ("method", "dt_min_s", "dt_max_s", "reltol"):
         if k in sol_in:
@@ -918,6 +1084,11 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         elif e.type == "I":
             e.idx = len(net.I)
             e.wave_idx = net.add_I(e.name, e.nodes[0], e.nodes[1], e.wave.t, e.wave.v, _wave_text(e.wave.resolved, "A"))
+    for e in els:
+        if e.type == "CMP":                       # after every V source: branch index = len(V sources) + j
+            c = e.cmp
+            e.idx = net.add_CMP(e.name, e.nodes[0], e.nodes[2], c["v_ref"], c["v_high"], c["v_low"], c["hysteresis"],
+                                c["width"], inm=e.nodes[1], label=_cmp_label(e))
     for e in stls:
         e.idx = len(net.STL)
         light = (e.light.t, e.light.v) if e.light is not None else None
@@ -1008,33 +1179,46 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         wins[k, :] = [b[0], b[1], b[2], b[3], u_i, u_j, law, lag if law >= 0 else 0.0, 1.0,
                       cfgk.mode_code if cfgk else 0, cfgk.index if cfgk else 9, cfgk.sigma if cfgk else 0.0,
                       cfgk.tau_s if cfgk else 1.0, cfgk.sigma_E_V if cfgk else 0.0, cfgk.tau_E_s if cfgk else 1.0]
-        # feasibility along the open-circuit drive
+        # feasibility along the drive: the open-circuit (Thevenin) voltage for low-impedance drives; for a
+        # high-impedance cell (current source, R >= 100 MΩ) the quasi-static walk of its own V_DS with the
+        # capacitance on its drain (relaxation oscillator when the load line crosses only the NDR branch)
         drive = np.asarray(c["drive"], float)
-        current_driven = abs(c["rth"]) > 1e11
-        if current_driven:
-            warnings.append(f"{e.name}: current-biased (no DC path to its drain other than the cell, R_th ~ {abs(c['rth']):.2g} Ω): "
-                            "the cell can sit on its negative-resistance branch and oscillate (relaxation oscillator); the "
-                            "run-time estimate does not include such oscillations (runs stop at solver.max_steps)")
-            drive = np.clip(drive, -8.5, 8.5)
-        cw = _corner_weights(tg, drive[None, :])
+        rth = abs(c["rth"])
+        g_ext = max(1.0 / rth - G_OFF, 0.0) if rth > 0 else np.inf
+        c_eff = _drain_capacitance(e, els)
+        osc = None
+        if rth > R_HIGH and c_eff > 0:
+            i_n = drive / c["rth"]
+            walks = [qs_drive(tg, i_n, g_ext, c_eff, pr, t_stop, dt_max) for pr in profs]
+            osc = dict(walks=walks, i_n=(float(np.min(i_n)), float(np.max(i_n))), g_ext=g_ext, c_eff=c_eff,
+                       r_ext=(1.0 / g_ext if g_ext > 1e-15 else None))
+            drives = [(w["t"], w["v"], np.zeros(max(len(w["t"]) - 2, 0)), w["scale"], OSC_TRANSITION_STEPS) for w in walks]
+            _osc_warning(e, osc, pnom, t_stop, warnings)
+        else:
+            if rth > 1e11:
+                drive = np.clip(drive, -8.5, 8.5)
+            cw = _corner_weights(tg, drive[None, :])
+            drives = [(tg, drive, cw, 1.0, None)] * len(profs)
         e_k = 0.0
-        for pr, bb in zip(profs, bands):
-            e_k = max(e_k, estimate_steps(tg, drive, t_stop, pr, stochastic, carrier, dt_max, dv_max, sol["tau_frac"],
-                                          sol["max_events_per_step"], sol["noise_dt_min_s"], n_bp,
-                                          ld_noise=bool(st["ld_carrier_noise"]) and carrier,
-                                          gauss_tau_min=sol["gauss_tau_min_s"], gauss_tau_frac=sol["gauss_tau_frac"],
-                                          window=bb, corner_weights=cw))
+        for pr, bb, (dt_, dv_, cw_, sc_, tr_) in zip(profs, bands, drives):
+            e_k = max(e_k, sc_ * estimate_steps(dt_, dv_, t_stop / sc_, pr, stochastic, carrier, dt_max, dv_max,
+                                                sol["tau_frac"], sol["max_events_per_step"], sol["noise_dt_min_s"],
+                                                n_bp if sc_ == 1.0 else 0, ld_noise=bool(st["ld_carrier_noise"]) and carrier,
+                                                gauss_tau_min=sol["gauss_tau_min_s"], gauss_tau_frac=sol["gauss_tau_frac"],
+                                                window=bb, corner_weights=cw_, transition_steps=tr_))
         # the part shared with the other cells / the linear network (dt_max, Δv, corners) vs this cell's own
         # extra steps (latch transitions, resolved noise): cells add their extras, the shared part counts once
         flat = dict(pnom, folds=(np.nan, np.nan), latch=False)
-        base_k = estimate_steps(tg, drive, t_stop, flat, False, False, dt_max, dv_max, sol["tau_frac"],
-                                sol["max_events_per_step"], sol["noise_dt_min_s"], n_bp, corner_weights=cw)
+        dt_, dv_, cw_, sc_, _ = drives[0]
+        base_k = sc_ * estimate_steps(dt_, dv_, t_stop / sc_, flat, False, False, dt_max, dv_max, sol["tau_frac"],
+                                      sol["max_events_per_step"], sol["noise_dt_min_s"], n_bp if sc_ == 1.0 else 0,
+                                      corner_weights=cw_)
         est_parts.append(e_k)
         base_cells = max(base_cells, base_k)
         total_est_cells += max(e_k - base_k, 0.0)
         cell_info.append(dict(vgs_nom=vgs_nom, vgs_range=(c["vgs_lo"], c["vgs_hi"]), light_range_A=(min(li_vals), max(li_vals)),
                               folds=pnom["folds"], latch=bool(lat), u_fold=(u_i, u_j), band=b, rth=c["rth"],
-                              lookahead=(law, lag), est=e_k))
+                              lookahead=(law, lag), est=e_k, osc=osc, fold_I=pnom.get("fold_I")))
 
     # ---- feasibility: linear part (every node) + cells ----
     if len(srcs) and len(tg) > 1:
@@ -1042,14 +1226,24 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         # linear estimate: clip to the plausible range of the circuit
         v_clip = max(10.0, 1.5 * max((float(np.max(np.abs(e.wave.v))) for e in els if e.type == "V"), default=0.0))
         Vn = np.clip(S_src @ Wg, -v_clip, v_clip)
+        # the drain (and source) nodes of high-impedance cells follow the cell, not the linear network: their steps
+        # are counted by the cell's quasi-static walk (current-source nodes would otherwise swing by kV here)
+        walk_rows = sorted({rowi[n] for k, e in enumerate(stls) if cell_info[k]["osc"] is not None
+                            for n in (e.nodes[0], e.nodes[2]) if rowi[n] >= 0})
+        keep_rows = np.ones(len(Vn), bool)
+        keep_rows[walk_rows] = False
+        Vk = Vn[keep_rows]
         dT = np.diff(tg)
-        dV = np.abs(np.diff(Vn, axis=1)).max(axis=0) if len(Vn) else np.zeros(len(dT))
+        dV = np.abs(np.diff(Vk, axis=1)).max(axis=0) if len(Vk) else np.zeros(len(dT))
         lin = float(np.sum(np.maximum(dT / dt_max, dV / dv_max)))
         # upper bound of the node-voltage total variation from each source's own total variation (exact when
-        # one source dominates; protects against aliasing of a subsampled grid)
+        # one source dominates; protects against aliasing of a subsampled grid); a node cannot swing by more than
+        # 2 v_clip per source corner
         tv = np.array([_total_variation(w, t_stop) for w in src_waves])
-        lin = max(lin, float(np.max(np.abs(S_src) @ tv)) / dv_max if len(Vn) else 0.0)
-        cw_all = _corner_weights(tg, Vn) if len(Vn) else np.zeros(0)
+        if len(Vk):
+            tvb = np.minimum(np.abs(S_src[keep_rows]) @ tv, 2.0 * v_clip * (n_bp + 1))
+            lin = max(lin, float(np.max(tvb)) / dv_max)
+        cw_all = _corner_weights(tg, Vk) if len(Vk) else np.zeros(0)
         lin += 60.0 * float(cw_all.sum()) + 6.0 * max(n_bp - float(cw_all.sum()), 0.0)
     else:
         lin = t_stop / dt_max + 6.0 * n_bp
@@ -1057,8 +1251,30 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     # measured (4-CPU container, warm cache): ~3 µs per step without STL, +60-90 µs per STL cell
     sec_step = 3e-6 + 70e-6 * ns + 1e-9 * (len(nodes) + len(net.V) + 2 * ns) ** 3
     total_est = est * n_runs
+    # initial state: 'auto' starts from discharged capacitors right away when a high-impedance cell's load line at
+    # t = 0 misses the HRS (current bias between the folds -> NDR equilibrium, or above I_LD -> LRS): the DC operating
+    # point from the empty body is then an unstable equilibrium or does not exist (the kernel also checks, sim.simulate)
+    initial_run = initial
+    pre_zero = []
+    if initial == "auto":
+        for k, ci_ in enumerate(cell_info):
+            osc = ci_["osc"]
+            fi = ci_["fold_I"] or {}
+            if osc is None or not ci_["latch"] or not fi:
+                continue
+            i0 = float(cells[k]["drive"][0] / cells[k]["rth"])
+            if i0 - osc["g_ext"] * ci_["folds"][0] > fi["hrs_at_lu"]:
+                pre_zero.append(stls[k].name)
+        if pre_zero:
+            initial_run = "zero"
+    n_osc = sum(ci_["osc"]["walks"][0]["n_lu"] * ci_["osc"]["walks"][0]["scale"] for ci_ in cell_info
+                if ci_["osc"] is not None and ci_["osc"]["walks"][0]["oscillating"])
     if est > 2.0 * sol["max_steps"]:
-        if carrier and total_est_cells > max(lin, base_cells):
+        if n_osc >= 2:
+            why = (f"relaxation oscillation: ~{n_osc:.0f} predicted latch-up/latch-down cycles in t_stop, each resolved "
+                   "with several hundred steps, more with event-level carrier noise near the fold). Shorten t_stop, "
+                   "increase the capacitance or reduce the drive current (longer period), or raise solver.max_steps.")
+        elif carrier and total_est_cells > max(lin, base_cells):
             why = ("event-level carrier noise needs h <= tau_frac·tau_rel (µs) while a cell's V_DS is inside its noise "
                    "band). Use a shorter t_stop or faster edges/ramps, the deterministic mode, carrier_noise = false "
                    "(local states only) or the device-level stochastic MC.")
@@ -1156,6 +1372,30 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         lte_v=TRTOL * reltol, lte_v_abs=TRTOL * VNTOL,
     )
     net_c = net.compile()
+    # initial state 'zero': every capacitor is held at 0 V at t = 0 except those whose voltage is fixed by
+    # voltage sources alone (both terminals in one voltage-source component: they start at that voltage)
+    from .sim import G_HOLD
+    vcomp = _DSU(nodes)
+    for e in els:
+        if e.type == "V":
+            vcomp.union(e.nodes[0], e.nodes[1])
+        elif e.type == "CMP":
+            vcomp.union(e.nodes[2], "0")
+    cap_hold = np.zeros(len(net.C))
+    for e in els:
+        if e.type == "C" and e.idx >= 0:
+            cap_hold[e.idx] = 0.0 if vcomp.find(e.nodes[0]) == vcomp.find(e.nodes[1]) else G_HOLD
+
+    # ---- comparators: output tracking at full resolution, firing windows (periods of the pulse source) ----
+    cmps = [e for e in els if e.type == "CMP"]
+    colmap = {n: i for i, n in enumerate(nodes)}
+    cmp_specs = [dict(name=e.name, col=colmap[e.nodes[2]], mid=0.5 * (e.cmp["v_high"] + e.cmp["v_low"]),
+                      up=e.cmp["v_high"] > e.cmp["v_low"]) for e in cmps]
+    windows = _pulse_windows(els, t_stop) if cmps else None
+    nwin = len(windows[1]) if windows else 0
+    cmp_bits = np.full((len(cmps), n_runs, nwin), np.nan)
+    cmp_rise = np.full((len(cmps), n_runs), np.nan)
+    cmp_duty = np.full((len(cmps), n_runs), np.nan)
 
     # ---- runs ----
     stored_runs = []
@@ -1165,6 +1405,9 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     t_lu = np.full((n_runs, ns), np.nan)
     v_lu = np.full((n_runs, ns), np.nan)
     lat_end = np.full((n_runs, ns), np.nan)
+    lu_all: list[list[np.ndarray]] = [[] for _ in range(ns)]       # per cell, per run: latch-up times
+    vlu_all: list[list[np.ndarray]] = [[] for _ in range(ns)]      # ... V_DS at the latch-ups
+    vld_all: list[list[np.ndarray]] = [[] for _ in range(ns)]      # ... V_DS at the latch-downs
     v_end = np.full((n_runs, n_sig), np.nan)
     completed = np.zeros(n_runs, bool)
     env = None
@@ -1176,6 +1419,7 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
                steps_by_tier=[0] * 6, newton_by_tier=[0] * 6, rejected_by_tier=[0] * 6)
     min_u = min_r = np.inf
     hrs_x = 0
+    initial_used, ndr_op = initial, []
     run_warn: list[str] = []
     for run in range(n_runs):
         def prog(f, _run=run):
@@ -1184,9 +1428,11 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         ls0 = _draw_ls(cell_ls, st["seed"], run) if stochastic else None
         seed = (st["seed"] + 1_000_003 * run) % (2 ** 31 - 1)
         sink = _Sink(specs_run, feat, logfeat, t_save, bp, qcols)
+        if cmps:
+            sink.cmp = _CmpTrack(cmp_specs, windows)
         try:
             out = simulate(net_c, cfg, net_c["P"], t_stop, -1, seed, ls0, prog, window=wins if ns else None,
-                           rec_sink=sink)
+                           rec_sink=sink, initial=initial_run, cap_hold=cap_hold)
         except ValueError as exc:
             raise ValueError(f"run {run}: {exc}") from None
         solver_stats["steps"] += out.steps
@@ -1206,6 +1452,8 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             reg["rejected_by_tier"][tier] += out.diag[3 * tier + 2]
         min_u, min_r = min(min_u, out.min_u), min(min_r, out.min_r)
         hrs_x += out.hrs_crossings
+        if run == 0:
+            initial_used, ndr_op = out.initial, out.ndr_op
         for w in out.warnings:
             run_warn.append(f"run {run}: {w}")
         done = out.t_reached >= t_stop * (1 - 1e-9)
@@ -1228,11 +1476,27 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             if len(ups):
                 t_lu[run, k] = ups[0, 2]
                 v_lu[run, k] = ups[0, 3]
+            lu_all[k].append(ups[:, 2].copy())
+            vlu_all[k].append(ups[:, 3].copy())
+            vld_all[k].append(ek[ek[:, 0] == 2, 3].copy())
             u0 = raw0[len(nodes) + len(net.V) + 7 * k] if raw0 is not None else 0.0
             state = 1.0 if u0 >= wins[k, 5] else 0.0
             if len(ek):
                 state = 1.0 if ek[-1, 0] == 1 else 0.0
             lat_end[run, k] = state if done else np.nan
+        if cmps:
+            tr_ = sink.cmp
+            obs = (windows[2] <= out.t_reached * (1 + 1e-12)) if nwin else np.zeros(0, bool)
+            for j, e in enumerate(cmps):
+                if nwin:
+                    cmp_bits[j, run] = np.where(obs, tr_.fired[j].astype(float), np.nan)
+                cmp_rise[j, run] = sum(1 for _, up_ in tr_.edges[j] if up_)
+                cmp_duty[j, run] = tr_.t_high[j] / out.t_reached if out.t_reached > 0 else np.nan
+                for te, up_ in tr_.edges[j]:
+                    if len(events) >= MAX_EVENTS_OUT:
+                        break
+                    events.append(dict(run=run, kind="cmp_rise" if up_ else "cmp_fall", t=te, cell=e.name,
+                                       value=float(e.cmp["v_high"] if up_ else e.cmp["v_low"])))
         for row in ev:
             if len(events) >= MAX_EVENTS_OUT:
                 break
@@ -1278,6 +1542,21 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     if ns and min_u < 0:
         warnings.append(f"a source junction became reverse biased (min u = {min_u * 1e3:.2f} mV): low-injection diode "
                         "extension used for u < 0")
+    if pre_zero:
+        warnings.append(f"{', '.join(pre_zero)}: current-biased above the HRS (the load line at t = 0 does not cross the HRS, "
+                        "so the DC operating point would be an equilibrium on the negative-resistance branch or the LRS): "
+                        "the transient starts from discharged capacitors, as if the sources were switched on at t = 0 "
+                        "(tran.initial = 'auto'; 'op' uses the DC operating point)")
+    elif ndr_op and ndr_op[0][0] < 0:
+        warnings.append("no DC operating point was found from the empty body (a current-biased cell forced beyond its "
+                        "HRS): the transient starts from discharged capacitors, as if the sources were switched on at "
+                        "t = 0 (tran.initial = 'auto')")
+    elif ndr_op:
+        cells_txt = "; ".join(f"{stls[k].name} at V_DS = {v:.4g} V, I_D = {_fmt(i, 'A')}" for k, v, i in ndr_op)
+        warnings.append(f"the DC operating point puts {cells_txt} on the negative-resistance branch (an equilibrium of "
+                        "the current bias, unstable with the capacitance of a relaxation oscillator): the transient starts "
+                        "from discharged capacitors instead, as if the sources were switched on at t = 0 "
+                        "(tran.initial = 'auto'; 'op' keeps the operating point)")
     if hrs_x:
         warnings.append(f"I_D crossed detect.i_threshold_A = {det['i_threshold_A']:.3g} A {hrs_x} time(s) while the body "
                         "stayed on the HRS (channel/HRS conduction, not a latch-up; not counted)")
@@ -1333,6 +1612,39 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
                 dict(key=f"{nm}.n_latch_up", label=_L(f"{nm} 실행당 래치업 횟수", f"{nm} latch-ups per run"), unit="1",
                      values=n_up[:, k]),
             ]
+        # repeated latch-ups (relaxation oscillator, pulse trains): intervals between consecutive latch-ups of a run
+        per_run = [d[np.isfinite(d) & (d > 0)] for d in (np.diff(x) for x in lu_all[k])]
+        isi = np.concatenate(per_run) if per_run else np.zeros(0)
+        if len(isi):
+            m_i = float(isi.mean())
+            sd_i = float(isi.std(ddof=1)) if len(isi) > 1 else None
+            # jitter of one oscillator: CV of the intervals within a run, averaged over the runs; the run-to-run
+            # spread of the mean period (e.g. frozen / slowly evolving local states) is reported separately
+            cvs = [float(d.std(ddof=1) / d.mean()) for d in per_run if len(d) > 1]
+            cv_in = float(np.mean(cvs)) if cvs else None
+            means = np.array([d.mean() for d in per_run if len(d)])
+            vlu_ = np.concatenate(vlu_all[k]) if vlu_all[k] else np.zeros(0)
+            vld_ = np.concatenate(vld_all[k]) if vld_all[k] else np.zeros(0)
+            m_u, s_u = _stats(vlu_)
+            m_d, s_d = _stats(vld_)
+            summary += [
+                _item(f"{nm}.period", f"{nm} 래치업 간격 평균 (발진 주기)", f"{nm} mean interval between latch-ups (period)",
+                      m_i, "s", sd_i),
+                _item(f"{nm}.f_osc", f"{nm} 래치업 빈도 (1 / 평균 간격)", f"{nm} latch-up rate (1 / mean interval)", 1.0 / m_i, "Hz"),
+                _item(f"{nm}.isi_cv", f"{nm} 한 실행 안에서 래치업 간격의 변동계수 (CV, 스파이크 타이밍 지터)",
+                      f"{nm} coefficient of variation of the intervals within a run (spike-timing jitter)", cv_in, "1"),
+                _item(f"{nm}.vd_lu_mean", f"{nm} 래치업 시 V_DS (모든 사건 평균 ± SD)", f"{nm} V_DS at latch-up (all events, mean ± SD)",
+                      m_u, "V", s_u),
+                _item(f"{nm}.vd_ld_mean", f"{nm} 래치다운 시 V_DS (모든 사건 평균 ± SD)", f"{nm} V_DS at latch-down (all events, mean ± SD)",
+                      m_d, "V", s_d),
+            ]
+            if stochastic and len(means) > 1:
+                summary.append(_item(f"{nm}.period_cv_runs", f"{nm} 실행 간 평균 주기의 변동계수 (국소 상태 등)",
+                                     f"{nm} run-to-run CV of the mean period (local states etc.)",
+                                     float(means.std(ddof=1) / means.mean()), "1"))
+            if stochastic:
+                distributions.append(dict(key=f"{nm}.isi", label=_L(f"{nm} 래치업 간격 (모든 실행)", f"{nm} intervals between latch-ups (all runs)"),
+                                          unit="s", values=isi[:MAX_EVENTS_OUT]))
         fl = ci_["folds"]
         summary += [
             _item(f"{nm}.fold_V_LU", f"{nm} 준정적 폴드 V_LU (V_GS = {ci_['vgs_nom']:.3g} V)",
@@ -1357,6 +1669,51 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
                 envelopes.append(dict(key=sp.key, t=_round_sig(grid, DIGITS_T), mean=_round_sig(mean[j], DIGITS_ENV),
                                       sd=_round_sig(sd[j], DIGITS_ENV), p05=_round_sig(p05[j], DIGITS_ENV),
                                       p95=_round_sig(p95[j], DIGITS_ENV)))
+    comparators = []
+    for j, e in enumerate(cmps):
+        nm = e.name
+        c = e.cmp
+        m_r, s_r = _stats(cmp_rise[j])
+        m_d, s_d = _stats(cmp_duty[j])
+        block = dict(name=nm, nodes=dict(zip(("in", "inm", "out"), e.nodes)), v_ref=c["v_ref"], v_high=c["v_high"],
+                     v_low=c["v_low"], hysteresis=c["hysteresis"], width=c["width"], window_source=None, t_windows=[],
+                     bits=[], p_fire_window=[], p_fire_window_err=[], p_fire=None, lag1=None, n_bits=0, p_fire_run=[])
+        if nwin:
+            B = cmp_bits[j]
+            fin = np.isfinite(B)
+            n_bits = int(fin.sum())
+            P = float(np.nanmean(B)) if n_bits else None
+            with np.errstate(all="ignore"):
+                import warnings as _w
+                with _w.catch_warnings():
+                    _w.simplefilter("ignore", RuntimeWarning)
+                    pw_ = np.nanmean(B, axis=0)
+                    nw_ = fin.sum(axis=0)
+                    ew_ = np.sqrt(np.maximum(pw_ * (1 - pw_), 0.0) / np.maximum(nw_, 1))
+                    pr_ = np.nanmean(B, axis=1)
+            lag1 = RN._lag1_pairs([B[r] for r in range(n_runs)])
+            cap_w = int(max(1, min(nwin, 100_000 // max(n_runs, 1))))
+            block.update(window_source=windows[0], t_windows=[float(x) for x in windows[1]],
+                         bits=[[None if not np.isfinite(v) else int(v) for v in B[r, :cap_w]] for r in range(n_runs)],
+                         p_fire_window=[_fin(x) for x in pw_], p_fire_window_err=[_fin(x) for x in ew_],
+                         p_fire=P, lag1=lag1, n_bits=n_bits, p_fire_run=[_fin(x) for x in pr_])
+            summary += [
+                _item(f"{nm}.p_fire", f"{nm} 발화 확률 (펄스당 출력 high, {windows[0]} 주기 기준)",
+                      f"{nm} firing probability (output high within a period of {windows[0]})", P, "1",
+                      float(np.nanstd(pr_, ddof=1)) if stochastic and np.isfinite(pr_).sum() > 1 else None),
+                _item(f"{nm}.lag1", f"{nm} 발화 비트열 lag-1 자기상관", f"{nm} lag-1 autocorrelation of the firing bits", lag1),
+                _item(f"{nm}.n_bits", f"{nm} 관측한 펄스 수 (실행 × 펄스)", f"{nm} observed pulses (runs × pulses)", n_bits),
+            ]
+            if stochastic:
+                distributions.append(dict(key=f"{nm}.p_fire_run", label=_L(f"{nm} 실행별 발화 비율", f"{nm} firing fraction per run"),
+                                          unit="1", values=pr_))
+        summary += [
+            _item(f"{nm}.n_rise", f"{nm} 출력 상승 에지 수 (실행당)", f"{nm} output rising edges per run", m_r, "1",
+                  s_r if stochastic else None),
+            _item(f"{nm}.duty", f"{nm} 출력 high 시간 비율", f"{nm} fraction of time with the output high", m_d, "1",
+                  s_d if stochastic else None),
+        ]
+        comparators.append(block)
     if carrier:
         tt = max(reg["t_total"], 1e-300)
         summary.append(_item("t_noise_resolved_frac", "잡음 분해 시간 비율 (사건 수준+가우스)", "Fraction of time with resolved carrier noise",
@@ -1388,6 +1745,18 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
                 d["local_state"] = None if cell_ls[k] is None else vars(cell_ls[k])
                 d["noise_band_V"] = dict(unlatched_from=_fin(ci_["band"][0]), latched_up_to=_fin(ci_["band"][3]))
             d["estimated_steps"] = ci_["est"]
+            osc = ci_["osc"]
+            if osc is not None:
+                w0 = osc["walks"][0]
+                d["oscillator"] = dict(predicted=bool(w0["oscillating"]), period_qs_s=w0["period"],
+                                       latch_ups_expected=float(w0["n_lu"] * w0["scale"]), c_eff_F=osc["c_eff"],
+                                       i_norton_A=list(osc["i_n"]), r_ext_ohm=osc["r_ext"])
+            else:
+                d["oscillator"] = None
+        elif e.type == "CMP":
+            d["nodes"] = dict(zip(("in", "inm", "out"), e.nodes))
+            d.update(e.cmp)
+            d["value_label"] = _cmp_label(e)
         else:
             d["nodes"] = list(e.nodes)
             if e.type in ("R", "C"):
@@ -1402,10 +1771,11 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     progress(1.0, "done")
     return dict(
         bench="custom", mode=mode, runs=stored_runs, events=events, summary=summary, distributions=distributions,
-        envelopes=envelopes, sweeps=[], trajectory=traj, schematic=net.schematic(), nodes=list(nodes),
+        envelopes=envelopes, sweeps=[], trajectory=traj, schematic=net.schematic(), nodes=list(nodes), comparators=comparators,
         elements=elements_out, op=op, probes=[sp.key for sp in specs],
         solver_stats=solver_stats,
-        tran=dict(t_stop_s=t_stop, t_start_save_s=t_save, dt_max_s=dt_max, dt_min_s=dt_min, method=method, reltol=reltol),
+        tran=dict(t_stop_s=t_stop, t_start_save_s=t_save, dt_max_s=dt_max, dt_min_s=dt_min, method=method, reltol=reltol,
+                  initial=initial, initial_used=initial_used),
         solver=RN._jsonable(sol), detect=det,
         stochastic=RN._jsonable(dict(st, n_runs=n_runs, local_state=vars(ls_global))) if stochastic else None,
         feasibility=dict(estimated_steps_per_run=est, estimated_total_steps=total_est,
@@ -1442,6 +1812,13 @@ def _round_sig(a, digits: int) -> np.ndarray:
 
 def _fin(x):
     return float(x) if x is not None and np.isfinite(x) else None
+
+
+def _cmp_label(e: El) -> str:
+    c = e.cmp or {}
+    inp = e.nodes[0] if e.nodes[1] == "0" else f"{e.nodes[0]} − {e.nodes[1]}"
+    return (f"comparator: {c.get('v_high', 1):g} V if V({inp}) > {c.get('v_ref', 0):.4g} V else {c.get('v_low', 0):g} V"
+            + (f", hysteresis {c['hysteresis']:.3g} V" if c.get("hysteresis") else ""))
 
 
 def _stl_label(e: El) -> str:

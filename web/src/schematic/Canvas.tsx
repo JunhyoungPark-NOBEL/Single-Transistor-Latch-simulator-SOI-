@@ -7,7 +7,7 @@ import { useT } from "../i18n";
 import { iKey, vKey } from "../api/circuitCustom";
 import type { ErcItem } from "./erc";
 import { addWires, docBounds, lPath, moveItems } from "./edit";
-import { distToSeg, elementBox, GRID, newId, nextName, onWireInterior, pinPositions, rotatePt, snap, type Pt, type SchematicDoc, type SElement, type Wire } from "./model";
+import { DEFAULT_CMP, distToSeg, elementBox, GRID, newId, nextName, onWireInterior, pinPositions, rotatePt, snap, type Pt, type SchematicDoc, type SElement, type Wire } from "./model";
 import type { Connectivity, NetInfo } from "./nets";
 import { pinId } from "./nets";
 import { fmtSI } from "./si";
@@ -44,6 +44,8 @@ function defaultsFor(kind: SElement["kind"]): Partial<SElement> {
       return { wave: defaultWave("dc", 1e-9) };
     case "LABEL":
       return { label: "" };
+    case "CMP":
+      return { cmp: { ...DEFAULT_CMP } };
     default:
       return {};
   }
@@ -498,6 +500,7 @@ function probeTarget(doc: SchematicDoc, conn: Connectivity, p: Pt, tol: number):
       const pin = nearestPin(el, p);
       return iKey(el.name, pin === "s" ? "s" : pin === "g" ? "g" : "d");
     }
+    if (el.kind === "CMP") return `${el.name}.bit`;
     return iKey(el.name);
   }
   const w = hitWire(doc, p, tol);
@@ -533,7 +536,7 @@ function AnnotationLayer({ doc, conn, ann }: { doc: SchematicDoc; conn: Connecti
     );
   }
   for (const el of doc.elements) {
-    if (el.kind === "GND" || el.kind === "LABEL") continue;
+    if (el.kind === "GND" || el.kind === "LABEL" || el.kind === "CMP") continue;
     const pins = pinPositions(el);
     let key = iKey(el.name);
     let a = pins[0];
@@ -595,11 +598,11 @@ function HoverTip({ hover, net, conn, ann, mouse }: { hover: Hover; net?: NetInf
     const nets = pinPositions(el).map((p) => `${p.pin === "p" ? "+" : p.pin === "n" ? "−" : p.pin.toUpperCase()}: ${conn.pinNet.get(pinId(el.id, p.pin))?.name ?? "—"}`);
     rows.push([t("schematic.insp.nodes"), nets.join(" · ")]);
     if (ann) {
-      const keys = el.kind === "STL" ? [iKey(el.name, "d"), iKey(el.name, "g"), iKey(el.name, "s"), `${el.name}.u`, `${el.name}.r`, `${el.name}.q_b`] : [iKey(el.name)];
+      const keys = el.kind === "STL" ? [iKey(el.name, "d"), iKey(el.name, "g"), iKey(el.name, "s"), `${el.name}.u`, `${el.name}.r`, `${el.name}.q_b`] : el.kind === "CMP" ? [`${el.name}.bit`, iKey(el.name)] : [iKey(el.name)];
       for (const k of keys) {
         const v = ann.sig.get(k);
         if (v === undefined) continue;
-        rows.push([k, k.startsWith("I(") ? fmtA(v) : k.endsWith("q_b") ? fmtSI(v, "C", 3) : fmtV(v)]);
+        rows.push([k, k.startsWith("I(") ? fmtA(v) : k.endsWith("q_b") ? fmtSI(v, "C", 3) : k.endsWith(".bit") ? String(v) : fmtV(v)]);
       }
     }
   }

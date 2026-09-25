@@ -138,7 +138,7 @@ describe("circuit defaults mirror server/compute/circuit/benches.py", () => {
     expect(1e3 * f("load_line", "R_s_ohm").scale!).toBe(1); // 1 kΩ
     expect(2e-15 * f("load_line", "C_d_F").scale!).toBeCloseTo(2, 12); // 2 fF
     expect(200e-6 * f("pulse", "width_s").scale!).toBeCloseTo(200, 9); // 200 µs
-    expect(100e3 * f("pbit", "R_L_ohm").scale!).toBe(100); // 100 kΩ
+    expect(100e3 * f("pbit", "R_S_ohm").scale!).toBe(100); // 100 kΩ
   });
   it("persisted auto fields survive mergeDefaults (null ↔ number, arrays)", () => {
     const base = paper().circuit.bench_params.pulse;

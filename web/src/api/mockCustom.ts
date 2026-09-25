@@ -1,9 +1,10 @@
 // Demo backend for bench "custom" (docs/WEB_CONTRACT.md §6): a small MNA transient (backward Euler +
 // Newton, dense LU) with R, C, V, I and a hysteretic STL stand-in (HRS/LRS currents of the mock device,
 // latch-up above V_LU(V_GS, I_PH), latch-down below V_LD, body state relaxing with τ ≈ µs; stochastic
-// runs add a per-run fold jitter and an escape hazard near V_LU). NOT the model — used only when the
+// runs add a per-run fold jitter and an escape hazard near V_LU; comparators switch on the previous step's input).
+// NOT the model — used only when the
 // backend is offline or does not know bench "custom" yet; the UI marks such results as demo data.
-import type { CustomCircuitRequest, CustomCircuitResult, CustomElement, Envelope, Wave } from "./circuitCustom";
+import type { ComparatorStats, CustomCircuitRequest, CustomCircuitResult, CustomElement, Envelope, Wave } from "./circuitCustom";
 import type { Arr, CircuitRun, DeviceBlock, Signal, SummaryItem } from "./types";
 import { waveAt, wavePoints } from "../schematic/waves";
 
@@ -119,10 +120,15 @@ function timeGrid(req: CustomCircuitRequest, maxPts = 1800): number[] {
   return [...pts].filter((x) => x >= 0 && x <= T).sort((a, b) => a - b);
 }
 
+type CmpEl = Extract<CustomElement, { type: "CMP" }>;
+const nodesOf = (e: CustomElement): string[] => (e.type === "STL" || e.type === "CMP" ? Object.values(e.nodes) : [...e.nodes]);
+
 interface RunOut {
   t: number[];
   sig: Map<string, number[]>;
   cells: Cell[];
+  /** per comparator: output high at each recorded time */
+  cmpHigh: boolean[][];
   events: CustomCircuitResult["events"];
   steps: number;
   newton: number;
@@ -140,7 +146,9 @@ function simulate(req: CustomCircuitRequest, grid: number[], run: number, rand: 
     }
     return k;
   };
-  const two = els.filter((e) => e.type !== "STL") as Exclude<CustomElement, { type: "STL" }>[];
+  const two = els.filter((e) => e.type !== "STL" && e.type !== "CMP") as Exclude<CustomElement, { type: "STL" | "CMP" }>[];
+  const cmps = els.filter((e) => e.type === "CMP") as CmpEl[];
+  const cmpIdx = cmps.map((c) => ({ i: idx(c.nodes.in), o: idx(c.nodes.out) }));
   const nodesOf = two.map((e) => [idx(e.nodes[0]), idx(e.nodes[1])]);
   const cells: Cell[] = (els.filter((e) => e.type === "STL") as Cell["el"][]).map((el) => {
     const ls = req.stochastic?.local_state_override ? req.stochastic.local_state : el.local_state ?? req.stochastic?.local_state;
@@ -155,13 +163,18 @@ function simulate(req: CustomCircuitRequest, grid: number[], run: number, rand: 
   const vsrc = two.map((e, i) => (e.type === "V" ? i : -1)).filter((i) => i >= 0);
   const N = nodeIdx.size;
   const M = vsrc.length;
-  const n = N + M;
+  const n = N + M + cmps.length;
   if (N === 0) throw new Error("no node other than ground");
   const vIndex = new Map(vsrc.map((i, k) => [i, N + k]));
   let x: Float64Array = new Float64Array(n);
   let xPrev: Float64Array = new Float64Array(n);
   const V = (arr: Float64Array, k: number) => (k < 0 ? 0 : arr[k]);
-  const out: RunOut = { t: [], sig: new Map(), cells, events: [], steps: 0, newton: 0 };
+  const out: RunOut = { t: [], sig: new Map(), cells, cmpHigh: cmps.map(() => []), events: [], steps: 0, newton: 0 };
+  const cmpVal = (j: number, xs: Float64Array) => {
+    const c = cmps[j];
+    const hi = V(xs, cmpIdx[j].i) > c.v_ref;
+    return { v: hi ? c.v_high ?? 1 : c.v_low ?? 0, hi };
+  };
   const rec = (k: string, v: number) => {
     let a = out.sig.get(k);
     if (!a) out.sig.set(k, (a = []));
@@ -215,6 +228,13 @@ function simulate(req: CustomCircuitRequest, grid: number[], run: number, rand: 
           if (a >= 0) b[a] -= iv;
           if (c >= 0) b[c] += iv;
         }
+      });
+      // comparators: behavioural sources driven by the previous step's input (explicit in the demo)
+      cmps.forEach((_, j) => {
+        const r = N + M + j;
+        add(cmpIdx[j].o, r, 1);
+        add(r, cmpIdx[j].o, 1);
+        b[r] = cmpVal(j, xPrev).v;
       });
       cells.forEach((c, k) => {
         const vds = V(x, c.d) - V(x, c.s);
@@ -285,6 +305,12 @@ function simulate(req: CustomCircuitRequest, grid: number[], run: number, rand: 
       else cur = waveAt((e as { wave: Wave }).wave, t);
       rec(`I(${e.name})`, cur);
     });
+    cmps.forEach((c, j) => {
+      const hi = cmpVal(j, xPrev).hi;
+      out.cmpHigh[j].push(hi);
+      rec(`I(${c.name})`, x[N + M + j]);
+      rec(`${c.name}.bit`, hi === (c.v_high ?? 1) > (c.v_low ?? 0) ? 1 : 0);
+    });
     cells.forEach((c, k) => {
       const vds = V(x, c.d) - V(x, c.s);
       const id = idOf(c, k, vds);
@@ -308,6 +334,8 @@ function signalMeta(key: string): Pick<Signal, "label" | "unit" | "axis"> {
   if (m) return { label: L(`V(${m[1]})`, `V(${m[1]})`), unit: "V", axis: "voltage" };
   m = /^I\((.+)\)$/.exec(key);
   if (m) return { label: L(`I(${m[1]})`, `I(${m[1]})`), unit: "A", axis: "current" };
+  m = /^(.+)\.bit$/.exec(key);
+  if (m) return { label: L(`비교기 ${m[1]} 출력`, `Comparator ${m[1]} output`), unit: "1", axis: "logic" };
   m = /^(.+)\.(u|r|q_b)$/.exec(key);
   if (m) {
     if (m[2] === "q_b") return { label: L(`${m[1]} body 전하 Q_B`, `${m[1]} body charge Q_B`), unit: "C", axis: "charge" };
@@ -334,7 +362,7 @@ export function mockCustomCircuit(req: CustomCircuitRequest): CustomCircuitResul
   const t0 = performance.now();
   const els = req.netlist?.elements ?? [];
   if (!els.length) throw new Error("the netlist has no elements");
-  const touchesGround = els.some((e) => (e.type === "STL" ? Object.values(e.nodes) : e.nodes).some((nd) => GROUND.has(nd)));
+  const touchesGround = els.some((e) => nodesOf(e).some((nd) => GROUND.has(nd)));
   if (!touchesGround) throw new Error("no ground reference: connect at least one element to node 0");
   if (!(req.tran?.t_stop_s > 0)) throw new Error("tran.t_stop_s must be > 0");
   const stochastic = req.mode === "stochastic";
@@ -407,10 +435,38 @@ export function mockCustomCircuit(req: CustomCircuitRequest): CustomCircuitResul
     }
   }
 
-  const nodes = [...new Set(els.flatMap((e) => (e.type === "STL" ? Object.values(e.nodes) : e.nodes)))];
+  const nodes = [...new Set(els.flatMap((e) => nodesOf(e)))];
   const op: Record<string, number> = {};
   for (const [k, v] of outs[0].sig) op[k] = v[0];
-  const elementsEcho = els.map((e) => ({ ...e, nodes: e.type === "STL" ? e.nodes : [...e.nodes] })) as unknown as CustomCircuitResult["elements"];
+  const elementsEcho = els.map((e) => ({ ...e, nodes: e.type === "STL" || e.type === "CMP" ? e.nodes : [...e.nodes] })) as unknown as CustomCircuitResult["elements"];
+  // comparator firing per period of the periodic pulse source with the most periods (as the server)
+  const comparators: ComparatorStats[] = [];
+  const pulses = els.flatMap((e) => (e.type === "V" || e.type === "I") && e.wave.kind === "pulse" && e.wave.per > 0 ? [{ name: e.name, w: e.wave }] : []);
+  const T = req.tran.t_stop_s;
+  let win: { src: string; starts: number[] } | null = null;
+  for (const p of pulses) {
+    if (p.w.kind !== "pulse") continue;
+    let nw = Math.floor((T - p.w.td - p.w.tr - p.w.pw) / p.w.per) + 1;
+    if (p.w.ncycles > 0) nw = Math.min(nw, p.w.ncycles);
+    if (nw >= 2 && (!win || nw > win.starts.length)) win = { src: p.name, starts: Array.from({ length: nw }, (_, k) => p.w.td + k * (p.w as { per: number }).per) };
+  }
+  els.forEach((e) => {
+    if (e.type !== "CMP") return;
+    const j = comparators.length;
+    const bits = outs.map((o) => (win ? win.starts.map((s0, k) => {
+      const s1 = k + 1 < win!.starts.length ? win!.starts[k + 1] : T;
+      return o.t.some((tt, i) => tt >= s0 && tt < s1 && o.cmpHigh[j][i]) ? 1 : 0;
+    }) : [])) as number[][];
+    const all = bits.flat();
+    const pw = win ? win.starts.map((_, k) => bits.reduce((a, b) => a + b[k], 0) / bits.length) : [];
+    const p = all.length ? all.reduce((a, b) => a + b, 0) / all.length : null;
+    comparators.push({
+      name: e.name, nodes: { in: e.nodes.in, inm: e.nodes.inm ?? "0", out: e.nodes.out }, v_ref: e.v_ref, v_high: e.v_high ?? 1, v_low: e.v_low ?? 0, hysteresis: e.hysteresis ?? 0,
+      window_source: win?.src ?? null, t_windows: win?.starts ?? [], bits, p_fire_window: pw, p_fire_window_err: pw.map((q) => Math.sqrt((q * (1 - q)) / bits.length)),
+      p_fire: p, lag1: null, n_bits: all.length, p_fire_run: bits.map((b) => (b.length ? b.reduce((a, c) => a + c, 0) / b.length : null)),
+    });
+    if (p != null) summary.push({ key: `${e.name}.p_fire`, label: L(`${e.name} 발화 확률`, `${e.name} firing probability`), value: p, unit: "1" });
+  });
   // I–V trajectory of the first STL (run 0), as the server returns it
   let trajectory: CustomCircuitResult["trajectory"];
   const c0 = outs[0].cells[0];
@@ -432,10 +488,11 @@ export function mockCustomCircuit(req: CustomCircuitRequest): CustomCircuitResul
     trajectory,
     nodes,
     elements: elementsEcho,
+    comparators,
     op,
     schematic: {
       nodes,
-      elements: els.map((e) => ({ kind: e.type, name: e.name, nodes: e.type === "STL" ? [e.nodes.d, e.nodes.g, e.nodes.s] : [...e.nodes], value: e.type === "R" || e.type === "C" ? String(e.value) : undefined })),
+      elements: els.map((e) => ({ kind: e.type, name: e.name, nodes: e.type === "STL" ? [e.nodes.d, e.nodes.g, e.nodes.s] : nodesOf(e), value: e.type === "R" || e.type === "C" ? String(e.value) : undefined })),
     },
     solver_stats: { steps: outs.reduce((a, o) => a + o.steps, 0), rejected: 0, newton_iters: outs.reduce((a, o) => a + o.newton, 0), runtime_s: runtime },
     runtime_s: runtime,
