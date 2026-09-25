@@ -1,0 +1,16 @@
+# Render Blueprint — one web service built from the repository's Dockerfile.
+# Render dashboard → New → Blueprint → pick this repository → Apply. The service URL appears on the dashboard.
+# See docs/DEPLOY.md for plan sizing and the other hosting options.
+services:
+  - type: web
+    name: stl-simulator
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter            # 512 MB RAM; use "standard" (2 GB) for STL_WORKERS=2–3
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: STL_WORKERS
+        value: "1"           # ~200 MB per compute worker (numba + engine)
+      - key: STL_MAX_PENDING
+        value: "32"
