@@ -188,7 +188,8 @@ async function openApp(browser, base, hash, lang, loadLabel = `${lang} · load`)
   });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
-  await page.goto(`${base}/${hash}`);
+  // the full layout (?view=all) renders every panel the flows click; payloads are the same in both layouts
+  await page.goto(`${base}/?view=all${hash}`);
   await page.waitForFunction(() => document.querySelector("[data-testid=backend-status]")?.textContent?.includes("API"), null, { timeout: 60_000 });
   if (lang !== "ko") {
     await page.getByTestId("lang-toggle").click();
