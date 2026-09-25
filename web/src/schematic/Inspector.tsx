@@ -40,7 +40,7 @@ function SemiconductorSection({ el }: { el: SElement }) {
     {"polarity" in model && <Row label={t("schematic.insp.polarity")}><Segmented value={model.polarity} options={el.kind === "MOS" ? [{ v: "nmos", label: "NMOS" }, { v: "pmos", label: "PMOS" }] : [{ v: "npn", label: "NPN" }, { v: "pnp", label: "PNP" }]} onChange={(v) => set("polarity", v)} label={t("schematic.insp.polarity")} /></Row>}
     {fields.slice(0, el.kind === "MOS" ? 4 : 3).map(row)}
     {el.kind === "MOS" && <details className="insp-help"><summary>{t("schematic.insp.moreModel")}</summary>{fields.slice(4).map(row)}</details>}
-    <details className="insp-help"><summary>{t("schematic.insp.modelGuide")}</summary><p>{t(el.kind === "MOS" ? "schematic.insp.mosGuide" : el.kind === "D" ? "schematic.insp.diodeGuide" : "schematic.insp.bjtGuide")}</p><a href={`${import.meta.env.BASE_URL}docs/basic-circuit-devices.md`} target="_blank" rel="noreferrer">{t("schematic.insp.modelEquations")} ↗</a></details>
+    <details className="insp-help"><summary>{t("schematic.insp.modelGuide")}</summary><p>{t(el.kind === "MOS" ? "schematic.insp.mosGuide" : el.kind === "D" ? "schematic.insp.diodeGuide" : "schematic.insp.bjtGuide")}</p><a href={`${import.meta.env.BASE_URL}docs/basic-circuit-devices.html`} target="_blank" rel="noreferrer">{t("schematic.insp.modelEquations")} ↗</a></details>
   </>;
 }
 

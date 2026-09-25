@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>기본 소자 모델 · STL Simulator</title>
+<style>
+:root{color-scheme:light dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#25332e;background:#f5f7f4;font-size:15px;line-height:1.65}*{box-sizing:border-box}body{max-width:900px;margin:0 auto;padding:36px 24px 64px}header{border-bottom:1px solid #d7dfd9;margin-bottom:24px;padding-bottom:20px}small,.muted{color:#62756a}h1{font-size:30px;letter-spacing:-1px;margin:4px 0 8px}h2{font-size:19px;margin-top:30px}p{margin:10px 0}a{color:#236848}table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:11px 9px;text-align:left;border-bottom:1px solid #d7dfd9;vertical-align:top}th{color:#62756a;font-size:12px;font-weight:600}code{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#e9efe9;padding:16px;border-radius:10px;line-height:1.8}details{border:1px solid #d7dfd9;border-radius:12px;margin:14px 0;padding:14px 18px;background:#fff}summary{cursor:pointer;font-weight:600}.tag{display:inline-block;font-size:12px;padding:3px 9px;border-radius:6px;background:#e5eee7;color:#365d44}.notice{border-left:3px solid #537b5d;padding-left:14px}ul{padding-left:20px}@media(prefers-color-scheme:dark){:root{color:#d9e5dd;background:#151d19}details{background:#1d2821}header,td,th,details{border-color:#36483c}small,.muted,th{color:#a4b7a9}a{color:#98ceb0}pre,.tag{background:#253a2c;color:#c4decc}}@media(max-width:500px){body{padding:24px 16px}td,th{padding:9px 5px}table{font-size:12px}h1{font-size:27px}}
+</style></head><body>
+<header><small>STL SIMULATOR · MODEL GUIDE</small><h1>기본 회로 소자</h1><p>MOSFET·다이오드·BJT는 STL, 저항, 커패시터, 전원과 같은 비선형 MNA 동작점·과도 해석에 함께 참여합니다. STL 없이도 회로를 풀 수 있습니다.</p><span class="tag">MOSFET · Diode · BJT · 300 K</span></header>
+<p class="notice">교육·기본 동작용 300 K compact model입니다. 기생 커패시턴스, MOS 바디 다이오드, 접합 항복, 자기 발열, 공정별 효과는 없습니다. 소자 내부에 동적 전하 상태가 없으므로 회로의 동특성은 외부 커패시터로 넣어 주세요. BSIM이나 Gummel–Poon 같은 제조사 모델이 아닙니다.</p>
+<h2>파라미터와 입력 범위</h2>
+<table><thead><tr><th>파라미터</th><th>기본값</th><th>입력 범위</th></tr></thead><tbody>
+<tr><td>MOS L</td><td>1 µm</td><td>0.001–10,000 µm</td></tr>
+<tr><td>MOS W</td><td>10 µm</td><td>0.001–100,000 µm</td></tr>
+<tr><td>MOS |Vth|</td><td>0.5 V</td><td>0–100 V (크기로 입력, 음수는 절댓값으로 변환)</td></tr>
+<tr><td>MOS SS</td><td>80 mV/dec</td><td>10–1,000 mV/dec</td></tr>
+<tr><td>MOS k</td><td>100 µA/V²</td><td>0.001–1,000,000 µA/V²</td></tr>
+<tr><td>MOS λ</td><td>0.02 V⁻¹</td><td>0–10 V⁻¹</td></tr>
+<tr><td>다이오드 Is · n</td><td>10⁻¹⁴ A · 1</td><td>10⁻³⁰–1 A · 0.1–10</td></tr>
+<tr><td>BJT Is · βF · βR</td><td>10⁻¹⁵ A · 100 · 1</td><td>10⁻³⁰–1 A · 0.01–10⁶ · 0.01–10⁶</td></tr>
+</tbody></table>
+<p class="muted"><small>입력 범위는 잘못된 입력을 막기 위한 한계이며, 그 범위 전체에서 물리적 타당성을 보장하지 않습니다. 극성: MOS <code>nmos</code>/<code>pmos</code>, BJT <code>npn</code>/<code>pnp</code>.</small></p>
+<h2>모델 식</h2>
+<details open><summary>MOSFET — 매끄러운 대칭 square-law</summary>
+<p>NMOS는 σ = +1, PMOS는 σ = −1이며 각 단자 전압을 v′ = σv로 바꿉니다. SS를 V/dec 단위로 두고 s = SS / ln 10입니다.</p>
+<pre><code>f(x) = 2s · ln[1 + exp(x / 2s)],   K = k·W/L
+I_D  = (σK/2) · { f(v′g − v′s − |Vth|)² − f(v′g − v′d − |Vth|)² } · (1 + λ|v′d − v′s|)</code></pre>
+<p>강반전에서는 square-law에, 약반전에서는 지정한 subthreshold swing에 수렴합니다. 게이트 전류는 0, 소스 전류는 −I<sub>D</sub>입니다.</p></details>
+<details><summary>다이오드</summary>
+<pre><code>I = Is · [exp((Va − Vk) / (n·VT)) − 1],   VT = 0.025852 V</code></pre></details>
+<details><summary>BJT — 상반 Ebers–Moll (transport Is)</summary>
+<p>NPN은 σ = +1, PNP는 σ = −1입니다.</p>
+<pre><code>F = exp[σ(Vb − Ve)/VT] − 1,   R = exp[σ(Vb − Vc)/VT] − 1
+αF = βF/(βF + 1),   αR = βR/(βR + 1)
+I_C = σ·Is·(F − R/αR),   I_E = σ·Is·(R − F/αF),   I_B = −I_C − I_E</code></pre>
+<p>다이오드·BJT 지수 항은 인자 x<sub>max</sub> = min(max(40, ln(1 A / Is)), 700) 이상에서 C¹ 선형 연장을 사용해 Newton 시도값을 유한하게 유지합니다. Is ≥ 4.2×10⁻¹⁸ A이면 x<sub>max</sub> = 40이고, 이보다 작은 Is는 접합 전류가 1 A에 이르는 지점에서 연장이 시작되므로 일반적인 동작 전류에서는 지수 특성을 유지합니다. 고주입 모델이 아니라 수치 안전장치입니다. Newton 반복에서는 임계 전압을 넘는 순방향 접합 전압 증가만 SPICE pnjlim처럼 로그로 줄이고, 역방향·감소 방향 스텝은 제한하지 않습니다.</p></details>
+<h2>프로브</h2>
+<p><code>I(M1.d)</code>, <code>I(M1.g)</code>, <code>I(M1.s)</code>, <code>I(Q1.c)</code>, <code>I(Q1.b)</code>, <code>I(Q1.e)</code>는 각 단자로 <strong>들어가는</strong> 전류입니다. <code>I(D1)</code>은 애노드에서 캐소드로 흐르는 전류입니다. 노드 전압은 <code>V(node)</code>로 봅니다.</p>
+<h2>English</h2>
+<p>MOSFET, diode and BJT elements join the same nonlinear MNA operating-point and transient solve as STL, R, C and sources; a circuit does not need an STL. They are educational 300 K compact models without parasitic capacitance, MOS body diodes, junction breakdown, self-heating or process-specific effects, and they have no internal charge state — add external capacitors for dynamics. MOS uses a smooth symmetric square law with the given subthreshold swing; the diode uses the Shockley equation; the BJT uses reciprocal Ebers–Moll with transport saturation current. Terminal probes are currents <em>into</em> each terminal. The accepted input ranges only reject malformed input and do not establish physical validity.</p>
+</body></html>

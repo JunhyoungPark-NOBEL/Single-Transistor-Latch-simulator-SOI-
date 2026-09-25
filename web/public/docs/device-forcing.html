@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>구동 모드 · STL Simulator</title>
+<style>
+:root{color-scheme:light dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#25332e;background:#f5f7f4;font-size:15px;line-height:1.65}*{box-sizing:border-box}body{max-width:900px;margin:0 auto;padding:36px 24px 64px}header{border-bottom:1px solid #d7dfd9;margin-bottom:24px;padding-bottom:20px}small,.muted{color:#62756a}h1{font-size:30px;letter-spacing:-1px;margin:4px 0 8px}h2{font-size:19px;margin-top:30px}p{margin:10px 0}a{color:#236848}table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:11px 9px;text-align:left;border-bottom:1px solid #d7dfd9;vertical-align:top}th{color:#62756a;font-size:12px;font-weight:600}code{font-family:ui-monospace,monospace;font-size:13px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#e9efe9;padding:16px;border-radius:10px;line-height:1.8}details{border:1px solid #d7dfd9;border-radius:12px;margin:14px 0;padding:14px 18px;background:#fff}summary{cursor:pointer;font-weight:600}.tag{display:inline-block;font-size:12px;padding:3px 9px;border-radius:6px;background:#e5eee7;color:#365d44}.notice{border-left:3px solid #537b5d;padding-left:14px}ul{padding-left:20px}@media(prefers-color-scheme:dark){:root{color:#d9e5dd;background:#151d19}details{background:#1d2821}header,td,th,details{border-color:#36483c}small,.muted,th{color:#a4b7a9}a{color:#98ceb0}pre,.tag{background:#253a2c;color:#c4decc}}@media(max-width:500px){body{padding:24px 16px}td,th{padding:9px 5px}table{font-size:12px}h1{font-size:27px}}
+</style></head><body>
+<header><small>STL SIMULATOR · 사용 안내</small><h1>소자 구동 · VSCM / CSVM</h1><p>전압 구동과 전류 구동에서 무엇을 계산하고 어떻게 읽는지 정리했습니다.</p><span class="tag">VSCM · CSVM</span></header>
+<h2>VSCM — 전압 구동</h2>
+<p>드레인 전압을 올렸다 내리며 I<sub>D</sub>–V<sub>D</sub>, V<sub>LU</sub>, V<sub>LD</sub>, 히스테리시스 폭을 확인합니다.</p>
+<h2>CSVM — 전류 구동 + Cdrain</h2>
+<p>DC 전류원 Iin이 드레인에 전류를 공급하고, Cdrain은 드레인–접지 사이에 연결됩니다. 게이트는 현재 V<sub>G</sub>를 사용합니다. 보정한 소자 파라미터와 광조사 조건을 그대로 적용해 회로와 소자 내부 상태를 함께 과도 해석합니다.</p>
+<table><thead><tr><th>입력</th><th>시작값</th><th>의미</th></tr></thead><tbody>
+<tr><td>Iin</td><td>1 nA</td><td>드레인에 공급하는 전류. 발진 가능한 전류 범위는 소자와 바이어스에 따라 달라집니다.</td></tr>
+<tr><td>Cdrain</td><td>1 pF</td><td>외부 드레인 커패시턴스.</td></tr>
+<tr><td>시간</td><td>15 ms</td><td>해석 시간. 관측 주기가 부족하면 늘려 주세요.</td></tr>
+</tbody></table>
+<p class="muted"><small>시작값이 모든 보정 소자나 게이트 조건에서 발진을 보장하지는 않습니다.</small></p>
+<h2>결과 읽기</h2>
+<p><strong>Vtop / Vbottom</strong>은 저장된 V<sub>D</sub>(t)의 완전한 주기마다 최댓값 / 최솟값을 찾은 뒤 평균한 값입니다. 시작 구간과 첫 주기는 제외합니다. <strong>주파수</strong>는 그 이후 완전한 주기가 2개 이상 있을 때만 <code>1 / 평균 주기</code>로 표시합니다. 발진이 없거나 시간이 부족하면 주파수는 “—”로 남습니다.</p>
+<p>극값은 저장된 파형의 표본에 기반한 값입니다. 시간 간격보다 빠른 진동이나 불충분한 표본에서는 극값을 신뢰할 수 없습니다. 조건이 바뀌면 기존 값은 흐리게 표시되며, 다시 실행하면 갱신됩니다.</p>
+<details><summary>확률 모드와 제한</summary>
+<p>확률 모드에서는 소자 탭의 난수 시드, 캐리어 잡음, 국소 상태 설정으로 단일 과도 파형을 계산합니다. 표시는 이 파형 안의 주기 통계이며 여러 소자의 독립 실행 평균은 아닙니다. 전압 스윕 횟수·속도·간격은 CSVM에 적용되지 않습니다.</p>
+<p>CSVM은 계산 서버 연결이 필요합니다. 오프라인 데모에는 물리적 CSVM 계산이 없습니다. 파형의 CSV / PNG는 그래프 메뉴에서 내보냅니다.</p>
+</details>
+<h2>English</h2>
+<p>VSCM applies a drain-voltage sweep. CSVM drives the calibrated device with Iin and Cdrain while keeping V<sub>G</sub> and illumination. The circuit/body-state transient solver computes V<sub>D</sub>(t). Vtop and Vbottom are waveform cycle extrema averaged after start-up; the frequency needs at least two complete cycles after start-up. Stochastic mode computes one trace with the current seed, noise and local-state settings. A live computation server is required.</p>
+</body></html>

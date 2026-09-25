@@ -36,8 +36,8 @@ export function ForcingControls() {
     {forcing === "csvm" && <div className="forcing-fields">
       <Setting name="current_A" symbol="Iin" scale={1e9} unit="nA" title={ko ? "드레인에 공급하는 DC 전류" : "DC current supplied to drain"} />
       <Setting name="capacitance_F" symbol="Cdrain" scale={1e12} unit="pF" title={ko ? "드레인–접지 커패시턴스" : "Drain-to-ground capacitance"} />
-      <Setting name="duration_s" symbol="Time" scale={1e3} unit="ms" title={ko ? "과도 해석 시간" : "Transient duration"} />
+      <Setting name="duration_s" symbol={ko ? "시간" : "Time"} scale={1e3} unit="ms" title={ko ? "과도 해석 시간" : "Transient duration"} />
     </div>}
-    <a className="forcing-help" aria-label={ko ? "구동 모드 안내" : "Forcing mode guide"} title={ko ? "구동 모드 안내" : "Forcing mode guide"} href={`${import.meta.env.BASE_URL}docs/device-forcing.md`} target="_blank" rel="noreferrer">ⓘ</a>
+    <a className="forcing-help" aria-label={ko ? "구동 모드 안내" : "Forcing mode guide"} title={ko ? "구동 모드 안내" : "Forcing mode guide"} href={`${import.meta.env.BASE_URL}docs/device-forcing.html`} target="_blank" rel="noreferrer">ⓘ</a>
   </div>;
 }

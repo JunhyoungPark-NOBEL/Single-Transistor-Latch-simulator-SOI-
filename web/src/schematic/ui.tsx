@@ -50,6 +50,7 @@ export function SIInput({
         <input
           id={id}
           className={`input${invalid && editing ? " invalid" : ""}`}
+          style={unit && unit.length > 2 ? { paddingRight: `calc(${unit.length}ch + 10px)` } : undefined}
           value={text}
           placeholder={placeholder}
           aria-label={ariaLabel}
