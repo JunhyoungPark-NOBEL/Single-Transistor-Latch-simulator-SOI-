@@ -12,6 +12,7 @@
     "e2e": "playwright test",
     "snapshot:record": "node scripts/record-snapshot.mjs",
     "build:artifact": "node scripts/build-artifact.mjs",
+    "build:artifact:lock": "node scripts/build-artifact.mjs --lock",
     "verify:artifact": "node scripts/verify-artifact.mjs"
   },
   "dependencies": {

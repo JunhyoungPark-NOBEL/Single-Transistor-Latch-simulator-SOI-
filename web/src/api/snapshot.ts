@@ -9,6 +9,12 @@
 // gzip JSON (`<key>.json.gz`, decoded with DecompressionStream) with an optional plain `.json` copy that is
 // used when DecompressionStream is unavailable. The recorder hooks at the end of this file are dev-only
 // (localStorage["stl-websim:record"] = "1") and feed scripts/record-snapshot.mjs.
+//
+// Locked artifact build (`build:artifact -- --lock`): every snapshot file, the index included (`snapshot/index.bin`),
+// is encrypted ("STLENC1\0" · 12-byte IV · AES-256-GCM ciphertext+tag, AAD = the published path, see
+// scripts/lock-crypto.mjs). The password gate (scripts/lock/lock.js) leaves the key in globalThis.__STL_LOCK__
+// before it starts the app; `readSnapshotBytes` decrypts, gunzips and parses every file. Plain builds and dev mode
+// never see encrypted bytes and behave as before.
 import type { Backend } from "./client";
 import type { Health, JobStatus, Kind, Meta } from "./types";
 
@@ -206,6 +212,54 @@ export async function decodeBody(bytes: Uint8Array): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
+// ---------------------------------------------------------------- locked build (encrypted files)
+/** "STLENC1\0": first bytes of an encrypted file of the locked build. */
+export const LOCK_MAGIC: readonly number[] = [0x53, 0x54, 0x4c, 0x45, 0x4e, 0x43, 0x31, 0x00];
+const LOCK_IV = 12;
+const LOCK_TAG = 16;
+/** Index file of a locked build (in place of index.json). */
+export const LOCKED_INDEX = "index.bin";
+
+/** Key left by the password gate (scripts/lock/lock.js), or null (plain build / dev). */
+export function lockKey(): CryptoKey | null {
+  const k = (globalThis as { __STL_LOCK__?: { key?: unknown } }).__STL_LOCK__?.key;
+  return k && typeof k === "object" ? (k as CryptoKey) : null;
+}
+
+export function isEncrypted(bytes: Uint8Array): boolean {
+  return bytes.length >= LOCK_MAGIC.length + LOCK_IV + LOCK_TAG && LOCK_MAGIC.every((x, i) => bytes[i] === x);
+}
+
+/** AAD of an encrypted file = its published path relative to the page, without a leading "./" — the same string
+ *  the build encrypted it with ("snapshot/index.bin", "snapshot/<name>.bin"). */
+export function lockAad(url: string): string {
+  return url.replace(/^(\.\/)+/, "");
+}
+
+/** Decrypt one file of the locked build; rejects on a wrong key, another path (AAD) or any modified byte. */
+export async function decryptLocked(bytes: Uint8Array, url: string, key: CryptoKey): Promise<Uint8Array> {
+  if (!isEncrypted(bytes)) throw new Error(`${url} is not an encrypted file`);
+  const params: AesGcmParams = {
+    name: "AES-GCM",
+    iv: bytes.slice(LOCK_MAGIC.length, LOCK_MAGIC.length + LOCK_IV),
+    additionalData: new TextEncoder().encode(lockAad(url)),
+    tagLength: LOCK_TAG * 8,
+  };
+  return new Uint8Array(await globalThis.crypto.subtle.decrypt(params, key, bytes.slice(LOCK_MAGIC.length + LOCK_IV)));
+}
+
+/** The one reader of snapshot bytes (index and every result file): decrypt when the bytes are encrypted (locked
+ *  build, key from the gate), gunzip when they are gzip, then JSON.parse. `url` is the path the file was fetched
+ *  from, relative to the page (it is the AAD). */
+export async function readSnapshotBytes(bytes: Uint8Array, url: string, key: CryptoKey | null = lockKey()): Promise<unknown> {
+  let b = bytes;
+  if (isEncrypted(b)) {
+    if (!key) throw new Error(`${url} is encrypted and the page is not unlocked`);
+    b = await decryptLocked(b, url, key);
+  }
+  return JSON.parse(await decodeBody(b)) as unknown;
+}
+
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export class Snapshot {
@@ -246,9 +300,10 @@ export class Snapshot {
     let last: unknown = null;
     for (const f of tries) {
       try {
-        const res = await this.fetchFn(this.base + f);
+        const url = this.base + f;
+        const res = await this.fetchFn(url);
         if (!res.ok) throw new Error(`${res.status} ${f}`);
-        return JSON.parse(await decodeBody(new Uint8Array(await res.arrayBuffer()))) as unknown;
+        return await readSnapshotBytes(new Uint8Array(await res.arrayBuffer()), url);
       } catch (e) {
         last = e;
       }
@@ -331,13 +386,15 @@ export class Snapshot {
   }
 }
 
-/** Fetch and validate `snapshot/index.json`; null when absent or not a snapshot (e.g. an SPA HTML fallback). */
+/** Fetch and validate `snapshot/index.json` (`snapshot/index.bin` on an unlocked locked build); null when absent
+ *  or not a snapshot (e.g. an SPA HTML fallback) or when it cannot be decrypted. */
 export async function loadSnapshot(base = SNAPSHOT_BASE, fetchFn?: Fetch): Promise<Snapshot | null> {
   const f: Fetch = fetchFn ?? ((u, i) => fetch(u, i));
   try {
-    const res = await f(`${base}index.json`, { cache: "no-cache" });
+    const url = `${base}${lockKey() ? LOCKED_INDEX : "index.json"}`;
+    const res = await f(url, { cache: "no-cache" });
     if (!res.ok) return null;
-    const idx: unknown = JSON.parse(await res.text());
+    const idx = await readSnapshotBytes(new Uint8Array(await res.arrayBuffer()), url);
     return isSnapshotIndex(idx) ? new Snapshot(idx, base, f) : null;
   } catch {
     return null;

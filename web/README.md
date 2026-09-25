@@ -50,6 +50,36 @@ npm run verify:artifact -- --shots /tmp/shots     # 정적 호스트처럼 제�
 바뀌면 다시 기록해야 합니다(키가 달라지면 그 조건은 데모 데이터로 표시됨). `web/snapshot/`은 생성물이므로
 커밋하지 않습니다. 게시: `dist-artifact/stl-simulator.html`(doctype/html/head/body 없는 조각) + `files.json`의 파일들.
 
+### 비밀번호로 잠근 게시 (잠긴 빌드)
+링크만 가진 사람이 내용을 볼 수 없도록 게시용 빌드 전체를 비밀번호로 암호화할 수 있습니다(링크 + 비밀번호).
+```bash
+STL_ARTIFACT_PASSWORD='…' npm run build:artifact -- --lock   # → web/dist-artifact/ (잠긴 빌드, --out으로 다른 폴더)
+STL_ARTIFACT_PASSWORD='…' npm run verify:artifact           # 틀린/맞는 비밀번호, 기억하기, CSP 매트릭스를 Chromium으로 확인
+```
+- 비밀번호는 환경 변수로만 받습니다(명령줄 인자·파일·로그에 남기지 않음; `verify:artifact`도 `--password`를 거부).
+  변수가 없거나 앞뒤 공백·줄바꿈 같은 제어 문자가 섞여 있으면 `--lock` 빌드를 거부합니다.
+- 암호화: 앱 전체(IIFE 스크립트 하나, `assets/app-*.bin`), 앱 스타일시트(`assets/style-*.bin`), 스냅샷 파일
+  전부(`snapshot/index.bin` 포함)를 gzip 후 AES-256-GCM으로 암호화합니다. 키 = PBKDF2-SHA256(비밀번호, 무작위
+  16바이트 salt, 600 000회), 파일마다 무작위 IV, 게시 경로가 AAD입니다(형식: `scripts/lock-crypto.mjs`). 평문으로
+  남는 것은 비밀번호 카드(`stl-simulator.html`, `lock.js`, `lock.css` — 연구실·사람 이름 없음), 공개 파라미터
+  (`lock.json`: salt·반복 횟수·파일 이름), KaTeX 원본 글꼴(원본과 바이트 단위로 같은지 확인)뿐입니다.
+- 빌드는 임시 폴더에 쓰고 자체 검사(전 파일 복호화, 평문 파일의 모델 문자열·보정 수치·이름 검사, 모든 파일의
+  비밀번호 검사)를 통과해야만 출력 폴더를 교체합니다. 실패하면 이전 빌드가 그대로 남고, 게시할 수 있는 결과물은
+  생기지 않습니다.
+- 페이지: 비밀번호 입력(0.5초 정도 키 계산) → 앱·스타일시트 복호화 → 실행(`blob:` 스크립트 → 인라인 스크립트 →
+  `new Function` 순서로, 호스트의 CSP가 허용하는 방법). “이 브라우저에서 기억”을 켜면 파생된 키(비밀번호가 아님)를
+  localStorage에 30일 동안, 끄면 sessionStorage(탭을 닫으면 사라짐)에 둡니다. 앱이 저장하는 설정(모델 파라미터
+  포함)도 평문으로 남지 않고 암호화되어 localStorage에 저장됩니다. 링크 끝에 `#lock`을 붙여 열면 이 브라우저에
+  저장된 키를 지웁니다. 다시 빌드하면 salt가 바뀌므로 한 번 더 입력해야 합니다.
+- 보호 범위: 비밀번호 없이는 코드·보정값·결과를 읽을 수 없습니다. **강도는 비밀번호 강도가 전부입니다** — 암호화된
+  파일은 누구나 받을 수 있으므로, 연구실 이름·단어에 숫자를 붙인 것 같은 비밀번호는 오프라인 대입으로 금방 풀릴 수
+  있습니다. 우연히 여는 것은 막지만 작정한 공격은 막지 못합니다. 긴 무작위 문구(무작위 단어 4개 이상)를 권합니다
+  (바꾸려면 새 비밀번호로 다시 빌드·게시). 비밀번호를 아는 사람은 모든 내용을 볼 수 있고, 페이지의 존재·파일 크기는
+  숨겨지지 않습니다. 저장소(GitHub)가 공개되어 있으면 소스와 모델이 그대로 보이므로 이 잠금은 의미가 없습니다 —
+  저장소는 비공개여야 합니다.
+- claude.ai 링크는 소유자가 claude.ai의 공유 설정에서 공유해야 다른 사람이 열 수 있습니다(비공개 아티팩트는 소유자만 열림).
+  같은 링크에 다시 게시할 때는 이전 평문 파일(옛 JS 청크, `snapshot/*.json.gz`, `snapshot/index.json`)을 지워야 합니다.
+
 ### 화면 구성
 - 헤더: 로고(biristor 기호 — 원 안의 NPN, 컬렉터 위·이미터 아래, 베이스는 떠 있음; `components/Logo.tsx`·`public/favicon.svg`), 제목과
   기술 칩(FDSOI — 마우스를 올리면 L_g·W·T_Si·EOT), 탭(소자 · 회로 · 검증 · 물리 모델), **Deterministic |
@@ -164,6 +194,40 @@ reference I–V and the 8 illumination conditions) plus the V_G/P grid (once) an
 `localStorage["stl-websim:record"]="1"`, compiled out of builds). Re-record whenever the model, presets, examples or
 payloads change (a changed key simply shows demo data). `web/snapshot/` is generated and not committed. Publish
 `dist-artifact/stl-simulator.html` (a fragment without doctype/html/head/body) plus the files in `files.json`.
+
+### Password-locked publish (locked build)
+The published build can be encrypted as a whole so that the link alone shows nothing (link + password).
+```bash
+STL_ARTIFACT_PASSWORD='…' npm run build:artifact -- --lock   # → web/dist-artifact/ (locked; --out for another folder)
+STL_ARTIFACT_PASSWORD='…' npm run verify:artifact           # wrong/right password, remember-me, CSP matrix in Chromium
+```
+- The password is read only from the environment variable (never a flag, file or log line; `verify:artifact` refuses
+  `--password` too). `--lock` is refused when the variable is missing or has leading/trailing whitespace or a control
+  character such as a newline.
+- Encryption: the whole app (one IIFE script, `assets/app-*.bin`), the app stylesheet (`assets/style-*.bin`) and every
+  snapshot file (`snapshot/index.bin` included) are gzipped and encrypted with AES-256-GCM; key = PBKDF2-SHA256(password,
+  random 16-byte salt, 600 000 iterations), a random IV per file, the published path as AAD (format:
+  `scripts/lock-crypto.mjs`). Plaintext is only the password card (`stl-simulator.html`, `lock.js`, `lock.css` — no lab
+  or people names), the public parameters (`lock.json`: salt, iterations, file names) and the stock KaTeX fonts
+  (checked byte-identical to the KaTeX package).
+- The build writes to a temporary folder and replaces the output folder only after its self-check passes (every file
+  decrypts; no model string, calibrated number or name in any plaintext file; the password in no file). A failed build
+  leaves the previous build untouched and produces nothing publishable.
+- The page: enter the password (≈ 0.5 s key derivation) → the app and its stylesheet are decrypted → started with
+  whatever the host's CSP allows (`blob:` script → inline script → `new Function`). "Remember on this browser" keeps
+  the derived key (not the password) in localStorage for 30 days, otherwise in sessionStorage (gone when the tab
+  closes). The app's own saved settings (model parameters included) are stored encrypted, never in plaintext. Opening
+  the link with `#lock` appended removes the saved key from that browser. A rebuild changes the salt, so everyone
+  enters the password once more.
+- What it protects: without the password the code, calibration and results are unreadable. **Its strength is the
+  password's strength**: anyone can download the encrypted files, so a password made of a lab name or a word plus
+  digits can be guessed offline quickly. It stops casual access, not a determined attacker. Use a long random
+  passphrase (4 or more random words); changing it means rebuilding and republishing. Whoever knows the password sees
+  everything, and the page's existence and file sizes are not hidden. If the GitHub repository is public, the source
+  and the model are readable there and this lock protects nothing: the repository must be private.
+- The claude.ai link itself must also be shared by the owner in claude.ai's share settings (a private artifact opens
+  only for its owner). When republishing to the same link, remove the old plaintext files (old JS chunks,
+  `snapshot/*.json.gz`, `snapshot/index.json`).
 
 ### UI overview
 - Header: logo (the biristor symbol: an NPN in a circle, collector up, emitter down, base left floating;

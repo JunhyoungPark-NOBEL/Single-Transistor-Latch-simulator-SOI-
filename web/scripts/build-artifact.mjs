@@ -11,11 +11,18 @@
 // Usage: npm run build:artifact [-- --plain] [--no-snapshot] [--out dist-artifact]
 //   --plain        publish the snapshot as plain .json instead of .json.gz (if the host refuses gzip files)
 //   --no-snapshot  build without snapshot/ (the page then runs in demo mode)
+//
+// Locked build (password gate, everything sensitive encrypted — see scripts/lock-build.mjs):
+//   STL_ARTIFACT_PASSWORD=... npm run build:artifact -- --lock [--iterations 600000] [--no-snapshot] [--out dir]
+//   The password is read ONLY from the environment variable (never a flag, never written anywhere); --lock without
+//   it, or with leading/trailing whitespace or control characters in it (a stray newline from a file would make the
+//   page unopenable with the intended password), is refused. A failed locked build leaves the output folder as it was.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
+import { LIMITS, TEXT_EXT, escapeFffd, fmtMB, walk, woff2Only } from "./artifact-common.mjs";
 
 const WEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const argv = process.argv.slice(2);
@@ -27,20 +34,32 @@ const opt = (n, d) => {
 const OUT = path.resolve(WEB, opt("out", "dist-artifact"));
 const SNAP_SRC = path.resolve(WEB, opt("snapshot", "snapshot"));
 const ENTRY = "stl-simulator.html";
-const LIMITS = { files: 255, textBytes: 16 * 1024 * 1024, binaryBytes: 15 * 1024 * 1024, versionBytes: 64 * 1024 * 1024 };
-const TEXT_EXT = /\.(html|js|mjs|css|json|svg|txt|map)$/i;
-const fmtMB = (b) => `${(b / 1048576).toFixed(2)} MB`;
 const log = (...m) => console.log("[artifact]", ...m);
 const problems = [];
 
-function walk(dir, base = dir) {
-  const out = [];
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) out.push(...walk(p, base));
-    else out.push(path.relative(base, p).split(path.sep).join("/"));
+// ---------------------------------------------------------------- 0. locked build
+if (flag("lock")) {
+  const password = process.env.STL_ARTIFACT_PASSWORD ?? "";
+  if (!password) {
+    console.error("[artifact] --lock needs the password in the environment variable STL_ARTIFACT_PASSWORD (refusing to build)");
+    process.exit(1);
   }
-  return out.sort();
+  // (never print the password or any part of it)
+  if (password !== password.trim() || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(password)) {
+    console.error("[artifact] STL_ARTIFACT_PASSWORD has leading/trailing whitespace or a control character (e.g. a newline from a file) — refusing to build; set it to exactly the password");
+    process.exit(1);
+  }
+  if (argv.some((a) => a === "--password" || a.startsWith("--password="))) {
+    console.error("[artifact] the password is read only from STL_ARTIFACT_PASSWORD, not from the command line");
+    process.exit(1);
+  }
+  const { buildLocked } = await import("./lock-build.mjs");
+  const ok = await buildLocked({
+    WEB, OUT, SNAP_SRC, ENTRY, password, log,
+    iterations: Number(opt("iterations", "600000")),
+    noSnapshot: flag("no-snapshot"),
+  });
+  process.exit(ok ? 0 : 1);
 }
 
 // ---------------------------------------------------------------- 1. vite build
@@ -99,23 +118,9 @@ for (const rel of walk(OUT)) {
     continue;
   }
   if (!/\.(js|mjs|css)$/i.test(rel)) continue;
-  let s = fs.readFileSync(p, "utf8");
-  const n = (s.match(/�/g) ?? []).length;
-  if (n) {
-    // JS: � is the same character in string, template and regex literals; CSS: hex escape
-    s = s.replace(/�/g, rel.endsWith(".css") ? "\\fffd " : "\\ufffd");
-    fffd += n;
-  }
-  if (rel.endsWith(".css")) {
-    // keep only the woff2 entries of every @font-face src list (all current browsers load woff2)
-    // (entries are `url(...)format("...")`; small fonts are inlined as data: URIs, which contain ";" but no ")")
-    s = s.replace(/src:((?:\s*url\([^)]*\)\s*format\([^)]*\)\s*,?)+)/g, (m, list) => {
-      const parts = list.split(/,(?=\s*url\()/);
-      const keep = parts.filter((x) => /format\(\s*["']?woff2/.test(x));
-      return keep.length && keep.length < parts.length ? `src:${keep.map((x) => x.trim().replace(/,$/, "")).join(",")}` : m;
-    });
-  }
-  fs.writeFileSync(p, s);
+  const [s, n] = escapeFffd(fs.readFileSync(p, "utf8"), rel.endsWith(".css"));
+  fffd += n;
+  fs.writeFileSync(p, rel.endsWith(".css") ? woff2Only(s) : s);
 }
 log(`escaped ${fffd} U+FFFD character(s); removed ${dropped} KaTeX .woff/.ttf file(s)`);
 

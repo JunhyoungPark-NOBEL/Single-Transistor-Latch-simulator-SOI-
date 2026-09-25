@@ -21,7 +21,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse, HTMLResponse, Response
 
-from server import jsonutil, params
+from server import auth, jsonutil, params
 from server.compute import KINDS
 from server.compute import data as data_mod
 from server.jobs import ALL_KINDS, EXTRA_KINDS, JobManager, QueueFull
@@ -103,6 +103,7 @@ manager = JobManager()
 async def lifespan(app: FastAPI):
     manager.start(prewarm=os.environ.get("STL_PREWARM", "1") != "0")
     log.info("STL API: %d workers, engine %s, cache %s", manager.workers, manager.engine_version[:12], manager.cache.dir)
+    auth.announce()                                      # stderr: visible under plain uvicorn / host logs
     try:
         yield
     finally:
@@ -115,6 +116,10 @@ _origins = [o.strip() for o in os.environ.get(
     "STL_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173"
 ).split(",") if o.strip()]
 app.add_middleware(BodySizeLimit, max_bytes=MAX_BODY_BYTES)
+# Optional password gate (server/auth.py): pass-through unless STL_ACCESS_PASSWORD is set; then everything except
+# /login, /logout, /api/health and the favicon — API, SPA, static files, /docs, /redoc, /openapi.json — needs a
+# session cookie. Outside BodySizeLimit so unauthenticated bodies are refused before they are buffered.
+app.add_middleware(auth.AccessGate)
 app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(GZipMiddleware, minimum_size=2048)
 
@@ -173,9 +178,10 @@ def _kind_available(kind: str) -> bool:
 
 @app.get("/api/health")
 def health() -> Any:
-    """{ok, version, workers} (+ app_version, engine_version, job counts)."""
+    """{ok, version, workers} (+ app_version, engine_version, job counts, access_gate "on" | "off")."""
     return JSONResponse(dict(ok=True, version=manager.engine_version[:12], app_version=APP_VERSION,
-                             engine_version=manager.engine_version, workers=manager.workers, jobs=manager.counts()))
+                             engine_version=manager.engine_version, workers=manager.workers, jobs=manager.counts(),
+                             access_gate=auth.state_name()))
 
 
 @app.get("/api/meta")

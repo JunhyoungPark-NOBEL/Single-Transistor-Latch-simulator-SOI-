@@ -39,4 +39,6 @@ RUN python scripts/warmup.py
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD python -c "import urllib.request,os;urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"8000\")}/api/health',timeout=4)" || exit 1
 # One uvicorn process: the compute process pool (STL_WORKERS) lives inside it.
-CMD ["sh", "-c", "exec uvicorn server.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
+# FORWARDED_ALLOW_IPS: '*' behind a platform proxy (Render, HF Spaces); 127.0.0.1 when the container is exposed
+# directly (lab server), so clients cannot spoof X-Forwarded-For (docs/DEPLOY.md)
+CMD ["sh", "-c", "exec uvicorn server.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=\"${FORWARDED_ALLOW_IPS:-*}\""]

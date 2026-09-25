@@ -14,3 +14,13 @@ services:
         value: "1"           # ~200 MB per compute worker (numba + engine)
       - key: STL_MAX_PENDING
         value: "32"
+      # Password gate (docs/DEPLOY.md §4). The password is a secret: Render asks for its value when a NEW blueprint
+      # is applied; for an existing service add it in dashboard → Environment. Never write it in this file.
+      - key: STL_ACCESS_PASSWORD
+        sync: false
+      - key: STL_REQUIRE_PASSWORD
+        value: "1"           # not a secret: without a password every request answers 503 (deploy fails, never open)
+      - key: STL_SESSION_SECRET
+        generateValue: true  # random 256-bit value made by Render: sessions survive restarts and redeploys
+      - key: STL_TRUST_PROXY
+        value: "1"           # login limiter keys on the address Render's proxy appends to X-Forwarded-For
