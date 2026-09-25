@@ -10,7 +10,7 @@
 - Final reference-anchored body capacitance at Tbox=70/140/280nm: 2.627056 / 2.449031 / 2.345016 ×10^-16 F. At VBG=1V, VG=-0.8V, the channel coupling contribution changes with Tbox; measured channel currents at u=.6V,r=2.7V are 6.0597/1.3775/0.56482nA. VBG=0 yields no invented DC fold shift from Tbox.
 - Actual geometry CSVM run: L400nm, VG=-2V, VBG=0, Iin=1nA, Cdrain=1pF, 8ms completed with 5976 accepted steps / 3062 saved samples, four LU and four LD events. LU spacing gives about 899.230Hz; event voltages are about 3.6510/2.54527V. All sampled terminal currents and body charge are finite. Saved-output KCL residual is 30pA (about 2.47ppm of peak current), limited by seven-significant-digit output rounding; this is not the unrounded Newton residual.
 - The surface-dominated interpretation of the existing effective junction lifetime is an explicit assumption, not an extracted surface recombination fraction. Tbox140nm is nominal. No arbitrary quantum knee, BJT barrier shift, or fold-voltage offset was introduced. Domain errors and nonreference noise requests are rejected explicitly.
-- These are dimensional/numerical consistency checks, **not validation against multi-geometry measurements or TCAD**. See `../GEOMETRY_MODEL_KO.md`, `web/e2e/fixtures/geometry/numerical-report.json`, and `csvm-check.json` (the latter two relative to the repository root).
+- These are dimensional/numerical consistency checks, **not validation against multi-geometry measurements or TCAD**. See `./GEOMETRY_MODEL_KO.md`, `web/e2e/fixtures/geometry/numerical-report.json`, and `csvm-check.json` (the latter two relative to the repository root).
 - All **66 original engine files** match the input source ZIP byte for byte. Numerical extensions live in server-owned code. No deployment was performed.
 
 Final server command:
@@ -36,7 +36,7 @@ python3 -m pytest server/tests/test_geometry_model.py server/tests/test_geometry
 - Verilog-A source interpolation is parsed independently and compared with actual engine
   currents. The selector, offline protection, canceled generation and input validation are
   tested. Commercial simulator executables were not run. Sentaurus export is explicitly
-  unavailable; see `../SIMULATOR_EXPORTS_KO.md`.
+  unavailable; see `./SIMULATOR_EXPORTS_KO.md`.
 - All **66 original engine files** still match the supplied source archive byte for byte.
 
 ## Passed
@@ -48,7 +48,7 @@ supersedes its earlier test count. Numerical engine/backend code was unchanged b
 |---|---|
 | `npm run typecheck` | Pass |
 | `npm test` | 28 files, 464 tests passed |
-| `npm run build` | Pass; compiled frontend included in delivery |
+| `npm run build` | Pass (the delivery included the compiled frontend; the repository does not commit `web/dist`) |
 | `python3 engine/stl_api.py` | Reference folds 3.7037/2.5979 V; FPT 3.6442 V / 8.03 mV; dynamic MC 3.6344 V / 119.0 mV |
 | Relevant server numerical tests | 127 passed, 7 deselected |
 | `ux-device.spec.ts` + `reference-sweep.spec.ts` | 12 passed |
@@ -88,7 +88,7 @@ This checks table fidelity, metadata, threshold mapping and state selection, not
 - No deployment or git push was performed. Cloudflare prevented inspection of the existing
   Claude artifact in the cloud browser. Full source and original handoff were available locally.
 - Locked-artifact recording/rebuild was not run. Existing snapshots need regeneration for the
-  new example circuits and reference workflow. The included `web/dist` is the ordinary server build.
+  new example circuits and reference workflow. The ordinary `web/dist` build (not committed) is for the live server.
 
 ## Reference benchmark interpretation
 
@@ -102,15 +102,21 @@ The expandable method explains the formulas and valid points.
 
 ## Preview images
 
-`PREVIEW/device.png` uses an authentic recorded reference branch result, labeled saved results.
-`PREVIEW/circuit.png` shows an editable circuit; its demo-mode badge does not claim live
-simulation. `PREVIEW/reference.png` shows the genuine fixed benchmark. Mobile/theme
-behavior was also checked.
+The preview screenshots delivered with this update (`PREVIEW/`) are not kept in the repository.
 
-`PREVIEW/csvm.png` and `PREVIEW/csvm-mobile.png` show the actual direct-solver recording
-with a visible recording label. The transport was routed for the screenshot; these images
-do not claim a deployed live server. Export selector previews show its desktop/mobile layout.
+## 2026-09-25 변경 요약
 
-The latest `PREVIEW/device.png` and `PREVIEW/mobile.png` now show the actual L400nm
-geometry result and topmost controls. `PREVIEW/geometry-mobile.png` duplicates the dedicated
-mobile control view for convenient review. Earlier reference/circuit/export views are retained.
+전달본의 `START_HERE_KO.md`에 있던 화면 변경 요약입니다. 실행·설치 방법은 `RUNNING.md`, `LOCAL_INSTALL.md`, `DEPLOY_LAB.md`를 따릅니다.
+
+- **Geometry:** 파라미터 맨 위에서 L·W·Tsi·Tox(EOT)·Tbox·Nbody를 바꿉니다. VG 아래 VBG로 백게이트 바이어스를 설정합니다. 저장 소자·회로·내보내기에 함께 보존합니다. 기준 치수·VBG=0은 기존 결과를 유지하고, 변경 조건은 결정론 VSCM·CSVM으로 계산합니다. 표면 재결합과 백게이트 결합의 구체적인 가정·수치 검사·한계는 `GEOMETRY_MODEL_KO.md`와 Geometry ⓘ의 상세 문서에 있습니다. Tbox 140 nm는 원본에서 추출한 값이 아닌 명시적 기준 가정입니다.
+- **소자:** VSCM(전압 구동)과 CSVM(전류 구동 + Cdrain)을 화면 위에서 전환합니다. VSCM은 ID–VD 상향·하향 스윕, CSVM은 VD(t)와 Vtop·Vbottom·주파수를 보여줍니다. CSVM의 Iin·Cdrain·관측 시간을 직접 바꿀 수 있습니다. 초기 구간을 제외한 실제 주기에서 지표를 계산하며, 주기가 부족하면 주파수를 표시하지 않습니다. 상세 설명은 ⓘ에 접었습니다.
+- **기본 라이브러리:** `Device 1` 하나만 표시합니다. 이전 보정 프리셋의 수치 데이터와 저장된 사용자 소자·회로는 유지합니다.
+- **사용자 소자:** 결과 오른쪽에 5개 슬롯이 있습니다. 현재 보정값을 저장하고, 불러오거나 같은 이름으로 업데이트합니다. 소자 관리에서 이름 변경·삭제·JSON 가져오기/내보내기가 가능합니다. 브라우저 로컬 저장이며 이전에 5개보다 많이 저장된 데이터는 삭제하지 않습니다.
+- **회로:** 자유 배치·배선·파라미터 편집이 기본입니다. 예제는 보조 메뉴입니다. 빠른 벤치 화면은 제거했습니다. 새 MOSFET/다이오드/BJT도 회로의 비선형 MNA 해석에 참여합니다.
+- **기본 소자:** NMOS/PMOS의 L·W·Vth·SS, 다이오드 Is·n, NPN/PNP의 Is·βF·βR을 설정합니다. 세부 식과 적용 범위는 `BASIC_CIRCUIT_DEVICES.md`에 있습니다. BSIM/Gummel–Poon 같은 제조사 모델은 아니며 기본 동작용 모델입니다.
+- **상용 시뮬레이터로 내보내기:** LTspice(`.cir`·`.lib`)와 Verilog-A(`.va`) 중 선택합니다. 고정 게이트·광조건의 ID–VD 및 래치 문턱을 재현하는 준정적 모델이며, CSVM의 동적 Vtop·Vbottom·주파수와 확률 잡음은 포함하지 않습니다. 실제 서버 계산에서만 내보냅니다. 상용 프로그램에서의 실행 검증은 수행하지 않았습니다. Sentaurus TCAD는 구조·메시·도핑·접촉 정보와 별도 연동 검증이 필요하므로, 선택창에서 이유를 안내하고 다운로드를 비활성화했습니다.
+- **레퍼런스:** 실제 측정 ID–VD 중앙값과 기준 보정 모델을 겹쳐 보여 줍니다. 상향/하향의 오차 지표와 계산 방법을 확인할 수 있습니다. 항상 고정 기준 조건이며 현재 사용자 보정값과 혼동하지 않도록 표시합니다. `scripts/build_reference.py`로 실제 소스 데이터에서 재생성할 수 있습니다.
+- **표시 오류:** 로그축 확대 범위가 Linear 전환 후 남는 문제를 수정했습니다.
+- **브랜딩:** 사용자가 제공한 biristor 심볼(원 안의 기울어진 평행사변형과 좌우 단자선)을 로고·아이콘에 적용했습니다. 회로 심볼은 같은 내부 형상을 쓰며 실제 SOI 모델의 D/G/S 연결을 유지합니다. 제작자 정보는 KAIST · NOBEL 연구실만 접어서 보여줍니다.
+
+검증 화면·회로 예제·기본 UI가 바뀌었으므로 기존 정적 스냅샷을 다시 배포할 때는 새로 녹화해야 합니다. Geometry·VBG를 바꾼 조건은 해당 조건의 실제 계산 기록이 없으면 오프라인 데모 결과로 대체하지 않습니다.

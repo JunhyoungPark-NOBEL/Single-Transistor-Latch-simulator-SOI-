@@ -169,3 +169,12 @@
 - Geometry/VBG changes support deterministic VSCM/CSVM. Baseline-only noise kernels and invalid lateral-base/field domains are explicitly rejected. Offline mock data never stand in for changed geometry; exact reference legacy snapshot compatibility preserves the canonical request hash.
 - LTspice/Verilog-A exports record fixed_geometry and fixed_VBG_V; stale condition mismatches are rejected. This does not add commercial dynamic-geometry models or Sentaurus physical decks.
 - Full derivation, assumptions and numerical checks: ../GEOMETRY_MODEL_KO.md.
+
+## 2026-09-25 — Import into the main line
+
+- [docs] GEOMETRY_MODEL_KO.md and SIMULATOR_EXPORTS_KO.md moved to docs/; START_HERE_KO.md folded into UPDATE_VALIDATION.md; PREVIEW/ not committed.
+- [package] Only `noto-sans-kr.woff2` (loaded by `index.css`) is committed; the 124 unused per-range subset files and the duplicate LICENSE.txt are not. In-app help links open `web/public/docs/*.html`; Markdown copies are not published there (sources stay in docs/).
+- [export] LTspice/Verilog-A metadata leaves out the calibration descriptors and the engine vector unless `includeCalibration` is set (`calibration_included` records which). The current tables still reproduce the calibrated ID–VD curve.
+- [circuit] A reference cell (26-entry p) keeps the legacy body-charge expression so reference circuit results stay bit-identical to earlier releases. Basic-device Newton steps use a pnjlim-style limiter on forward junction steps only; the exponential continuation starts at min(max(40, ln(1 A/Is)), 700).
+- [cache] The result-cache key covers server/geometry_model.py and server/payloads.py.
+- [test] The CSVM request fixture used by a unit test lives in `web/src/device/fixtures/` because the installer kit excludes `web/e2e`.
