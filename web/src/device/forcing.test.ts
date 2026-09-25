@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import accepted from "../../e2e/fixtures/csvm/payload.json";
+import accepted from "./fixtures/csvm-payload.json";
 import { BUILTIN_META } from "../state/presets";
 import { canonical } from "../utils/object";
 import { presetRoot } from "../utils/payload";
