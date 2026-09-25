@@ -187,7 +187,7 @@ Windows PowerShell: `$s = Read-Host -AsSecureString` →
 `$env:STL_BUNDLE_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))`
 → `python scripts\build_local_bundle.py` → `Remove-Item Env:\STL_BUNDLE_PASSWORD`.
 
-결과: `dist-local/STL-Simulator-Installer-<버전>/` 폴더와 같은 이름의 `.zip` (약 4 MB). ZIP은 연구실 구성원만 볼 수 있게
+결과: `dist-local/STL-Simulator-Installer-<버전>/` 폴더와 같은 이름의 `.zip` (약 5 MB). ZIP은 연구실 구성원만 볼 수 있게
 제한한 **Google Drive 링크**, NAS, USB로 전달하고, **비밀번호는 다른 경로로** (메신저·구두) 알려 줍니다. **메일 첨부는
 쓰지 마세요**: Gmail과 많은 학교·회사 메일이 `.bat`/`.cmd`/`.ps1` 이 든 ZIP을 보안상 차단합니다. `dist-local/` 은
 커밋하지 않습니다. 키트에는 커밋 해시 대신 빌드 ID(`BUILD_ID`, 커밋에서 계산한 불투명한 값)만 들어가고, 빌더가

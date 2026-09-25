@@ -27,7 +27,7 @@ GPT/Codex ──push──▶ GitHub (private 저장소, 배포 브랜치)
                               ▼
 연구실 서버  stl-update.timer (5분마다) → /opt/stl-sim/bin/update.sh (root 소유, 고정)
               1) 새 커밋? → 깨끗한 작업 폴더에 checkout → docker compose build (이미지 태그 = 커밋 해시)
-              2) 카나리(canary): 새 이미지를 네트워크·권한 없이 따로 띄워 health check + 로그인 + 계산 1건 확인
+              2) 카나리(canary): 새 이미지를 네트워크·권한 없이 따로 띄워 health check + 로그인 + 계산 2건(기준, L 400 nm) 확인
               3) 통과하면 교체(switch): docker compose up -d → app health check → 프록시 경유 확인
               4) 어디서든 실패하면 이전 버전을 그대로 유지하거나 되돌림(rollback)
                               │
