@@ -67,7 +67,7 @@ FINAL = ("done", "error", "cancelled")
 # engine inputs that shape results (code + data); run-time cache folders are not inputs
 _ENGINE_SUFFIXES = {".py", ".json", ".npz", ".npy", ".csv", ".txt"}
 _ENGINE_CACHE_DIRS = {"__pycache__", "photo_nodes", "fpt_nodes", "conditional_table", "fast_fpt"}
-_SERVER_FILES = ("params.py", "engine_bridge.py", "jsonutil.py", "jobs.py")
+_SERVER_FILES = ("params.py", "engine_bridge.py", "geometry_model.py", "payloads.py", "jsonutil.py", "jobs.py")
 
 
 def _env_float(name: str, default: float) -> float:
@@ -80,7 +80,8 @@ def _env_float(name: str, default: float) -> float:
 
 def engine_version(server_dir: Path = SERVER_DIR, engine_dir: Path = ENGINE_DIR) -> str:
     """sha256 over everything that shapes a cached result: server/compute/**/*.py, params.py,
-    engine_bridge.py, jsonutil.py (serialisation), jobs.py (result post-processing) and the engine's
+    engine_bridge.py, geometry_model.py (geometry kernels), payloads.py (normalisation), jsonutil.py
+    (serialisation), jobs.py (result post-processing) and the engine's
     code + data files.  Any edit invalidates the result cache."""
     groups: list[tuple[str, Path, list[Path]]] = [
         ("server", server_dir, sorted((server_dir / "compute").rglob("*.py")) + [server_dir / n for n in _SERVER_FILES])]

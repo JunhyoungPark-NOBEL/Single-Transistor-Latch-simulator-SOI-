@@ -482,7 +482,8 @@ def test_engine_version_covers_engine_and_serialisation(tmp_path):
     from server.jobs import engine_version
     srv, eng = tmp_path / "server", tmp_path / "engine"
     (srv / "compute").mkdir(parents=True)
-    for name in ("params.py", "engine_bridge.py", "jsonutil.py", "jobs.py", "compute/a.py"):
+    for name in ("params.py", "engine_bridge.py", "geometry_model.py", "payloads.py", "jsonutil.py", "jobs.py",
+                 "compute/a.py"):
         (srv / name).write_text("x = 1\n")
     (eng / "photo_extension" / "photo_nodes").mkdir(parents=True)
     (eng / "__pycache__").mkdir()
@@ -492,7 +493,8 @@ def test_engine_version_covers_engine_and_serialisation(tmp_path):
     (eng / "photo_extension" / "photo_nodes" / "node.npz").write_bytes(b"cache")   # run-time caches do not count
     (eng / "__pycache__" / "x.nbi").write_bytes(b"cache")
     assert engine_version(srv, eng) == v0
-    for f, data in ((eng / "stl_api.py", b"y = 2\n"), (eng / "table.npz", b"\x00\x02"), (srv / "jsonutil.py", b"x = 2\n")):
+    for f, data in ((eng / "stl_api.py", b"y = 2\n"), (eng / "table.npz", b"\x00\x02"), (srv / "jsonutil.py", b"x = 2\n"),
+                    (srv / "geometry_model.py", b"x = 2\n"), (srv / "payloads.py", b"x = 2\n")):
         old = f.read_bytes()
         f.write_bytes(data)
         assert engine_version(srv, eng) != v0, f
