@@ -337,7 +337,9 @@ export async function runCsvm() {
   const payload = csvmPayload(s.params, s.mode, useForcing.getState().settings);
   const gid = beginGroup(["device_csvm"], `csvm ${s.mode}`);
   try {
-    if (s.backend !== "online") {
+    // a static snapshot may replay a recorded run of exactly this request; anything else needs the live solver
+    const recorded = s.backend === "snapshot" && !!(await snapshotProbe)?.has("circuit", payload);
+    if (s.backend !== "online" && !recorded) {
       s.patchResult("device_csvm", {
         kind: "circuit", status: "error", progress: 0,
         error: s.lang === "ko" ? "CSVM은 과도 해석 서버 연결이 필요합니다." : "CSVM requires a live transient solver connection.",

@@ -9,14 +9,15 @@
 //   snapshot/measured.json.gz, snapshot/design_map.json.gz
 // Nothing is decimated: the files hold exactly what the app received.
 //
-// Flows (per language): device-det, device-sto, circuit-schematic, circuit-benches, validation; once (first
+// Flows (per language): device-det, device-sto (Device 1, VSCM and the default CSVM run), circuit-schematic (every
+// example, deterministic and stochastic), reference (the Reference tab's fixed-condition sweep); once (first
 // language): device-grid = Device tab deterministic (branches, charge balance at the UI's default V_D, V_G curve)
-// for V_G −3.8 … −0.9 V in 0.1 V steps for both presets (only V_G changed) and the illumination preset at the
-// measured conditions (V_G × P = 0 / 1.15 / 2.55 / 3.51 mW). The page answers other V_G values with the nearest
-// grid point (src/api/snapshot.ts, marked in the panel).
+// for V_G −3.8 … −0.9 V in 0.1 V steps on Device 1 (only V_G changed). The page answers other V_G values with the
+// nearest grid point (src/api/snapshot.ts, marked in the panel). Changed geometry, V_BG or CSVM settings are not
+// recorded: the static page says they need the live solver.
 //
 // Usage: npm run snapshot:record [-- --api http://127.0.0.1:8000] [--flows device-det,device-sto,circuit-schematic,
-//        circuit-benches,validation,device-grid] [--langs ko,en] [--plain] [--with-val-vg] [--step-timeout 900] [--headed]
+//        reference,device-grid] [--langs ko,en] [--plain] [--step-timeout 900] [--headed]
 // Env:   STL_API (backend URL, default http://127.0.0.1:8000). Requires the backend to be running.
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -31,14 +32,12 @@ const args = parseArgs(process.argv.slice(2));
 const API = String(args.api ?? process.env.STL_API ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 const OUT = path.resolve(WEB, String(args.out ?? "snapshot"));
 const LANGS = String(args.langs ?? "ko,en").split(",").filter(Boolean);
-const ALL_FLOWS = ["device-det", "device-sto", "circuit-schematic", "circuit-benches", "validation", "device-grid"];
+const ALL_FLOWS = ["device-det", "device-sto", "circuit-schematic", "reference", "device-grid"];
 const ONCE_FLOWS = new Set(["device-grid"]); // language-independent: first language only
 const VG_GRID = Array.from({ length: 30 }, (_, i) => Number((-3.8 + 0.1 * i).toFixed(1))); // −3.8 … −0.9 V
-const P_GRID = [0, 1.15, 2.55, 3.51]; // mW (the measured illumination conditions)
 const BUNDLE_JSON_BYTES = 3 * 1024 * 1024; // grid bundles: ≈ 1.2 MB gzip each
 const FLOWS = String(args.flows ?? ALL_FLOWS.join(",")).split(",").filter(Boolean);
 const PLAIN = !!args.plain;
-const WITH_VAL_VG = !!args["with-val-vg"];
 const STEP_TIMEOUT_MS = Number(args["step-timeout"] ?? 900) * 1000;
 const LIMITS = { bytes: 40 * 1024 * 1024, files: 150 };
 const DATA_ENDPOINTS = { health: "/api/health", meta: "/api/meta", measured: "/api/data/measured", design_map: "/api/data/design_map" };
@@ -225,6 +224,11 @@ async function setField(page, key, group, text) {
   await input.press("Enter");
 }
 
+/** Switch the Device tab's forcing mode (VSCM voltage sweep / CSVM current forcing). */
+async function setForcing(page, forcing) {
+  await page.getByTestId("device-forcing").getByRole("radio", { name: forcing === "csvm" ? /CSVM/ : /VSCM/ }).click();
+}
+
 async function vgStochCompute(page) {
   const empty = page.getByTestId("vgs-compute");
   if (await empty.isVisible().catch(() => false)) return empty.click();
@@ -235,33 +239,29 @@ async function vgStochCompute(page) {
 
 // ---------------------------------------------------------------- flows
 const FLOW_IMPL = {
-  // Device tab, deterministic: default state (reference preset as loaded), then each preset explicitly.
+  // Device tab, deterministic: Device 1 as loaded (VSCM sweep), then the default CSVM run.
   async "device-det"(browser, base, lang) {
     const { ctx, page } = await openApp(browser, base, "#tab=device&mode=deterministic", lang);
     const L = `${lang} · device det`;
-    await step(page, `${L} · default`, () => runButton(page));
-    await step(page, `${L} · reference`, async () => (await click(page, "preset-paper"), runButton(page)));
-    await step(page, `${L} · illumination`, async () => (await click(page, "preset-photo"), runButton(page)));
+    await step(page, `${L} · VSCM`, () => runButton(page));
+    await step(page, `${L} · CSVM`, async () => (await setForcing(page, "csvm"), runButton(page)));
     await ctx.close();
   },
-  // Device tab, stochastic: default state + stochastic V_G curve, then each preset explicitly.
+  // Device tab, stochastic: Device 1 as loaded + stochastic V_G curve, then the default CSVM run.
   async "device-sto"(browser, base, lang) {
     const { ctx, page } = await openApp(browser, base, "#tab=device&mode=stochastic", lang);
     const L = `${lang} · device sto`;
-    await step(page, `${L} · default`, () => runButton(page));
-    await step(page, `${L} · default · V_G curve`, () => vgStochCompute(page));
-    await step(page, `${L} · reference`, async () => (await click(page, "preset-paper"), runButton(page)));
-    await step(page, `${L} · reference · V_G curve`, () => vgStochCompute(page));
-    await step(page, `${L} · illumination`, async () => (await click(page, "preset-photo"), runButton(page)));
+    await step(page, `${L} · VSCM`, () => runButton(page));
+    await step(page, `${L} · V_G curve`, () => vgStochCompute(page));
+    await step(page, `${L} · CSVM`, async () => (await setForcing(page, "csvm"), runButton(page)));
     await ctx.close();
   },
-  // Circuit tab, schematic editor: the default circuit and every example template, deterministic and stochastic.
+  // Circuit tab, schematic editor (starts on an empty canvas): every example template, deterministic and stochastic.
   async "circuit-schematic"(browser, base, lang) {
     for (const mode of ["deterministic", "stochastic"]) {
       const { ctx, page } = await openApp(browser, base, `#tab=circuit&mode=${mode}`, lang);
       const L = `${lang} · schematic ${mode === "deterministic" ? "det" : "sto"}`;
       await page.getByTestId("schematic-view").waitFor();
-      await step(page, `${L} · default circuit`, () => runSchematic(page));
       await click(page, "menu-examples");
       const ids = await page.locator("[data-testid^=tpl-]").evaluateAll((els) => els.map((e) => e.getAttribute("data-testid").slice(4)));
       await page.keyboard.press("Escape");
@@ -276,43 +276,18 @@ const FLOW_IMPL = {
       await ctx.close();
     }
   },
-  // Circuit tab, quick benches: every bench deterministic, the load line also stochastic.
-  async "circuit-benches"(browser, base, lang) {
-    const { ctx, page } = await openApp(browser, base, "#tab=circuit&mode=deterministic", lang);
-    const L = `${lang} · bench`;
-    await click(page, "circuit-view-benches");
-    const benches = await page.locator("[data-testid=bench-picker] [role=radio]").evaluateAll((els) => els.map((e) => e.getAttribute("data-testid").slice(6)));
-    for (const b of benches) await step(page, `${L} det · ${b}`, async () => (await click(page, `bench-${b}`), runButton(page)));
-    await click(page, "mode-stochastic");
-    await step(page, `${L} sto · load_line`, async () => (await click(page, "bench-load_line"), runButton(page)));
-    await ctx.close();
-  },
-  // Device tab deterministic on the V_G grid (both presets) and the illumination preset on the V_G × P grid.
-  // Resilient: a failed point reopens the page and is retried once.
+  // Device tab deterministic on the V_G grid (Device 1). Resilient: a failed point reopens the page and is retried once.
   async "device-grid"(browser, base, lang) {
     let app = await openApp(browser, base, "#tab=device&mode=deterministic", lang, "grid · load");
-    const tasks = [];
-    for (const preset of ["paper", "photo"]) for (const vg of VG_GRID) tasks.push({ preset, vg, p: null });
-    const vgs = [...new Set((data.meta?.measured_photo_conditions ?? []).map((c) => c.vg))];
-    for (const vg of vgs.length ? vgs : [-1.8]) for (const p of P_GRID) tasks.push({ preset: "photo", vg, p });
-    let preset = null;
     let failures = 0;
-    for (const t of tasks) {
-      const label = `grid · ${t.preset} · V_G ${t.vg.toFixed(1)}${t.p === null ? "" : ` · P ${t.p} mW`}`;
+    for (const vg of VG_GRID) {
+      const label = `grid · Device 1 · V_G ${vg.toFixed(1)}`;
       for (let attempt = 0; ; attempt++) {
         try {
-          if (!app) {
-            app = await openApp(browser, base, "#tab=device&mode=deterministic", lang, "grid · reload");
-            preset = null;
-          }
+          app ??= await openApp(browser, base, "#tab=device&mode=deterministic", lang, "grid · reload");
           const { page } = app;
-          if (preset !== t.preset) {
-            await click(page, `preset-${t.preset}`);
-            preset = t.preset;
-          }
           await step(page, label, async () => {
-            await setField(page, "vg", "bias", t.p === null ? t.vg.toFixed(1) : String(t.vg));
-            if (t.p !== null) await setField(page, "power_mW", "light", String(t.p));
+            await setField(page, "vg", "bias", vg.toFixed(1));
             await runButton(page);
           }, { grid: true });
           break;
@@ -326,13 +301,12 @@ const FLOW_IMPL = {
     }
     await app?.ctx.close();
   },
-  // Validation tab: reference-record I–V (auto on open), fast checks, the 8 illumination conditions.
-  async validation(browser, base, lang) {
-    const L = `${lang} · validation`;
-    const { ctx, page } = await openApp(browser, base, "#tab=validation", lang, `${L} · reference I–V`);
-    await step(page, `${L} · fast checks`, () => click(page, "val-fast"));
-    await step(page, `${L} · illumination conditions`, () => click(page, "val-photo-run"));
-    if (WITH_VAL_VG) await step(page, `${L} · V_G figure`, () => page.locator("[data-testid=panel-val-vg] button.btn").first().click());
+  // Reference tab: the fixed-condition sweep compared with the measured median ID–VD starts when the tab opens.
+  async reference(browser, base, lang) {
+    const L = `${lang} · reference`;
+    const { ctx, page } = await openApp(browser, base, "#tab=validation", lang, `${L} · sweep`);
+    await page.getByTestId("reference-metrics").waitFor({ timeout: STEP_TIMEOUT_MS });
+    await drain(page, `${L} · sweep`);
     await ctx.close();
   },
 };
