@@ -114,7 +114,7 @@ export function buildTemplate(id: TemplateId, stl: StlRef, name: string): Schema
     }
     case "coupled": {
       d.elements = [
-        el("V", "Vsrc", 80, 200, { wave: triangle(4, 0.4) }),
+        el("V", "Vsrc", 80, 200, { wave: triangle(4, 20) }), // 20 V/s: a stochastic run with event-level noise stays ~3 s
         gnd(80, 240),
         el("R", "Rs1", 280, 140, { value: 100e3 }),
         el("STL", "X1", 280, 280, { stl: clone(stl), light: null }),
@@ -144,7 +144,7 @@ export function buildTemplate(id: TemplateId, stl: StlRef, name: string): Schema
         ...path([240, 280], [180, 280], [180, 320]),
         ...path([640, 280], [610, 280]),
       ];
-      d.tran = { ...d.tran, t_stop_s: 20, dt_max_s: null };
+      d.tran = { ...d.tran, t_stop_s: 0.4, dt_max_s: null };
       break;
     }
     case "oscillator": {

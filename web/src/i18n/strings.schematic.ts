@@ -128,7 +128,7 @@ export const SCHEMATIC_STRINGS = {
     en: "Twenty 3.69 V drain pulses (200 µs wide, 1 ms period), source → R_S 100 kΩ → ground, comparator on V(s) with V_ref = 0.1 V. With carrier noise it fires at random in about 50 % of the pulses; deterministically it never fires (below V_LU ≈ 3.70 V) — raise the pulses to 3.72 V and it fires on every pulse.",
   },
   "schematic.tpl.coupled": { ko: "저항 결합 쌍", en: "Resistively coupled pair" },
-  "schematic.tpl.coupled.desc": { ko: "공통 램프, R_s 100 kΩ 두 개, 결합 R_c 1 MΩ, STL 두 개", en: "Common ramp, two 100 kΩ series resistors, 1 MΩ coupling, two STLs" },
+  "schematic.tpl.coupled.desc": { ko: "공통 램프 (20 V/s), R_s 100 kΩ 두 개, 결합 R_c 1 MΩ, STL 두 개", en: "Common 20 V/s ramp, two 100 kΩ series resistors, 1 MΩ coupling, two STLs" },
   "schematic.tpl.oscillator": { ko: "전류 구동 발진기 (integrate-and-fire)", en: "Current-driven oscillator (integrate-and-fire)" },
   "schematic.tpl.oscillator.desc": {
     ko: "I_in 1 nA가 C_par 1 pF를 충전하고 STL이 V_LU에서 래치되어 V_LD까지 방전 — V(out) 톱니파 약 860 Hz, 15 ms 동안 스파이크 10개",

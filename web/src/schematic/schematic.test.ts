@@ -304,6 +304,7 @@ describe("feasibility and persistence", () => {
     expect(estimate(d, "deterministic").level).toBe("ok");
     expect(estimate(d, "stochastic").level).toBe("refuse");
     expect(estimate(buildTemplate("pulse", STL, "p"), "stochastic").level).not.toBe("refuse");
+    expect(estimate(buildTemplate("coupled", STL, "cp"), "stochastic").level).not.toBe("refuse");
   });
   it("round-trips and sanitises documents", () => {
     const d = buildTemplate("coupled", STL, "cp");
