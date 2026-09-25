@@ -3,6 +3,29 @@
 import type { L10n } from "../content/physics/types";
 
 export const SCHEMATIC_STRINGS = {
+  "schematic.insp.modelEquations": { ko: "모델 수식", en: "Model equations" },
+  "schematic.tool.MOS": { ko: "MOSFET", en: "MOSFET" },
+  "schematic.tool.D": { ko: "다이오드", en: "Diode" },
+  "schematic.tool.BJT": { ko: "BJT", en: "BJT" },
+  "schematic.insp.polarity": { ko: "종류", en: "Type" },
+  "schematic.insp.moreModel": { ko: "전류 계수", en: "Current coefficients" },
+  "schematic.insp.modelGuide": { ko: "모델 안내", en: "About this model" },
+  "schematic.insp.mosGuide": { ko: "300 K 기본 모델. L·W는 전류 크기, |Vth|는 켜지는 전압, SS는 문턱 아래 기울기를 조절합니다. 기생 용량·바디 다이오드는 제외됩니다.", en: "Basic model at 300 K. L/W set current, |Vth| sets the threshold magnitude, and SS sets subthreshold swing. Parasitic capacitance and body diode are omitted." },
+  "schematic.insp.diodeGuide": { ko: "300 K Shockley 모델. Is는 전류 계수, n은 이상 계수입니다. 접합 용량과 항복은 제외됩니다.", en: "Shockley model at 300 K. Is sets current scale; n is the ideality factor. Junction capacitance and breakdown are omitted." },
+  "schematic.insp.bjtGuide": { ko: "300 K Ebers–Moll 모델. Is는 전류 계수, βF·βR은 순·역방향 전류 이득입니다. 기생 용량은 제외됩니다.", en: "Ebers–Moll model at 300 K. Is sets current scale; βF/βR set forward/reverse gain. Parasitic capacitances are omitted." },
+  "schematic.empty.drawHint": { ko: "위에서 소자를 선택해 배치하고, 핀을 연결하세요.", en: "Choose a component above, place it, then connect its pins." },
+  "schematic.tpl.cmos_inverter": { ko: "CMOS 인버터", en: "CMOS inverter" },
+  "schematic.tpl.cmos_inverter.desc": { ko: "NMOS + PMOS · 1.8 V", en: "NMOS + PMOS · 1.8 V" },
+  "schematic.tpl.diode_clipper": { ko: "다이오드 클리퍼", en: "Diode clipper" },
+  "schematic.tpl.diode_clipper.desc": { ko: "사인 입력 · 1 kΩ", en: "Sine input · 1 kΩ" },
+  "schematic.tpl.bjt_switch": { ko: "BJT 스위치", en: "BJT switch" },
+  "schematic.tpl.bjt_switch.desc": { ko: "NPN 공통 이미터 · 3.3 V", en: "NPN common emitter · 3.3 V" },
+  "schematic.pin.a": { ko: "애노드", en: "Anode" },
+  "schematic.pin.k": { ko: "캐소드", en: "Cathode" },
+  "schematic.pin.c": { ko: "컬렉터", en: "Collector" },
+  "schematic.pin.b": { ko: "베이스", en: "Base" },
+  "schematic.pin.e": { ko: "이미터", en: "Emitter" },
+
   // ---------------------------------------------------------------- device card / library
   "schematic.dev.title": { ko: "소자", en: "Device" },
   "schematic.dev.tech": { ko: "공정", en: "Technology" },
@@ -346,8 +369,8 @@ export const SCHEMATIC_STRINGS = {
   "schematic.empty.body": { ko: "툴바나 단축키(R, C, V, I, G, X, K, W, N)로 부품을 놓거나 예제에서 시작하세요.", en: "Place parts from the toolbar or with shortcuts (R, C, V, I, G, X, K, W, N), or start from an example." },
   "schematic.shortcuts": { ko: "단축키", en: "Shortcuts" },
   "schematic.shortcuts.body": {
-    ko: "R 저항 · C 커패시터 · V 전압원 · I 전류원 · G 접지 · X/D STL · K 비교기 · W 배선 · N 넷 라벨 · P 프로브 · Del 삭제 · Ctrl+R 회전 · Ctrl+E 반전 · Ctrl+D 복제 · Ctrl+Z/Y 실행 취소/다시 · F 전체 보기 · Space+끌기 화면 이동 · Esc 취소 · Ctrl+Enter 실행",
-    en: "R resistor · C capacitor · V voltage source · I current source · G ground · X/D STL · K comparator · W wire · N net label · P probe · Del delete · Ctrl+R rotate · Ctrl+E mirror · Ctrl+D duplicate · Ctrl+Z/Y undo/redo · F fit · Space+drag pan · Esc cancel · Ctrl+Enter run",
+    ko: "R 저항 · C 커패시터 · V 전압원 · I 전류원 · G 접지 · X STL · M MOSFET · D 다이오드 · Q BJT · K 비교기 · W 배선 · N 넷 라벨 · P 프로브 · Del 삭제 · Ctrl+R 회전 · Ctrl+E 반전 · Ctrl+D 복제 · Ctrl+Z/Y 실행 취소/다시 · F 전체 보기 · Space+끌기 화면 이동 · Esc 취소 · Ctrl+Enter 실행",
+    en: "R resistor · C capacitor · V voltage source · I current source · G ground · X STL · M MOSFET · D diode · Q BJT · K comparator · W wire · N net label · P probe · Del delete · Ctrl+R rotate · Ctrl+E mirror · Ctrl+D duplicate · Ctrl+Z/Y undo/redo · F fit · Space+drag pan · Esc cancel · Ctrl+Enter run",
   },
 
   // ---------------------------------------------------------------- results

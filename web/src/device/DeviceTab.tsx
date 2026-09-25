@@ -5,12 +5,15 @@
 import { entryStatus, FocusLayout, mergeStatus, type MoreTab } from "../components/MoreCard";
 import { useT } from "../i18n";
 import { DEV } from "../i18n/strings.device";
+import { useIsAll } from "../state/layout";
 import { useStore } from "../state/store";
 import { useDeviceKeys } from "./common";
 import { ChargeBalancePanel, ComponentsPanel, IvPanel, VgPanel } from "./DetPanels";
 import "./device.css";
-import { GettingStarted } from "./GettingStarted";
 import { KpiStrip } from "./KpiStrip";
+import { useForcing } from "./forcing";
+import { ForcingControls } from "./ForcingControls";
+import { CsvmPanel } from "./CsvmPanel";
 import { CyclePanel, DesignMapPanel, DistPanel, HazardPanel, McIvPanel, StatsPanel, VgStochPanel } from "./StoPanels";
 
 function DetLayout() {
@@ -43,12 +46,18 @@ function StoLayout() {
 
 export function DeviceTab() {
   const mode = useStore((s) => s.mode);
+  const all = useIsAll();
+  const forcing = useForcing((s) => s.forcing);
   return (
     <div className="device-tab">
-      <GettingStarted />
-      <KpiStrip />
-      {mode === "stochastic" && <StatsPanel />}
-      {mode === "deterministic" ? <DetLayout /> : <StoLayout />}
+      <ForcingControls />
+      {forcing === "csvm" ? <CsvmPanel /> : <><KpiStrip />
+      {all ? <>
+        {mode === "stochastic" && <StatsPanel />}
+        {mode === "deterministic" ? <DetLayout /> : <StoLayout />}
+      </> : <div className="device-sweep" data-testid={`panels-${mode}`}>
+        {mode === "deterministic" ? <IvPanel /> : <McIvPanel />}
+      </div>}</>}
     </div>
   );
 }

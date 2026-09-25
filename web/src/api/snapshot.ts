@@ -17,6 +17,7 @@
 // never see encrypted bytes and behave as before.
 import type { Backend } from "./client";
 import type { Health, JobStatus, Kind, Meta } from "./types";
+import { GEOMETRY_LIVE_REQUIRED, hasChangedGeometry, legacyGeometryPayload } from "./geometryPolicy";
 
 export const SNAPSHOT_FORMAT = 1;
 /** Folder of the snapshot relative to the page (document base URL). */
@@ -436,10 +437,15 @@ export function createSnapshotBackend(snap: Snapshot, opt: { fallback: () => Bac
     }),
     meta: async () => snap.index.meta ?? fallback().meta(),
     submit: async (kind: Kind, payload: unknown) => {
-      const result = await snap.resolve(kind, payload);
+      let result = await snap.resolve(kind, payload);
+      if (result === undefined && !hasChangedGeometry(payload)) {
+        const legacy = legacyGeometryPayload(payload);
+        if (canonicalJson(legacy) !== canonicalJson(payload)) result = await snap.resolve(kind, legacy);
+      }
       if (result !== undefined) {
         return { job_id: `snap-${++seq}`, kind, status: "done", progress: 1, message: "snapshot", result, cached: true, elapsed_s: 0 };
       }
+      if (hasChangedGeometry(payload)) throw new Error(GEOMETRY_LIVE_REQUIRED);
       return wrap(await fallback().submit(kind, payload));
     },
     job: async (id: string) => {

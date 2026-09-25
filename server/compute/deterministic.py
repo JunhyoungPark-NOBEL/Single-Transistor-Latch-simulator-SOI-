@@ -19,6 +19,7 @@ from scipy.optimize import brentq
 from server import params
 from server.engine_bridge import MODEL, S, m
 from server.progress import null_progress
+from server.geometry_model import pack_p, constants_from_p, backgate_charge
 
 Q = float(m.Q)
 GRID_MIN, GRID_MAX = 201, 2001
@@ -48,7 +49,7 @@ def _grid(device: dict, warnings: list[str]) -> int:
 
 
 def _pvec(device: dict, **kw: float) -> np.ndarray:
-    return np.asarray(params.build_p(device, **kw), dtype=float)
+    return pack_p(params.build_p(device, **kw))
 
 
 def _fnum(x: Any) -> float | None:
@@ -264,7 +265,8 @@ def run_branches(payload: dict, progress=null_progress) -> dict:
                    LRS=curve_dict(lrs, iph), full=curve_dict(b, iph), folds=fl, double_sweep=ds)
     progress(1.0, "done")
     sg = _sweep_grid(vd_max, dv)
-    res.update(iph_A=iph, p=p.tolist(), grid=grid, vd_max_V=vd_max, sweep_dv_V=float(sg[1] - sg[0]),
+    res.update(vbg=float(device.get("vbg", 0.0)), geometry=dict(device["geometry"]), geometry_model=params.geometry_model_metadata(device),
+               iph_A=iph, p=params.build_p(device), grid=grid, vd_max_V=vd_max, sweep_dv_V=float(sg[1] - sg[0]),
                runtime_s=time.perf_counter() - t0, warnings=warnings)
     return res
 
@@ -283,7 +285,8 @@ def run_folds(payload: dict, progress=null_progress) -> dict:
     elif z is None:
         warnings.append("no two-fold branch: the device does not latch")
     progress(1.0, "done")
-    return dict(latch=z is not None, folds=folds_of(z), iph_A=float(p[13]), p=p.tolist(), grid=grid,
+    return dict(vbg=float(device.get("vbg", 0.0)), geometry=dict(device["geometry"]), geometry_model=params.geometry_model_metadata(device),
+                latch=z is not None, folds=folds_of(z), iph_A=float(p[13]), p=params.build_p(device), grid=grid,
                 runtime_s=time.perf_counter() - t0, warnings=warnings)
 
 
@@ -319,22 +322,24 @@ def state_row(u: float, vd: float, p: np.ndarray) -> np.ndarray:
     """setup_photo.state(u, vd, p) with a wider fallback: when the r bracket [0, vd-u] ends in the region where
     components() is NaN, the bracket is shrunk to the finite part.  Same row formulas as S.state:
     [u, r, I_D, gen(1/s), loss(1/s), C_ox ψ, Q_exc, q N_A A L_n, F(A), seed(A), unit(A)]."""
-    try:
-        return S.state(float(u), float(vd), p)
-    except ValueError:
-        pass
+    if len(p) < 32:
+        try:
+            return S.state(float(u), float(vd), p)
+        except ValueError:
+            pass
     u, vd = float(u), float(vd)
     rmax = _finite_r_max(u, vd, p)
     if not np.isfinite(rmax) or rmax <= 0 or _comp(u, rmax, p)[0] < vd:
         raise ValueError("no drain-junction solution")
     r = brentq(lambda rr: _comp(u, rr, p)[0] - vd, 0.0, rmax, xtol=1e-11)
     z = _comp(u, r, p)
+    _, _, tsi, area, cox, na, _ = constants_from_p(p)
     psi = u - m.VT * np.log1p(z[10])
-    ratio = (p[5] * 1e-7 / (m.TSI_M * 100)) * (p[7] * 1e-7 / z[11])
-    qb = (z[13] - m.COX_F * u) / (1 + ratio)
+    ratio = (p[5] * 1e-7 / tsi) * (p[7] * 1e-7 / z[11])
+    qb = (z[13] - cox * u) / (1 + ratio)
     qa = qb * ratio
-    return np.array([u, r, z[1], (z[1] - z[3] - z[16]) / m.Q, (z[5] + z[6] + z[7]) / m.Q, m.COX_F * psi, qb + qa,
-                     m.Q * MODEL.na * m.AREA_CM2 * z[11], z[2], z[3], z[8] + z[9] + z[18]])
+    return np.array([u, r, z[1], (z[1] - z[3] - z[16]) / m.Q, (z[5] + z[6] + z[7]) / m.Q, cox * psi + backgate_charge(p), qb + qa,
+                     m.Q * na * area * z[11], z[2], z[3], z[8] + z[9] + z[18]])
 
 
 def _state_row(u: float, vd: float, p: np.ndarray) -> np.ndarray | None:
@@ -438,7 +443,7 @@ def run_charge_balance(payload: dict, progress=null_progress) -> dict:
         U = U - float(np.nanmin(U))
         warnings.append("no stable root at this V_D: potential zeroed at its minimum")
     progress(1.0, "done")
-    return dict(vd=vd, u=u, r=rows[:, 1], id=rows[:, 2], Q_C=QC, generation_A=gen_A, loss_A=loss_A,
+    return dict(vbg=float(device.get("vbg", 0.0)), geometry=dict(device["geometry"]), geometry_model=params.geometry_model_metadata(device), vd=vd, u=u, r=rows[:, 1], id=rows[:, 2], Q_C=QC, generation_A=gen_A, loss_A=loss_A,
                 unit_A=unit_A, ii_A=gen_A - unit_A, F_A=F_A, potential=U, roots=roots,
                 holes=x, iph_A=float(p[13]), runtime_s=time.perf_counter() - t0, warnings=warnings)
 
@@ -532,5 +537,5 @@ def run_vg_curve(payload: dict, progress=null_progress) -> dict:
         warnings.append(f"steady-state locus not traceable at the fold (gap in u) at {len(gaps)} V_G value(s) "
                         f"({gaps[0]:+.3f} … {gaps[-1]:+.3f} V): reported as no latch")
     progress(1.0, "done")
-    return dict(vg=vg, V_LU=V_LU, V_LD=V_LD, I_LU=I_LU, I_LD=I_LD, latch=latch.tolist(), window=window,
+    return dict(vbg=float(device.get("vbg", 0.0)), geometry=dict(device["geometry"]), geometry_model=params.geometry_model_metadata(device), vg=vg, V_LU=V_LU, V_LD=V_LD, I_LU=I_LU, I_LD=I_LD, latch=latch.tolist(), window=window,
                 grid=grid, runtime_s=time.perf_counter() - t0, warnings=warnings)

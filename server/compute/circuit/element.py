@@ -1,7 +1,7 @@
 """STL circuit element: evaluation of the engine's ``components`` with the circuit-level
 extensions, the body-charge coordinate and the stochastic event rates (numba).
 
-Everything here is ``@njit(cache=True)`` and calls ``photo_mean.components`` directly.
+Everything here is ``@njit(cache=True)`` and uses the geometry-aware component dispatcher.
 
 Element outputs (``out`` array of length ``N_EV``)::
 
@@ -9,7 +9,8 @@ Element outputs (``out`` array of length ``N_EV``)::
     out[1] I_D   drain current                                       (A)    = z[1]
     out[2] F     net hole current into the body  G - L               (A)    = z[2]
     out[3] Q     body-charge coordinate                              (C)
-                 Q = C_ox (psi - V_GS) + Q_exc + q N_A A L_n
+                 Reference: Q = C_ox (psi - V_GS) + Q_exc + q N_A A L_n
+                 Geometry: Q = C_body psi - C_front V_GS - C_back V_BG + Q_exc + q N_A A L_n
                  psi = u - V_T ln(1 + delta/N_A),  Q_exc = z[13] - C_ox u,  L_n = z[11]
     out[4] unit  unit-event current  z[8] + z[9] + z[18]            (A)   (junction BTBT + GIDL + photo)
     out[5] G     total hole generation current  z[1] - z[3] - z[16] (A)
@@ -38,6 +39,7 @@ import numpy as np
 from numba import njit
 
 from server.engine_bridge import m
+from server.geometry_model import channel_current, constants_from_p, gate_charge_offset
 
 components = m.components
 
@@ -48,6 +50,8 @@ COX = float(m.COX_F)
 NI = float(m.NI_CM3)
 DN = float(m.DN)
 LCH = float(m.LENGTH_M) * 100.0          # channel length (cm)
+WREF = float(m.WIDTH_M) * 100.0          # calibrated width (cm)
+TSIREF = float(m.TSI_M) * 100.0          # calibrated silicon thickness (cm)
 EPS_SI = 11.7 * float(m.EPS0) / 100.0    # F/cm (as in photo_mean)
 
 N_EV = 8
@@ -61,21 +65,17 @@ def wdep(v, na):
 
 @njit(cache=True)
 def ch_formula(u, r, p):
-    """Channel current of photo_mean.components (without the optional high-V_D seed p[17])."""
-    vg = p[11]
-    n = 1.7786684648788609 * (1.0 + p[16] * (u + r))
-    ov = vg - (-0.49032524444873615) + p[14] * (u + r) + p[15] * u
-    pp = ov / n
-    sf = np.log1p(np.exp(pp / (2 * VT)))
-    sr = np.log1p(np.exp((pp - u - r) / (2 * VT)))
-    return 2 * n * 7.52135238967614e-5 * VT * VT * (sf - sr) * (sf + sr) / (
-        1 + 0.6335606399651017 * n * VT * np.log1p(np.exp(ov / (n * VT))))
+    """Per-device channel current, without the optional high-V_D seed p[17]."""
+    return channel_current(u, r, p)
 
 
 @njit(cache=True)
 def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
     """Evaluate the element at internal state (u, r); p[11] must hold V_GS.  Returns False
     (and NaNs in ``out``) outside the valid domain."""
+    # Geometry and fixed backgate bias travel with each cell's parameter vector.
+    # The gate offset keeps front- and back-gate capacitance coefficients separate.
+    lch, width, tsi, area, cox, na, vbi = constants_from_p(p)
     uc = u if u > 0.0 else 0.0
     rc = r if r > 0.0 else 0.0
     z = components(uc, rc, p, na, vbi, rg, fg, table)
@@ -88,11 +88,12 @@ def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
     unit = z[8] + z[9] + z[18]
     gq = z[1] - z[3] - z[16]
     lq = z[5] + z[6] + z[7]
-    rser = p[3] + z[12]
+    width_scale = width / WREF
+    rser = p[3] / width_scale + z[12]
     flag = 0.0
     if u >= 0.0:
         psi = u - VT * np.log1p(z[10])
-        q = COX * (psi - p[11]) + (z[13] - COX * u) + QE * na * AREA * z[11]
+        q = cox * psi + gate_charge_offset(p) + (z[13] - cox * u) + QE * na * area * z[11]
     else:
         flag += 1.0
         du = 1e-4
@@ -118,7 +119,7 @@ def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
         ws = wdep(sb, na)
         wd = wdep(vbi + rc, na)
         psi = u - VT * np.log1p(delta / na)
-        q = COX * (psi - p[11]) + z[13] + QE * na * AREA * (LCH - wd - ws)
+        q = cox * psi + gate_charge_offset(p) + z[13] + QE * na * area * (lch - wd - ws)
     if r < 0.0:
         flag += 2.0
         if vbi + r < 0.02:
@@ -127,15 +128,16 @@ def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
             return False
         wd0 = wdep(vbi, na)
         wdr = wdep(vbi + r, na)
-        lref = LCH - 2.0 * wd0
-        isd = QE * AREA * DN * NI * NI / (na * lref * p[0])
-        ifwd = isd * np.expm1(-r / VT) + QE * AREA * wdr * NI / (2.0 * p[2]) * np.expm1(-r / (2.0 * VT))
+        lref = lch - 2.0 * wd0
+        isd = QE * area * DN * NI * NI / (na * lref * p[0])
+        tj = p[2] * (tsi / TSIREF)
+        ifwd = isd * np.expm1(-r / VT) + QE * area * wdr * NI / (2.0 * tj) * np.expm1(-r / (2.0 * VT))
         dch = ch_formula(u, r, p) - ch_formula(u, 0.0, p)
         id_new = idr - ifwd + dch
         vd = vd + r + rser * (id_new - idr)
         idr = id_new
         lq += ifwd
-        q += QE * na * AREA * (wd0 - wdr)
+        q += QE * na * area * (wd0 - wdr)
     out[0] = vd
     out[1] = idr
     out[2] = gq - lq

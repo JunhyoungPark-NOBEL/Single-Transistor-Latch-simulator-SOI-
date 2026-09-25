@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { CircuitTab } from "./circuit/CircuitTab";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ContextStrip, Header } from "./components/Header";
+import { DeviceShelf } from "./devices/DeviceShelf";
 import { DeviceTab } from "./device/DeviceTab";
 import { translate } from "./i18n";
 import { PhysicsTab } from "./physics/PhysicsTab";
@@ -60,7 +61,7 @@ export default function App() {
         {hasSidebar && <Sidebar />}
         <main className="main" id="main" role="tabpanel" aria-labelledby={`tab-${tab}`} data-testid={`main-${tab}`}>
           <ErrorBoundary label={tab} resetKey={tab}>
-            {tab === "device" && <DeviceTab />}
+            {tab === "device" && <div className="device-workspace"><DeviceTab /><DeviceShelf /></div>}
             {tab === "circuit" && <CircuitTab />}
             {tab === "validation" && <ValidationTab />}
             {tab === "physics" && <PhysicsTab />}

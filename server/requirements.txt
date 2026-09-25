@@ -1,6 +1,6 @@
 # STL web simulator — Python runtime + test dependencies (backend-core owns this file;
 # other packages append their own lines below, one requirement per line).
-numpy>=1.26
+numpy>=2.0
 scipy>=1.11
 numba>=0.59
 fastapi>=0.110

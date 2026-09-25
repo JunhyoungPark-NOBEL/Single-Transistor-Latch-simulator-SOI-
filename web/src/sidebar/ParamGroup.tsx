@@ -1,5 +1,5 @@
 // Collapsible parameter card. 간단히 layout: one-line head (title, value summary when closed, "n개 수정",
-// icon-only 📖, 초기화), main fields with their inline guide, the rest behind "고급 항목 n개 ▸" (a field whose
+// icon-only documentation and reset), main fields first, the rest behind a short disclosure (a field whose
 // value differs from the default always shows). 모두 보기: today's card, every field and slider.
 // Custom blocks: illumination mode/conversion, channel-seed radio, experimental warning, bench fields.
 import { useId } from "react";
@@ -51,7 +51,6 @@ function AdvFields({ groupId, fields, ctx, group }: { groupId: string; fields: F
   if (!fields.length) return null;
   const hidden = fields.filter((f) => !changed.has(f.key));
   const shown = open ? fields : fields.filter((f) => changed.has(f.key));
-  const names = hidden.map((f) => t.l(f.label)).join(" · ");
   const n = open ? fields.length : hidden.length;
   return (
     <>
@@ -61,13 +60,12 @@ function AdvFields({ groupId, fields, ctx, group }: { groupId: string; fields: F
           className="field-adv"
           aria-expanded={open}
           aria-controls={bodyId}
-          aria-label={fill(t.l(GUIDE["adv.fields.aria"]), { n, names: (open ? fields : hidden).map((f) => t.l(f.label)).join(", ") })}
+          aria-label={fill(t.l(GUIDE["adv.fields"]), { n })}
           onClick={() => setOpen(groupId, !open)}
           data-testid={`field-adv-${groupId}`}
         >
           <IconChevron size={13} className="chev" />
           <span className="fa-count">{fill(t.l(GUIDE["adv.fields"]), { n })}</span>
-          {!open && <span className="fa-names">{names}</span>}
         </button>
       )}
       <div id={bodyId} className="field-adv-body" hidden={shown.length === 0 ? true : undefined}>
@@ -91,8 +89,8 @@ function LightBlock({ ctx, simple, group }: { ctx: Ctx; simple: boolean; group: 
   const R = device.light.responsivity_pA_per_mW;
   // one plain line in the text font: "I_PH 1.91 pA ↔ 광 파워 2.55 mW (응답도 R = 0.75 pA/mW)"
   const conv = (
-    <div className="conv" data-testid="light-conversion" aria-live="polite">
-      I<sub>PH</sub> {fmtSig(iphPA(device), 3)} pA ↔ {fill(t.l(GUIDE["light.conv"]), { p: fmtSig(powerMW(device), 3), r: fmtSig(R, 3) })}
+    <div className="conv" data-testid="light-conversion" aria-live="polite" title={`R = ${fmtSig(R, 3)} pA/mW`}>
+      {mode === "iph" ? `P ${fmtSig(powerMW(device), 3)} mW` : <>I<sub>PH</sub> {fmtSig(iphPA(device), 3)} pA</>}
     </div>
   );
   const chips = powers.length > 0 && (

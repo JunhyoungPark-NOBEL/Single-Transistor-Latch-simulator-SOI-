@@ -226,8 +226,8 @@ test.describe("schematic editor (mock mode)", () => {
 
   test("device library: save as device, persists, loads, places in a schematic", async ({ page }) => {
     await fresh(page, "#tab=device&mode=deterministic");
-    await expect(page.getByTestId("dev-geometry")).toContainText("500 nm");
-    await expect(page.getByTestId("tech-PDSOI")).toBeDisabled();
+    await expect(page.getByTestId("geometry-Lg_nm")).toHaveValue("500");
+    await expect(page.getByTestId("preset-card")).toContainText("Device 1");
     const vg = page.getByTestId("field-vg").locator("input.input");
     await vg.fill("-1.9");
     await vg.press("Enter");
@@ -239,15 +239,15 @@ test.describe("schematic editor (mock mode)", () => {
     await page.getByTestId("preset-paper").click();
     await expect(vg).toHaveValue("-2");
     await page.reload();
-    await expect(page.getByTestId("dev-load").locator("option", { hasText: "Test device A" })).toHaveCount(1);
-    await page.getByTestId("dev-load").selectOption({ label: "Test device A" });
+    await expect(page.getByTestId("device-slot-1")).toContainText("Test device A");
+    await page.getByTestId("device-slot-1").getByRole("button", { name: "불러오기", exact: true }).click();
     await expect(page.getByTestId("field-vg").locator("input.input")).toHaveValue("-1.9");
     // manager: duplicate, then place the device in the schematic
     await page.getByTestId("dev-manage").click();
     await expect(page.getByTestId("device-manager")).toBeVisible();
     await page.getByTestId("dm-row-Test device A").getByTestId("dm-duplicate").click();
     await expect(page.getByTestId("dm-user-list").locator("li")).toHaveCount(2);
-    await page.screenshot({ path: `${SHOTS}/device-library.png` });
+    await page.screenshot({ path: "review/device-library.png" });
     await page.getByTestId("dm-row-Test device A").getByTestId("dm-place").click();
     await expect(page.getByTestId("schematic-view")).toBeVisible();
     await expect(page.getByTestId("tool-STL")).toHaveAttribute("aria-pressed", "true");
@@ -266,12 +266,12 @@ test.describe("schematic editor (mock mode)", () => {
     await expect(page.getByTestId("lib-Test device A")).toBeVisible();
   });
 
-  test("quick benches sub-view keeps the bench UI", async ({ page }) => {
+  test("free-form editor is the circuit view; examples are a secondary menu", async ({ page }) => {
     await fresh(page);
-    await page.getByTestId("circuit-view-benches").click();
-    await expect(page.getByTestId("bench-picker")).toBeVisible();
-    await expect(page.getByTestId("group-bench")).toBeVisible();
-    await page.getByTestId("circuit-view-schematic").click();
+    await expect(page.getByTestId("circuit-view-benches")).toHaveCount(0);
+    await expect(page.getByTestId("bench-picker")).toHaveCount(0);
+    await expect(page.getByTestId("sch-canvas")).toBeVisible();
+    await expect(page.getByTestId("menu-examples")).toBeVisible();
     await expect(page.getByTestId("sch-sim")).toBeVisible();
   });
 });

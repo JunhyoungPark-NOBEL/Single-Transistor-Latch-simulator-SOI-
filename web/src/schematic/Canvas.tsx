@@ -4,19 +4,16 @@
 // time-cursor annotations (node voltages, element currents with direction arrows).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPE, type ReactNode } from "react";
 import { useT } from "../i18n";
-import type { StrKey } from "../i18n/strings";
 import { iKey, vKey } from "../api/circuitCustom";
 import { useIsAll } from "../state/layout";
 import type { ErcItem } from "./erc";
 import { addWires, docBounds, lPath, moveItems } from "./edit";
-import { DEFAULT_CMP, distToSeg, elementBox, GRID, newId, nextName, onWireInterior, pinPositions, rotatePt, snap, type Pt, type SchematicDoc, type SElement, type Wire } from "./model";
+import { DEFAULT_CMP, DEFAULT_MOS, DEFAULT_DIODE, DEFAULT_BJT, distToSeg, elementBox, GRID, newId, nextName, onWireInterior, pinPositions, rotatePt, snap, type Pt, type SchematicDoc, type SElement, type Wire } from "./model";
 import type { Connectivity, NetInfo } from "./nets";
 import { pinId } from "./nets";
 import { fmtSI } from "./si";
 import { useSch, stlRefFor } from "./store";
 import { ElementView } from "./Symbols";
-import type { TemplateId } from "./templates";
-import { loadTemplate } from "./Toolbar";
 import { defaultWave } from "./waves";
 
 export interface Annotations {
@@ -48,6 +45,9 @@ function defaultsFor(kind: SElement["kind"]): Partial<SElement> {
       return { wave: defaultWave("dc", 1e-9) };
     case "LABEL":
       return { label: "" };
+    case "MOS": return { mos: { ...DEFAULT_MOS } };
+    case "D": return { diode: { ...DEFAULT_DIODE } };
+    case "BJT": return { bjt: { ...DEFAULT_BJT } };
     case "CMP":
       return { cmp: { ...DEFAULT_CMP } };
     default:
@@ -104,10 +104,7 @@ function nearestPin(el: SElement, p: Pt): string | undefined {
   return best;
 }
 
-/** Examples offered on an empty canvas (the same loader as the Examples menu). */
-const EMPTY_TEMPLATES: TemplateId[] = ["load_line", "pulse", "pbit", "oscillator"];
-
-export function Canvas({ conn, erc, ann, height }: { conn: Connectivity; erc: ErcItem[]; ann: Annotations | null; height: number }) {
+export function Canvas({ conn, ann, height }: { conn: Connectivity; erc: ErcItem[]; ann: Annotations | null; height: number }) {
   const t = useT();
   const all = useIsAll();
   const doc = useSch((s) => s.doc);
@@ -132,7 +129,6 @@ export function Canvas({ conn, erc, ann, height }: { conn: Connectivity; erc: Er
 
   const shown = preview ?? doc;
   const sel = useMemo(() => new Set(selection), [selection]);
-  const errIds = useMemo(() => new Set(erc.filter((i) => i.level === "error").flatMap((i) => [...i.elementIds, ...(i.wireIds ?? [])])), [erc]);
 
   // ---- viewport helpers
   const toWorld = useCallback(
@@ -429,7 +425,7 @@ export function Canvas({ conn, erc, ann, height }: { conn: Connectivity; erc: Er
           <g className="sch-wires">
             {shown.wires.map((w) => {
               const net = conn.wireNet.get(w.id)?.name;
-              const cls = ["sch-wire", sel.has(w.id) && "sel", hoverNetWires.has(w.id) && "hov", (errIds.has(w.id) || flashIds.includes(w.id)) && "flag"].filter(Boolean).join(" ");
+              const cls = ["sch-wire", sel.has(w.id) && "sel", hoverNetWires.has(w.id) && "hov", flashIds.includes(w.id) && "flag"].filter(Boolean).join(" ");
               return (
                 <g key={w.id} data-wire={w.id} data-net={net}>
                   <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} className="sch-wire-hit" />
@@ -448,7 +444,7 @@ export function Canvas({ conn, erc, ann, height }: { conn: Connectivity; erc: Er
               el={el}
               selected={sel.has(el.id)}
               hovered={hover?.kind === "el" && hover.el.id === el.id}
-              flagged={errIds.has(el.id) || flashIds.includes(el.id)}
+              flagged={flashIds.includes(el.id)}
               probing={tool.kind === "probe" && hover?.kind === "el" && hover.el.id === el.id}
             />
           ))}
@@ -478,15 +474,8 @@ export function Canvas({ conn, erc, ann, height }: { conn: Connectivity; erc: Er
       {doc.elements.length === 0 && tool.kind === "select" && (
         <div className="sch-empty">
           <strong>{t("schematic.empty.title")}</strong>
-          <div className="sch-empty-tpl" role="group" aria-label={t("schematic.empty.start")}>
-            <span>{t("schematic.empty.start")}</span>
-            {EMPTY_TEMPLATES.map((id) => (
-              <button key={id} type="button" className="btn sm" onClick={() => loadTemplate(id, t)} data-testid={`empty-tpl-${id}`}>
-                {t(`schematic.tpl.${id}.short` as StrKey)}
-              </button>
-            ))}
-          </div>
-          <span>{t("schematic.empty.orDraw")}</span>
+          <span>{t("schematic.empty.drawHint")}</span>
+          <div className="sch-empty-keys"><kbd>W</kbd> {t("schematic.tool.wire")} <kbd>R</kbd> {t("schematic.tool.R")} <kbd>Esc</kbd> {t("schematic.tool.select")}</div>
         </div>
       )}
       <HoverTip hover={hover} net={hoverNet} conn={conn} ann={ann} mouse={mouse} />
@@ -516,11 +505,12 @@ function probeTarget(doc: SchematicDoc, conn: Connectivity, p: Pt, tol: number):
         if (n) return vKey(n.name);
       }
     }
-    if (el.kind === "STL") {
+    if (el.kind === "STL" || el.kind === "MOS") {
       const pin = nearestPin(el, p);
       return iKey(el.name, pin === "s" ? "s" : pin === "g" ? "g" : "d");
     }
     if (el.kind === "CMP") return `${el.name}.bit`;
+    if (el.kind === "BJT") { const pin = nearestPin(el, p); return iKey(el.name, pin === "b" ? "b" : pin === "e" ? "e" : "c"); }
     return iKey(el.name);
   }
   const w = hitWire(doc, p, tol);
@@ -563,8 +553,8 @@ function AnnotationLayer({ doc, conn, ann }: { doc: SchematicDoc; conn: Connecti
     let b = pins[1];
     let len = 12;
     let offset = 20;
-    if (el.kind === "STL") {
-      key = iKey(el.name, "d");
+    if (["STL", "MOS", "BJT"].includes(el.kind)) {
+      key = iKey(el.name, el.kind === "BJT" ? "c" : "d");
       // along the drain lead, pointing into the drain for positive current
       const top = rotatePt(0, -40, el.rot, el.mirror);
       const inner = rotatePt(0, -18, el.rot, el.mirror);
@@ -618,7 +608,7 @@ function HoverTip({ hover, net, conn, ann, mouse }: { hover: Hover; net?: NetInf
     const nets = pinPositions(el).map((p) => `${p.pin === "p" ? "+" : p.pin === "n" ? "−" : p.pin.toUpperCase()}: ${conn.pinNet.get(pinId(el.id, p.pin))?.name ?? "—"}`);
     rows.push([t("schematic.insp.nodes"), nets.join(" · ")]);
     if (ann) {
-      const keys = el.kind === "STL" ? [iKey(el.name, "d"), iKey(el.name, "g"), iKey(el.name, "s"), `${el.name}.u`, `${el.name}.r`, `${el.name}.q_b`] : el.kind === "CMP" ? [`${el.name}.bit`, iKey(el.name)] : [iKey(el.name)];
+      const keys = el.kind === "MOS" ? [iKey(el.name, "d"), iKey(el.name, "g"), iKey(el.name, "s")] : el.kind === "BJT" ? [iKey(el.name, "c"), iKey(el.name, "b"), iKey(el.name, "e")] : el.kind === "STL" ? [iKey(el.name, "d"), iKey(el.name, "g"), iKey(el.name, "s"), `${el.name}.u`, `${el.name}.r`, `${el.name}.q_b`] : el.kind === "CMP" ? [`${el.name}.bit`, iKey(el.name)] : [iKey(el.name)];
       for (const k of keys) {
         const v = ann.sig.get(k);
         if (v === undefined) continue;

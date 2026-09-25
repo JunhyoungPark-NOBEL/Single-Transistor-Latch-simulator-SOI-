@@ -128,24 +128,24 @@ test.describe("STL simulator (mock mode)", () => {
     await expect(page.getByTestId("tab-device")).toContainText("소자");
   });
 
-  test("editing a value marks the preset as modified; reset restores it", async ({ page }) => {
+  test("editing Device 1 marks it as modified; reset restores the single default", async ({ page }) => {
     await fresh(page);
-    await expect(page.getByTestId("preset-label")).not.toContainText("수정");
+    await expect(page.getByTestId("preset-card")).toContainText("Device 1");
+    await expect(page.getByTestId("preset-label")).toHaveCount(0);
     const input = page.getByTestId("field-vg").locator("input.input");
     await input.fill("-1.8");
     await input.press("Enter");
-    await expect(page.getByTestId("preset-label")).toContainText("기준 보정에서 수정");
+    await expect(page.getByTestId("preset-label")).toContainText("수정됨");
     await expect(page.getByTestId("field-vg").locator(".field-changed")).toBeVisible();
     // out-of-range input shows a validation message and is not committed
     await input.fill("-9");
     await expect(page.getByTestId("field-vg").locator(".field-err")).toBeVisible();
     await input.press("Escape");
-    await page.getByTestId("group-bias").getByRole("button", { name: /초기화|Reset/ }).click();
-    await expect(page.getByTestId("preset-label")).not.toContainText("수정");
-    // photo preset loads its defaults (power mode, 1200 V/s)
-    await page.getByTestId("preset-photo").click();
-    await expect(page.getByTestId("field-vg").locator("input.input")).toHaveValue("-1.8");
-    await expect(page.getByTestId("light-conversion")).toContainText("pA/mW");
+    await page.getByTestId("preset-paper").click();
+    await expect(input).toHaveValue("-2");
+    await expect(page.getByTestId("preset-label")).toHaveCount(0);
+    await expect(page.getByTestId("preset-photo")).toHaveCount(0);
+    await expect(page.getByTestId("preset-custom")).toHaveCount(0);
   });
 
   test("circuit tab: bench cards, generic result rendering", async ({ page }) => {

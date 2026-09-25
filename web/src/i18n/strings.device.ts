@@ -40,7 +40,7 @@ export const DEV = {
   "kpi.tip.noLu": { ko: "래치업 안 된 사이클 {n}", en: "{n} cycles without latch-up" },
 
   // ---------------------------------------------------------------- panel titles (simple layout)
-  "iv.title": { ko: "I–V 곡선", en: "I–V curve" },
+  "iv.title": { ko: "I_D–V_D 스윕", en: "I_D–V_D sweep" },
   "iv.desc": {
     ko: "파란 선을 따라 올라가다 V_LU에서 켜지고, 빨간 선을 따라 내려오다 V_LD에서 꺼집니다.",
     en: "Going up along the blue line the device switches on at V_LU; coming down along the red line it switches off at V_LD.",

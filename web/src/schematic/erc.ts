@@ -4,7 +4,7 @@
 // highlight the offending parts.
 import type { Connectivity, NetInfo } from "./nets";
 import { pinId, UnionFind } from "./nets";
-import { CIRCUIT_KINDS, type SchematicDoc, type SElement } from "./model";
+import { CIRCUIT_KINDS, PINS, type SchematicDoc, type SElement } from "./model";
 import { waveIssues } from "./waves";
 
 export interface ErcItem {
@@ -24,7 +24,7 @@ const PIN_LABEL: Record<string, string> = { p: "+", n: "−", d: "D", g: "G", s:
 
 /** Nets of an element's pins in pin order (undefined when not found). */
 export function elementNets(el: SElement, conn: Connectivity): (NetInfo | undefined)[] {
-  const pins = el.kind === "STL" ? ["d", "g", "s"] : el.kind === "CMP" ? ["i", "q"] : ["p", "n"];
+  const pins = PINS[el.kind].map((p) => p.name);
   return pins.map((p) => conn.pinNet.get(pinId(el.id, p)));
 }
 
@@ -88,7 +88,7 @@ export function runErc(doc: SchematicDoc, conn: Connectivity): ErcItem[] {
 
   // ---- shorted parts
   for (const e of els) {
-    if (e.kind === "STL") continue;
+    if (["STL", "MOS", "BJT"].includes(e.kind)) continue;
     const [a, b] = nets.get(e.id)!;
     if (e.kind === "CMP") {
       if (a && b && a === b) warn("cmpFeedback", [e.id], { name: e.name, node: a.name });
@@ -133,8 +133,9 @@ export function runErc(doc: SchematicDoc, conn: Connectivity): ErcItem[] {
     };
     for (const e of els) {
       const ns = nets.get(e.id)!;
-      if (e.kind === "R" || e.kind === "V") link(ns[0], ns[1]);
-      if (e.kind === "STL") link(ns[0], ns[2]);
+      if (e.kind === "R" || e.kind === "V" || e.kind === "D") link(ns[0], ns[1]);
+      if (e.kind === "BJT") { link(ns[0], ns[1]); link(ns[1], ns[2]); }
+      if (e.kind === "STL" || e.kind === "MOS") link(ns[0], ns[2]);
       if (e.kind === "CMP") link(ns[1], gnd); // the output is a voltage source to ground; the input is ideal
     }
     reach.add(gnd.id);

@@ -35,12 +35,13 @@ import numpy as np
 from server import params as PR
 
 from .netlist import Netlist, _fmt
+from .basic import PINS as BASIC_PINS, pack as pack_basic, current_series
 from .oscillator import R_HIGH, qs_drive, quasi_static_period
 
 LIMITS = dict(elements=40, stl=8, cmp=8, nodes=30, wave_points=2000, generated_points=20000)
 # wave_points: user PWL lists; generated_points: PULSE corners / SINE samples generated server-side
 GROUND_ALIASES = ("0", "gnd", "GND", "Gnd")
-ELEMENT_TYPES = ("R", "C", "V", "I", "STL", "CMP")
+ELEMENT_TYPES = ("R", "C", "V", "I", "STL", "CMP", "MOS", "D", "BJT")
 _NAME_RE = re.compile(r"^[^\s().,;\"'\[\]{}]{1,32}$")
 _NODE_RE = re.compile(r"^[^\s()\"'\[\]{},;]{1,32}$")
 V_ABS_MAX = 1000.0             # V, source values
@@ -258,6 +259,7 @@ class El:
     ls_block: dict | None = None
     p: np.ndarray | None = None
     cmp: dict | None = None                # CMP: v_ref, v_high, v_low, hysteresis, width (nodes = [in, inm, out])
+    model: dict | None = None              # educational semiconductor model
     idx: int = -1                          # index within its kind in the compiled netlist (-1: not stamped)
     wave_idx: int = -1
 
@@ -288,7 +290,7 @@ def parse_elements(netlist: Any, t_stop: float, edge0: float, warnings: list[str
             raise ValueError(f"netlist.elements[{i}] must be an object")
         typ = e.get("type")
         if typ not in ELEMENT_TYPES:
-            raise ValueError(f"netlist.elements[{i}]: unknown element type {typ!r} (R | C | V | I | STL | CMP)")
+            raise ValueError(f"netlist.elements[{i}]: unknown element type {typ!r} ({' | '.join(ELEMENT_TYPES)})")
         name = e.get("name")
         if not isinstance(name, str) or not _NAME_RE.match(name.strip()):
             raise ValueError(f"netlist.elements[{i}] ({typ}): invalid name {str(name)[:40]!r} "
@@ -300,7 +302,14 @@ def parse_elements(netlist: Any, t_stop: float, edge0: float, warnings: list[str
         seen[low] = name
         where = f"{name}"
         nd = e.get("nodes")
-        if typ == "STL":
+        if typ in BASIC_PINS:
+            pins = BASIC_PINS[typ]
+            if isinstance(nd, (list, tuple)) and len(nd) == len(pins):
+                nd = dict(zip(pins, nd))
+            if not isinstance(nd, dict) or any(nd.get(k) in (None, "") for k in pins):
+                raise ValueError(f"{where}: {typ} needs connected terminals {', '.join(pins)}")
+            nodes = [_canon_node(nd[k], f"{where}.{k}") for k in pins]
+        elif typ == "STL":
             if isinstance(nd, (list, tuple)) and len(nd) == 3:
                 nd = dict(zip(("d", "g", "s"), nd))
             if not isinstance(nd, dict):
@@ -326,7 +335,33 @@ def parse_elements(netlist: Any, t_stop: float, edge0: float, warnings: list[str
                 raise ValueError(f"{where}: {typ} needs exactly two nodes [n1, n2]")
             nodes = [_canon_node(x, where) for x in nd]
         el = El(type=typ, name=name, nodes=nodes)
-        if typ == "R":
+        if typ in BASIC_PINS:
+            m = e.get("model", {})
+            if m is None:
+                m = {}
+            if not isinstance(m, dict):
+                raise ValueError(f"{where}: model must be an object")
+            if typ == "MOS":
+                polarity = m.get("polarity", "nmos")
+                if polarity not in ("nmos", "pmos"):
+                    raise ValueError(f"{where}: MOS polarity must be nmos or pmos")
+                fields = {"L_um": (1.0, 0.001, 10000.0), "W_um": (10.0, 0.001, 100000.0),
+                          "Vth_V": (0.5, -100.0, 100.0), "SS_mV_dec": (80.0, 10.0, 1000.0),
+                          "k_uA_V2": (100.0, 0.001, 1e6), "lambda_per_V": (0.02, 0.0, 10.0)}
+                el.model = {key: _f(m, key, where + " model", *limits) for key, limits in fields.items()}
+                el.model["Vth_V"] = abs(el.model["Vth_V"])
+                el.model["polarity"] = polarity
+            elif typ == "D":
+                el.model = dict(Is_A=_f(m, "Is_A", where, 1e-14, 1e-30, 1.0),
+                                n=_f(m, "n", where, 1.0, 0.1, 10.0))
+            else:
+                polarity = m.get("polarity", "npn")
+                if polarity not in ("npn", "pnp"):
+                    raise ValueError(f"{where}: BJT polarity must be npn or pnp")
+                el.model = dict(polarity=polarity, Is_A=_f(m, "Is_A", where, 1e-15, 1e-30, 1.0),
+                                beta_F=_f(m, "beta_F", where, 100.0, 0.01, 1e6),
+                                beta_R=_f(m, "beta_R", where, 1.0, 0.01, 1e6))
+        elif typ == "R":
             el.value = _f(e, "value", where + " (ohm)", lo=1e-3, hi=1e15)
         elif typ == "C":
             el.value = _f(e, "value", where + " (F)", lo=0.0, hi=1.0)
@@ -402,7 +437,7 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
         raise ValueError(f"the circuit has {len(nodes) - 1} nodes besides ground (limit {LIMITS['nodes']})")
     conns: dict[str, list[str]] = {n: [] for n in nodes}
     for e in els:
-        labels = ("d", "g", "s") if e.type == "STL" else ("in", "inm", "out") if e.type == "CMP" else \
+        labels = BASIC_PINS[e.type] if e.type in BASIC_PINS else ("d", "g", "s") if e.type == "STL" else ("in", "inm", "out") if e.type == "CMP" else \
             ("+", "-") if e.type in ("V", "I") else ("1", "2")
         for lab, n in zip(labels, e.nodes):
             if e.type == "CMP" and lab == "inm" and n == "0":
@@ -452,10 +487,13 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
     # DC paths to ground: R, V and the STL drain-source path conduct; C, I sources and the STL gate do not
     dc = _DSU(nodes)
     for e in els:
-        if e.type in ("R", "V"):
+        if e.type in ("R", "V", "D"):
             dc.union(e.nodes[0], e.nodes[1])
-        elif e.type == "STL":
+        elif e.type in ("STL", "MOS"):
             dc.union(e.nodes[0], e.nodes[2])
+        elif e.type == "BJT":
+            dc.union(e.nodes[0], e.nodes[1])
+            dc.union(e.nodes[1], e.nodes[2])
         elif e.type == "CMP":
             dc.union(e.nodes[2], "0")             # the output is a voltage source to ground; the inputs are ideal
     floating = [n for n in nodes[1:] if dc.find(n) != dc.find("0")]
@@ -464,7 +502,7 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
         others = [m for m in floating[1:6]]
         srcs = [e.name for e in els if e.type == "I" and n in e.nodes]
         caps = [e.name for e in els if e.type == "C" and n in e.nodes]
-        gates = [f"{e.name}.g" for e in els if e.type == "STL" and e.nodes[1] == n] + \
+        gates = [f"{e.name}.g" for e in els if e.type in ("STL", "MOS") and e.nodes[1] == n] + \
             [f"{e.name}.{lab}" for e in els if e.type == "CMP" for lab, m in (("in", e.nodes[0]), ("inm", e.nodes[1])) if m == n]
         via = []
         if caps:
@@ -534,8 +572,13 @@ def linear_dc(nodes: list[str], els: list[El]):
     for e in els:
         if e.type == "R":
             stamp(e.nodes[0], e.nodes[1], 1.0 / e.value)
-        elif e.type == "STL":
+        elif e.type in ("STL", "MOS"):
             stamp(e.nodes[0], e.nodes[2], G_OFF)
+        elif e.type == "D":
+            stamp(e.nodes[0], e.nodes[1], G_OFF)
+        elif e.type == "BJT":
+            stamp(e.nodes[0], e.nodes[1], G_OFF)
+            stamp(e.nodes[1], e.nodes[2], G_OFF)
     for j, e in enumerate(Vs):
         ia, ib = (idx[e.nodes[2]], -1) if e.type == "CMP" else (idx[e.nodes[0]], idx[e.nodes[1]])
         r = N + j
@@ -639,6 +682,14 @@ def _signal_specs(nodes: list[str], els: list[El], layout: dict, cell_ls: list, 
         elif e.type == "I":
             out.append(SigSpec(f"I({e.name})", _L(f"전류원 {e.name} 전류 (+ → −)", f"Current of {e.name} (+ → −)"),
                                "A", "current", ("wave", e.wave.t, e.wave.v)))
+        elif e.type in BASIC_PINS:
+            model_row = pack_basic(e.type, [col[n] for n in e.nodes], e.model)
+            for terminal, pin in enumerate(BASIC_PINS[e.type]):
+                key = f"I({e.name})" if e.type == "D" else f"I({e.name}.{pin})"
+                if e.type == "D" and terminal > 0:
+                    continue
+                out.append(SigSpec(key, _L(f"{e.name}.{pin} 전류", f"{e.name}.{pin} current"),
+                                   "A", "current", ("basic", np.array([col[n] for n in e.nodes]), model_row, terminal)))
         elif e.type == "CMP":
             out.append(SigSpec(f"I({e.name})", _L(f"비교기 {e.name} 출력 전류 (출력 → 접지, 소스 내부)",
                                                   f"Output current of comparator {e.name} (out → ground, inside the source)"),
@@ -691,6 +742,8 @@ def _convert(rows: np.ndarray, specs: list[SigSpec], q0: dict) -> np.ndarray:
             out[:, j] = (va - vb) * r[3]
         elif k == "wave":
             out[:, j] = np.interp(t, r[1], r[2])
+        elif k == "basic":
+            out[:, j] = current_series(rows, r[1], r[2], r[3])
         elif k == "qb":
             out[:, j] = rows[:, r[1]] - q0.get(r[1], 0.0)
         elif k == "vds":
@@ -968,7 +1021,7 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     from server.payloads import normalize_device
 
     from . import runner as RN
-    from .stochastic import (ACTION_UNIT, estimate_steps, noise_bands, parse_local_state)
+    from .stochastic import (ACTION_UNIT, estimate_steps, noise_bands, parse_local_state, GEOMETRY_NOISE_ERROR)
 
     tic = time.perf_counter()
     progress = progress or (lambda f, msg="": None)
@@ -1040,6 +1093,8 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             dev = normalize_device(e.device, warnings)
         except ValueError as exc:
             raise ValueError(f"{e.name}: {exc}") from None
+        if stochastic and PR.uses_geometry_model(dev):
+            raise ValueError(f"{GEOMETRY_NOISE_ERROR} ({e.name})")
         cfg_k = ls_global
         if stochastic and e.ls_block is not None and not override:
             try:
@@ -1084,6 +1139,9 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         elif e.type == "I":
             e.idx = len(net.I)
             e.wave_idx = net.add_I(e.name, e.nodes[0], e.nodes[1], e.wave.t, e.wave.v, _wave_text(e.wave.resolved, "A"))
+        elif e.type in BASIC_PINS:
+            e.idx = len(net.basic)
+            net.add_basic(e.type, e.name, e.nodes, e.model)
     for e in els:
         if e.type == "CMP":                       # after every V source: branch index = len(V sources) + j
             c = e.cmp
@@ -1326,10 +1384,12 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
                     names = {e.name: e for e in els}
                     if mi and mi.group(1) not in names:
                         hint = f" (no element {mi.group(1)!r})"
-                    elif mi and names[mi.group(1)].type == "STL" and not mi.group(2):
-                        hint = f" (use I({mi.group(1)}.d), I({mi.group(1)}.s) or I({mi.group(1)}.g) for an STL)"
+                    elif mi and names[mi.group(1)].type in ("STL", "MOS", "BJT") and not mi.group(2):
+                        typ = names[mi.group(1)].type
+                        pins = BASIC_PINS.get(typ, ("d", "g", "s"))
+                        hint = " (use " + ", ".join(f"I({mi.group(1)}.{pin})" for pin in pins) + ")"
                     elif mi and mi.group(2):
-                        hint = " (terminal currents exist for STL cells only: .d, .s, .g)"
+                        hint = " (terminal currents: STL/MOS .d, .g, .s; BJT .c, .b, .e; diode I(name))"
                     else:
                         hint = " (use V(node), I(element), I(X.d|s|g), X.u, X.r or X.q_b)"
                 raise ValueError(f"unknown probe {key!r}{hint}")
@@ -1733,7 +1793,9 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             ci_ = cell_info[k]
             dev = e.device
             d["nodes"] = dict(d=e.nodes[0], g=e.nodes[1], s=e.nodes[2])
-            d["device"] = dict(preset=dev.get("preset"), vg_device_V=float(dev["vg"]), iph_pA=float(e.p[13]) * 1e12,
+            d["device"] = dict(preset=dev.get("preset"), vg_device_V=float(dev["vg"]),
+                               vbg_device_V=float(dev.get("vbg", 0.0)), geometry=dict(dev["geometry"]),
+                               geometry_model=PR.geometry_model_metadata(dev), iph_pA=float(e.p[13]) * 1e12,
                                label=_stl_label(e))
             d["light_pA"] = None if e.light is None else e.light.resolved
             d["vgs_V"] = ci_["vgs_nom"]
@@ -1757,6 +1819,10 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             d["nodes"] = dict(zip(("in", "inm", "out"), e.nodes))
             d.update(e.cmp)
             d["value_label"] = _cmp_label(e)
+        elif e.type in BASIC_PINS:
+            d["nodes"] = dict(zip(BASIC_PINS[e.type], e.nodes))
+            d["model"] = e.model
+            d["value_label"] = e.model.get("polarity", "Diode")
         else:
             d["nodes"] = list(e.nodes)
             if e.type in ("R", "C"):

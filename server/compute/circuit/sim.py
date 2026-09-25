@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from server.engine_bridge import MODEL, ct
+from server.geometry_model import PACK_SIZE, pack_p
 
 from . import mna as K
 
@@ -175,6 +176,10 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
     nn, nv, ns, nc = net["n_nodes"], net["nV"], net["nS"], net["nC"]
     n = nn - 1 + nv + 2 * ns
     P = np.ascontiguousarray(P, dtype=np.float64).copy()
+    # Bench callers can supply raw geometry vectors, whereas custom
+    # netlists already carry packed per-device electrostatic lookup tables.
+    if ns and 26 < P.shape[1] < PACK_SIZE:
+        P = np.vstack([pack_p(p, force=True) for p in P])
     Pbase = P.copy()
     x = np.zeros(n)
     for k in range(ns):
@@ -238,13 +243,14 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
         raise ValueError(f"initial state must be 'op', 'zero' or 'auto', got {initial!r}")
     hold_z = np.full(nc, G_HOLD) if cap_hold is None else np.ascontiguousarray(cap_hold, dtype=np.float64).reshape(nc)
     cmp = np.ascontiguousarray(net.get("cmp", np.zeros((0, K.N_CMPC))), dtype=np.float64).copy()
+    basic = np.ascontiguousarray(net.get("basic", np.zeros((0, 12))), dtype=np.float64)
     x_start = x.copy()
 
     def _dc(hold):
         return K.dc_op(x, ci, cf, a["rA"], a["rB"], a["rG"], a["cA"], a["cB"], a["cC"], a["vA"], a["vB"], a["vW"],
                        a["iA"], a["iB"], a["iW"], a["sD"], a["sG"], a["sS"], a["sW"], a["wt"], a["wv"], a["woff"],
                        Pdc, Pbase if not (cfg.stochastic and cfg.ls_mode > 0) else Pdc, na, vbi, rg, fg, table,
-                       np.zeros((ns, K.N_EV)), part, 0.0, hold, cmp)
+                       np.zeros((ns, K.N_EV)), part, 0.0, hold, cmp, basic)
 
     used = "zero" if initial == "zero" else "op"
     ok = _dc(hold_z if used == "zero" else np.zeros(nc))
@@ -273,11 +279,13 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
             ok = _dc(hold_z)
     if not ok:
         hint = " or start from discharged capacitors (tran.initial = 'zero')" if (used == "op" and nc) else ""
+        if ns == 0:
+            raise ValueError(f"DC operating point at t = 0 did not converge (check transistor polarity, bias and connections{hint})")
         raise ValueError("DC operating point at t = 0 did not converge (check the bias: the STL model is "
                          f"valid only where the source barrier and the neutral base exist{hint})")
     ok = K.init_state(x, ci, cf, a["rA"], a["rB"], a["rG"], a["cA"], a["cB"], a["cC"], a["vA"], a["vB"], a["vW"],
                       a["iA"], a["iB"], a["iW"], a["sD"], a["sG"], a["sS"], a["sW"], a["wt"], a["wv"], a["woff"],
-                      P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, 0.0, win, cmp)
+                      P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, 0.0, win, cmp, basic)
     if not ok:
         raise ValueError("element evaluation failed at the initial operating point")
     if used == "zero":
@@ -317,7 +325,7 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
         status = K.run_chunk(x, xp, ci, cf, a["rA"], a["rB"], a["rG"], a["cA"], a["cB"], a["cC"], a["vA"], a["vB"],
                              a["vW"], a["iA"], a["iB"], a["iW"], a["sD"], a["sG"], a["sS"], a["sW"], a["wt"], a["wv"],
                              a["woff"], a["bp"], a["samp"] if nsamp else np.zeros(0), P, Pbase, na, vbi, rg, fg, table,
-                             rv, pmf, ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win, cmp)
+                             rv, pmf, ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win, cmp, basic)
         nr = int(si[K.SI_NREC])
         ne = int(si[K.SI_NEV])
         if rec_sink is not None:

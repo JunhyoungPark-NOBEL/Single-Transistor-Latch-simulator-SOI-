@@ -1,0 +1,20 @@
+.reference-page { width: 100%; display: grid; gap: 16px; max-width: 1180px; margin-inline: auto; }
+.reference-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 2px 2px 4px; }
+.reference-header h2 { font-size: 20px; font-weight: 650; margin: 0 0 7px; letter-spacing: -0.035em; }
+.reference-header p { margin: 0; font-size: 12px; color: var(--text-2); }
+.reference-condition { font-size: 11px; color: var(--text-2); border: 1px solid var(--border); padding: 8px 10px; border-radius: 7px; white-space: nowrap; }
+.reference-page .plot, .reference-page .skeleton-plot, .reference-page .empty { height: clamp(350px, 49vh, 520px); }
+.reference-metrics { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.reference-metrics .table { width: 100%; margin: 0; }
+.reference-metrics .table th, .reference-metrics .table td { padding: 10px 16px; }
+.reference-metrics details { padding: 10px 16px; color: var(--text-2); font-size: 11px; line-height: 1.6; border-top: 1px solid var(--border); }
+.reference-metrics summary { cursor: pointer; }
+.reference-metrics p { margin: 8px 0 0; max-width: 880px; }
+.reference-unavailable { border: 1px solid var(--border); border-radius: 10px; padding: 28px; background: var(--surface); color: var(--text-2); font-size: 13px; }
+@media (max-width: 760px) {
+  .reference-header { align-items: flex-start; flex-direction: column; }
+  .reference-condition { white-space: normal; }
+  .reference-metrics .table th, .reference-metrics .table td { padding: 10px 7px; font-size: 11px; }
+}
+
+.reference-header-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

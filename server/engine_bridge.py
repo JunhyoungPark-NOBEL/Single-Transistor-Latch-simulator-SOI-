@@ -25,8 +25,9 @@ if str(ENGINE) not in sys.path:
 import stl_api as A  # noqa: E402  (sets up the remaining engine paths)
 
 S = A.S
-m = A.m
-MODEL = A.MODEL
+from server.geometry_model import GeometryModel, ModuleProxy
+m = ModuleProxy()
+MODEL = GeometryModel(A.MODEL)
 ct = S.ct
 JOINT_MODEL_DIR = ENGINE / "model" / "janus_calibration_20260920" / "claude_crosscheck_20260920" / "joint_model"
 PHOTO_DIR = ENGINE / "photo_extension"

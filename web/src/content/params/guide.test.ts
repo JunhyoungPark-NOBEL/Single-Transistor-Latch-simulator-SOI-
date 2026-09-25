@@ -1,4 +1,5 @@
-// Parameter guide integrity: every UI parameter has a guide, three effect lines in both languages, and the
+// Parameter guide integrity: every UI parameter has a guide or explicit model documentation; measured
+// guides have three effect lines in both languages, and the
 // arrows / magnitudes of the V_LU and V_LD lines agree with the sensitivity data (sensitivity.json).
 import { describe, expect, it } from "vitest";
 import { GROUPS } from "../../params/schema";
@@ -22,7 +23,8 @@ const S = sensitivity as unknown as Record<string, Block>;
 const SENS_KEYS = Object.keys(S).filter((k) => !k.startsWith("_") && k !== "baseline");
 /** Custom light block (sidebar/ParamGroup.tsx LIGHT_FIELDS) + the light group itself. */
 const LIGHT_KEYS = ["light", "iph_pA", "power_mW", "resp"];
-const SCHEMA_KEYS = GROUPS.flatMap((g) => g.fields.map((f) => f.key));
+const SCHEMA_FIELDS = GROUPS.flatMap((g) => g.fields);
+const SCHEMA_KEYS = SCHEMA_FIELDS.map((f) => f.key);
 
 /** Where the numbers of a guide entry come from (reference calibration unless aliased). */
 function sourceOf(key: string): Side | undefined {
@@ -60,8 +62,14 @@ function magnitudeAfterArrow(line: string): { mV: number; unit: string } | null 
 }
 
 describe("parameter guide", () => {
-  it("covers every schema field, light-block field and sensitivity key", () => {
-    const need = [...new Set([...SCHEMA_KEYS, ...LIGHT_KEYS, ...SENS_KEYS])];
+  it("covers every schema field with a calibrated guide or explicit model documentation", () => {
+    const documented = SCHEMA_FIELDS.filter((f) => f.documentationPath);
+    for (const field of documented) {
+      expect(field.documentationPath).toMatch(/^docs\/.+\.html$/);
+      expect(field.help.ko.trim().length).toBeGreaterThan(0);
+      expect(field.help.en.trim().length).toBeGreaterThan(0);
+    }
+    const need = [...new Set([...SCHEMA_FIELDS.filter((f) => !f.documentationPath).map((f) => f.key), ...LIGHT_KEYS, ...SENS_KEYS])];
     const missing = need.filter((k) => !PARAM_GUIDE[k]);
     expect(missing).toEqual([]);
   });

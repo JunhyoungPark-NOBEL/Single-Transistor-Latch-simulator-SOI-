@@ -8,9 +8,9 @@ import { fmtSI } from "../utils/format";
 import { iphPA } from "../utils/payload";
 import { useCircuitView } from "../circuit/view";
 import { loadDeviceIntoParams, GeometryLine } from "./DeviceCard";
-import { builtinDevices, calibPart, deviceName, exportLibraryJson, parseLibraryJson, TECHNOLOGIES, type LibDevice } from "./library";
+import { builtinDevices, deviceName, exportLibraryJson, parseLibraryJson, TECHNOLOGIES, type LibDevice } from "./library";
 import { Modal } from "./Modal";
-import { useDeviceLib, validationBase } from "./store";
+import { MAX_USER_DEVICES, useDeviceLib, validationBase } from "./store";
 
 function Row({ d, onPlace, onLoad }: { d: LibDevice; onPlace: (d: LibDevice) => void; onLoad: (d: LibDevice) => void }) {
   const t = useT();
@@ -49,7 +49,6 @@ function Row({ d, onPlace, onLoad }: { d: LibDevice; onPlace: (d: LibDevice) => 
         </div>
         <div className="dm-meta mono">
           V<sub>G</sub> {dev.vg.toFixed(2).replace("-", "−")} V · {iph ? <>I<sub>PH</sub> {fmtSI(iph * 1e-12, "A", 3)}</> : t("schematic.lib.dark")} · {t("schematic.lib.local", { mode: t(`local.mode.short.${d.stochastic.local_state.mode}` as never) })}
-          {!d.builtin && ` · ${t("schematic.dev.fromDevice", { base: calibPart(t.l(d.calibration_label)) })}`}
         </div>
         {d.notes && <div className="dm-notes">{d.notes}</div>}
         {created && <div className="dm-date">{t("schematic.lib.created")}: {created.toLocaleString(t.lang === "ko" ? "ko-KR" : "en-GB")}</div>}
@@ -61,7 +60,7 @@ function Row({ d, onPlace, onLoad }: { d: LibDevice; onPlace: (d: LibDevice) => 
         <button type="button" className="btn sm primary" onClick={() => onPlace(d)} data-testid="dm-place">
           {t("schematic.lib.place")}
         </button>
-        <button type="button" className="btn sm ghost" onClick={() => lib.duplicate(d, t("schematic.lib.copySuffix"))} data-testid="dm-duplicate">
+        <button type="button" className="btn sm ghost" disabled={lib.devices.length >= MAX_USER_DEVICES} onClick={() => lib.duplicate(d, t("schematic.lib.copySuffix"))} data-testid="dm-duplicate">
           {t("schematic.lib.duplicate")}
         </button>
         <button type="button" className="btn sm ghost" onClick={() => downloadText(`${d.name.replace(/[^\w.-]+/g, "_")}.stl-device.json`, exportLibraryJson([d]))}>
@@ -128,7 +127,6 @@ export default function DeviceManager({ onClose }: { onClose: () => void }) {
             {!x.active && <span className="soon">{t("schematic.dev.soon")}</span>}
           </span>
         ))}
-        <span className="small muted">{t("schematic.dev.geometryFixed")}</span>
       </div>
       {msg && (
         <div className={`callout ${msg.err ? "err" : "info"}`} role="status" data-testid="dm-msg">
@@ -167,7 +165,8 @@ export default function DeviceManager({ onClose }: { onClose: () => void }) {
             return;
           }
           const n = importMany(r.devices);
-          setMsg({ text: `${t("schematic.lib.imported", { n })}${r.skipped ? ` · ${t("schematic.lib.skipped", { n: r.skipped })}` : ""}` });
+          const skipped = r.skipped + r.devices.length - n;
+          setMsg({ text: `${t("schematic.lib.imported", { n })}${skipped ? ` · ${t("schematic.lib.skipped", { n: skipped })}` : ""}` });
         }}
       />
     </Modal>

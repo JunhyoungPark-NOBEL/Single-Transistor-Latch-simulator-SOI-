@@ -13,8 +13,8 @@ export const BRAND_STRINGS = {
   },
 
   // credits corner (context strip, right end): full text at ≥ 1280 px, the short form below (CSS)
-  "brand.credits.full": { ko: "KAIST 전기및전자공학부 · NOBEL 연구실 (지도교수 최양규) · 개발 박준형", en: "NOBEL Lab · Prof. Yang-Kyu Choi · School of Electrical Engineering, KAIST · Developed by Junhyoung Park" },
-  "brand.credits.short": { ko: "KAIST · NOBEL 연구실", en: "KAIST · NOBEL Lab" },
+  "brand.credits.full": { ko: "제작자", en: "Credits" },
+  "brand.credits.short": { ko: "제작자", en: "Credits" },
   "brand.credits.aria": { ko: "STL Simulator 정보와 만든 사람 보기", en: "About STL Simulator and credits" },
 
   // About popover
@@ -26,15 +26,15 @@ export const BRAND_STRINGS = {
   },
   "brand.about.device": { ko: "소자", en: "Device" },
   "brand.about.device.value": { ko: "FDSOI · L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm", en: "FDSOI · L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm" },
-  "brand.about.glyph": { ko: "biristor 기호: 베이스(바디)가 떠 있는 NPN", en: "Biristor symbol: NPN with a floating base (body)" },
+  "brand.about.glyph": { ko: "Biristor 심볼", en: "Biristor symbol" },
   "brand.about.device.soon": { ko: "PDSOI · Bulk 모델은 준비 중입니다.", en: "PDSOI and bulk models are coming later." },
   "brand.about.scope": { ko: "미발표 모델 — 연구용으로만 사용하세요.", en: "Unpublished model — for research use only." },
   "brand.about.lab": { ko: "연구실", en: "Lab" },
   "brand.about.lab.value": { ko: "NOBEL 연구실", en: "NOBEL Lab" },
   "brand.about.advisor": { ko: "지도교수", en: "Advisor" },
-  "brand.about.advisor.value": { ko: "최양규 교수", en: "Prof. Yang-Kyu Choi" },
+  "brand.about.advisor.value": { ko: "", en: "" },
   "brand.about.institution": { ko: "소속", en: "Institution" },
-  "brand.about.institution.value": { ko: "KAIST 전기및전자공학부", en: "School of Electrical Engineering, KAIST" },
+  "brand.about.institution.value": { ko: "KAIST", en: "KAIST" },
   "brand.about.developer": { ko: "개발", en: "Developer" },
   "brand.about.developer.value": { ko: "박준형", en: "Junhyoung Park" },
   "brand.about.version": { ko: "버전", en: "Version" },

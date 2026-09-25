@@ -63,6 +63,9 @@ def _resolve(payload: dict, warnings: list, need_stochastic=True):
     if not isinstance(payload, dict):
         raise ValueError("payload must be a JSON object")
     device = P.resolve_device(payload.get("device"))
+    if P.uses_geometry_model(device):
+        raise ValueError("geometry-stochastic-unavailable: Geometry scaling currently supports deterministic VSCM/CSVM; "
+                         "the carrier-noise kernel is calibrated only at the reference geometry.")
     preset = device.get("preset") or "paper"
     sweep = P.resolve_section(preset, "sweep", payload.get("sweep"))
     sweep["vd_max_V"] = _clamp(sweep["vd_max_V"], "vd_max_V", warnings)

@@ -6,6 +6,7 @@ import { BENCH_ORDER } from "../params/benches";
 import type { ParamRoot, Tab } from "../params/schema";
 import { getPath, mergeDefaults, setPath, type Path } from "../utils/object";
 import type { VgRange } from "../utils/payload";
+import { resolveBackGate, resolveGeometry } from "../params/geometry";
 
 export type Lang = "ko" | "en";
 export type Theme = "light" | "dark";
@@ -85,6 +86,7 @@ const ENUMS: [Path, readonly unknown[]][] = [
  */
 export function restoreParams(base: ParamRoot, stored: unknown, version = PERSIST_VERSION): ParamRoot {
   let p = mergeDefaults(base, stored);
+  p = { ...p, device: { ...p.device, geometry: resolveGeometry(p.device.geometry), vbg: resolveBackGate(p.device.vbg) } };
   if (version < 2) {
     // v1 stored the old built-in 1 µs edges as plain values; they were never a user choice → back to auto
     for (const bench of ["pulse", "pbit", "coupled"] as const)

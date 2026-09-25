@@ -3,7 +3,10 @@ import { create } from "zustand";
 import type { DeviceBlock } from "../api/types";
 import { BUILTIN_META } from "../state/presets";
 import { clone } from "../utils/object";
-import { LIBRARY_VERSION, newDeviceId, stochOf, uniqueName, validateDevice, type DeviceStochastic, type LibDevice } from "./library";
+import { resolveBackGate } from "../params/geometry";
+import { LIBRARY_VERSION, geometryFromDevice, newDeviceId, stochOf, uniqueName, validateDevice, type DeviceStochastic, type LibDevice } from "./library";
+
+export const MAX_USER_DEVICES = 5;
 
 export const DEVICES_KEY = "stl-websim:devices";
 
@@ -49,6 +52,12 @@ function save(devices: LibDevice[]) {
   }
 }
 
+/** Keep displayed library geometry and the submitted simulation geometry in sync. */
+function canonicalDevice(d: LibDevice): LibDevice {
+  const geometry = geometryFromDevice(d.device);
+  return { ...d, geometry, device: { ...d.device, geometry: clone(geometry), vbg: resolveBackGate(d.device.vbg) } };
+}
+
 export interface DeviceLibState {
   devices: LibDevice[];
   add: (d: Omit<LibDevice, "id" | "created"> & Partial<Pick<LibDevice, "id" | "created">>) => LibDevice;
@@ -62,12 +71,13 @@ export interface DeviceLibState {
 export const useDeviceLib = create<DeviceLibState>((set, get) => ({
   devices: load(),
   add: (d) => {
+    if (get().devices.length >= MAX_USER_DEVICES) throw new Error("Device limit reached (5)");
     const names = get().devices.map((x) => x.name);
-    const dev: LibDevice = { ...clone(d), id: d.id ?? newDeviceId(), created: d.created ?? new Date().toISOString(), name: uniqueName(d.name.trim() || "Device", names), builtin: undefined, label: undefined };
+    const dev = canonicalDevice({ ...clone(d), id: d.id ?? newDeviceId(), created: d.created ?? new Date().toISOString(), name: uniqueName(d.name.trim() || "Device", names), builtin: undefined, label: undefined });
     set((s) => ({ devices: [...s.devices, dev] }));
     return dev;
   },
-  update: (id, patch) => set((s) => ({ devices: s.devices.map((d) => (d.id === id ? { ...d, ...clone(patch) } : d)) })),
+  update: (id, patch) => set((s) => ({ devices: s.devices.map((d) => (d.id === id ? canonicalDevice({ ...d, ...clone(patch) }) : d)) })),
   rename: (id, name) =>
     set((s) => {
       const n = name.trim();
@@ -76,8 +86,9 @@ export const useDeviceLib = create<DeviceLibState>((set, get) => ({
       return { devices: s.devices.map((d) => (d.id === id ? { ...d, name: uniqueName(n, others) } : d)) };
     }),
   duplicate: (d, suffix) => {
+    if (get().devices.length >= MAX_USER_DEVICES) throw new Error("Device limit reached (5)");
     const names = get().devices.map((x) => x.name);
-    const copy: LibDevice = { ...clone(d), id: newDeviceId(), created: new Date().toISOString(), name: uniqueName(`${d.name} ${suffix}`.trim(), names), builtin: undefined, label: undefined };
+    const copy = canonicalDevice({ ...clone(d), id: newDeviceId(), created: new Date().toISOString(), name: uniqueName(`${d.name} ${suffix}`.trim(), names), builtin: undefined, label: undefined });
     set((s) => ({ devices: [...s.devices, copy] }));
     return copy;
   },
@@ -86,12 +97,12 @@ export const useDeviceLib = create<DeviceLibState>((set, get) => ({
     const cur = get().devices;
     const names = cur.map((x) => x.name);
     const ids = new Set(cur.map((x) => x.id));
-    const add = ds.map((d) => {
+    const add = ds.slice(0, Math.max(0, MAX_USER_DEVICES - cur.length)).map((d) => {
       const name = uniqueName(d.name, names);
       names.push(name);
       const id = ids.has(d.id) ? newDeviceId() : d.id;
       ids.add(id);
-      return { ...d, id, name };
+      return canonicalDevice({ ...clone(d), id, name });
     });
     set({ devices: [...cur, ...add] });
     return add.length;

@@ -22,9 +22,22 @@ export interface ExtBlock {
   dibl: number; gamma: number; kappa: number; seed_ip_pA: number; seed_S: number; dj: number; dm: number;
   aloc: number; isat_pA: number; dloc: number; loc_carriers: number; kappaF: number;
 }
+/** FDSOI geometry. Lengths are nm; body acceptor density is cm^-3. */
+export interface DeviceGeometry {
+  Lg_nm: number;
+  W_nm: number;
+  Tsi_nm: number;
+  EOT_nm: number;
+  Tbox_nm: number;
+  Nbody_cm3: number;
+}
 export interface DeviceBlock {
   preset: PresetId;
+  /** Absent in legacy device files: use the calibrated reference geometry. */
+  geometry?: DeviceGeometry;
   vg: number;
+  /** Back-gate voltage relative to source; absent legacy values mean 0 V. */
+  vbg?: number;
   light: LightBlock;
   calib: CalibBlock;
   ext: ExtBlock;
@@ -116,6 +129,15 @@ export interface BranchesResult extends Common {
   sweep_dv_V?: number;
   vd_max_V?: number;
   grid?: number;
+  /** Actual dimensions used for this computation, required for nonreference exports. */
+  geometry?: DeviceGeometry;
+  vbg?: number;
+  geometry_model?: {
+    version: string;
+    calibrated_geometry: DeviceGeometry;
+    tbox_source: string;
+    validated: boolean;
+  };
 }
 export interface ChargeBalanceResult extends Common {
   vd: number; u: Arr; r: Arr; id: Arr; Q_C: Arr;

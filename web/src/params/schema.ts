@@ -6,6 +6,7 @@ import type { BenchId, CircuitStochBlock, DeviceBlock, Mode, SolverBlock, Stocha
 import type { StrKey } from "../i18n/strings";
 import type { Path } from "../utils/object";
 import type { BenchValue } from "./benches";
+import { GEOMETRY_LIMITS, type GeometryKey } from "./geometry";
 
 export type Tab = "device" | "circuit" | "validation" | "physics";
 
@@ -42,6 +43,8 @@ export interface FieldDef {
   sym?: string;
   label: L10n;
   help: L10n;
+  /** Optional public documentation path, opened from the compact guide. */
+  documentationPath?: string;
   code?: string;
   unit?: string | ((c: Ctx) => string);
   scale?: number | ((c: Ctx) => number);
@@ -84,6 +87,19 @@ export interface GroupDef {
 }
 
 const L = (ko: string, en: string): L10n => ({ ko, en });
+/** Geometry is a compact, always-visible block above the parameter groups. */
+export const GEOMETRY_FIELDS: (FieldDef & { geometryKey: GeometryKey })[] = [
+  { geometryKey: "Lg_nm", label: L("게이트 길이", "Gate length"), sym: "L", unit: "nm" },
+  { geometryKey: "W_nm", label: L("소자 폭", "Device width"), sym: "W", unit: "nm" },
+  { geometryKey: "Tsi_nm", label: L("실리콘 두께", "Silicon thickness"), sym: "Tsi", unit: "nm" },
+  { geometryKey: "EOT_nm", label: L("등가 산화막 두께", "Equivalent oxide thickness"), sym: "Tox (EOT)", unit: "nm" },
+  { geometryKey: "Tbox_nm", label: L("매몰 산화막 두께", "Buried oxide thickness"), sym: "Tbox", unit: "nm" },
+  { geometryKey: "Nbody_cm3", label: L("바디 도핑", "Body doping"), sym: "Nbody", unit: "cm⁻³" },
+].map((f) => ({
+  ...f, geometryKey: f.geometryKey as GeometryKey, key: `geometry-${f.geometryKey}`,
+  path: ["device", "geometry", f.geometryKey], help: f.label,
+  ...GEOMETRY_LIMITS[f.geometryKey as GeometryKey],
+}));
 const isDevice = (c: Ctx) => c.tab === "device" || c.tab === "validation" || c.tab === "physics";
 const isVolt = (c: Ctx) => ["gidl", "junction"].includes(c.root.stochastic.local_state.action);
 const isVoltC = (c: Ctx) => ["gidl", "junction"].includes(c.root.circuit.stochastic.local_state.action);
@@ -117,6 +133,7 @@ export const GROUPS: GroupDef[] = [
     tabs: ["device", "circuit"],
     fields: [
       { key: "vg", path: ["device", "vg"], sym: "V_G", label: L("게이트 전압", "Gate voltage"), help: L("게이트-소스 전압. 채널 전류와 게이트 가장자리 GIDL 전계를 정합니다", "Gate–source voltage; sets the channel current and the gate-edge GIDL field"), code: "p[11]", unit: "V", min: -6, max: 1, step: 0.01, slider: true, main: true },
+      { key: "vbg", path: ["device", "vbg"], sym: "V_{BG}", label: L("백게이트 전압", "Back-gate voltage"), help: L("매몰 산화막을 통한 백게이트 결합을 채널 전류에 반영합니다", "Back-gate coupling through the buried oxide changes the channel current"), documentationPath: "docs/geometry-model.html", unit: "V", min: -10, max: 10, step: 0.1, main: true },
       { key: "vd_max", path: ["sweep", "vd_max_V"], sym: "V_{D,\\max}", label: L("스윕 최대 전압", "Sweep peak"), help: L("삼각 스윕 0 → V_D,max → 0의 최고점 (서버 상한 8 V)", "Peak drain voltage of the triangular sweep 0 → V_D,max → 0 (server limit 8 V)"), unit: "V", min: 0.5, max: 8, step: 0.05, slider: true, show: isDevice, main: true },
       { key: "rate", path: ["sweep", "rate_V_per_s"], sym: "\\dot V_D", label: L("램프 속도", "Ramp rate"), help: L("드레인 전압 스윕 속도 — hazard 적분과 MC 시간축을 정합니다", "Drain-voltage sweep rate — sets the hazard integral and the MC time axis"), unit: "V/s", min: 1e-3, max: 1e5, slider: "log", show: isDevice, main: (c) => c.mode === "stochastic" },
       { key: "dv", path: ["sweep", "dv_V"], sym: "\\Delta V", label: L("전압 스텝", "Voltage step"), help: L("스윕 전압 간격 (MC 시간 스텝 Δt = ΔV / 램프 속도)", "Sweep voltage step (MC time step Δt = ΔV / ramp rate)"), unit: "mV", scale: 1e3, min: 0.1, max: 50, step: 0.1, show: isDevice },

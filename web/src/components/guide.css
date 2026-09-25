@@ -38,9 +38,9 @@
 /* ------------------------------------------------------------------ popover */
 .gp {
   position: fixed; z-index: 960;
-  width: min(340px, 92vw);
+  width: min(320px, 92vw);
   max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain;
-  padding: 10px 14px 12px;
+  padding: 12px 14px;
   background: var(--surface); color: var(--text);
   border: 1px solid var(--border-strong); border-radius: 12px;
   box-shadow: var(--shadow-3);
@@ -49,7 +49,6 @@
 }
 .gp:focus { outline: none; }
 .gp.pinned:focus-visible { box-shadow: var(--shadow-3), var(--focus); }
-.gp.preview { pointer-events: none; overflow: hidden; }
 @keyframes gpIn { from { opacity: 0; transform: translateY(3px); } }
 .gp-scrim { position: fixed; inset: 0; z-index: 955; background: rgba(15, 23, 42, 0.32); animation: fadeIn .15s; }
 :root[data-theme="dark"] .gp-scrim { background: rgba(0, 0, 0, 0.5); }
@@ -59,7 +58,6 @@
   padding: 6px 16px calc(14px + env(safe-area-inset-bottom));
   font-size: 13px; animation: gpSheet .18s ease-out;
 }
-.gp.sheet.preview { display: none; } /* on touch the tap pins; no half-state sheet */
 @keyframes gpSheet { from { transform: translateY(24px); opacity: .4; } }
 .gp-grab { width: 36px; height: 4px; border-radius: 2px; background: var(--border-strong); margin: 2px auto 6px; }
 
@@ -69,8 +67,12 @@
 .gp-close { flex: none; margin: -4px -6px -4px 0; }
 .gp-block + .gp-block { margin-top: 8px; }
 .gp-h { font-size: 11px; font-weight: 750; letter-spacing: .02em; color: var(--muted); margin-bottom: 2px; }
-.gp-intuitive { margin: 0; font-size: 14px; line-height: 1.55; color: var(--text); }
-.gp.sheet .gp-intuitive { font-size: 14.5px; }
+.gp-intuitive { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text); }
+.gp.sheet .gp-intuitive { font-size: 13.5px; }
+.gp-compact-effects { display: grid; gap: 7px; margin-top: 12px; }
+.gp-reference { font-size: 10.5px; color: var(--text-2); }
+.gp .gchips-lead, .gp .gchips-step, .gp .gchip-mean, .gp .gchip[data-dir="flat"] .gchip-arrow, .gp .gchip[data-dir="flat"] .gchip-mag { color: var(--text-2); }
+.gp .gp-foot { border-top: 1px solid var(--border); padding-top: 9px; margin-top: 10px; }
 .gp-effects { margin: 0; padding: 0 0 0 16px; font-size: 12.5px; line-height: 1.5; }
 .gp-effects li { margin: 1px 0; }
 .gp-effects li::marker { color: var(--faint); }

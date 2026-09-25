@@ -1,13 +1,14 @@
 // Schematic symbols drawn in local coordinates (unrotated: two-terminal parts vertical with the first
 // node on top; STL drain up, gate left, source down). Text is drawn upright outside the rotation.
 import { memo } from "react";
+import { BiristorGlyph } from "../components/Logo";
 import type { Wave } from "../api/circuitCustom";
 import { labelWidth, rotatePt, type ElKind, type SElement } from "./model";
 import { fmtSI } from "./si";
 
 const Z = "M0 -40 V-26 L7 -22 L-7 -14 L7 -6 L-7 2 L7 10 L-7 18 L0 22 V40"; // resistor zigzag
 
-function Body({ kind }: { kind: ElKind }) {
+function Body({ kind, polarity }: { kind: ElKind; polarity?: string }) {
   switch (kind) {
     case "R":
       return <path d={Z} className="sch-stroke" />;
@@ -45,17 +46,22 @@ function Body({ kind }: { kind: ElKind }) {
           <path d="M-4 5 H1 V-5 H8" className="sch-accent" />
         </>
       );
+    case "D": return <><path d="M0 -40 V-12 M0 12 V40 M-13 -12 L0 12 L13 -12 Z M-13 12 H13" className="sch-stroke" /></>;
+    case "MOS": return <>
+      <path d="M0 -40 V-18 H-9 M0 40 V18 H-9 M-40 0 H-19 M-19 -20 V20 M-9 -23 V23" className="sch-stroke" />
+      <path d={polarity === "pmos" ? "M-2 18 L-9 14 L-9 22 Z" : "M-9 18 L-2 14 L-2 22 Z"} className="sch-solid" />
+    </>;
+    case "BJT": return <>
+      <circle cx={-1} r={24} className="sch-stroke sch-fill" />
+      <path d="M0 -40 V-22 L-13 -8 M0 40 V22 L-13 8 M-40 0 H-13 M-13 -15 V15" className="sch-stroke" />
+      <path d={polarity === "pnp" ? "M-10 11 L-2 12 L-7 19 Z" : "M-1 22 L-9 19 L-3 13 Z"} className="sch-solid" />
+    </>;
     case "STL":
       return (
         <>
-          {/* drain / source leads, channel, gate plate and lead */}
-          <path d="M0 -40 V-16 H-10 M0 40 V16 H-10 M-40 0 H-19" className="sch-stroke" />
-          <path d="M-10 -23 V23" className="sch-stroke thick" />
-          <path d="M-19 -16 V16" className="sch-stroke thick" />
-          {/* n-type arrow on the source */}
-          <path d="M-1 16 L-8 12.5 L-8 19.5 Z" className="sch-solid" />
-          {/* floating-body hysteresis mark (latch) */}
-          <path d="M6 5 H15 V-5 M11 5 V-5 H20" className="sch-accent" />
+          <path d="M0 -40 H31 V-16 H0 M0 40 H-31 V16 H0 M-40 0 H-24" className="sch-stroke" />
+          <circle r={24} className="sch-stroke sch-fill" />
+          <path d="M0 -16 H13 L0 16 H-13 Z M0 -16 H31 M-31 16 H0" className="sch-accent" />
         </>
       );
     case "LABEL":
@@ -91,6 +97,9 @@ export function elementText(el: SElement): string[] {
       return [el.name, waveShort(el.wave, "V")];
     case "I":
       return [el.name, waveShort(el.wave, "A")];
+    case "MOS": return [el.name, `${el.mos?.polarity === "pmos" ? "PMOS" : "NMOS"} · ${el.mos?.W_um ?? 10}/${el.mos?.L_um ?? 1} µm`];
+    case "D": return [el.name];
+    case "BJT": return [el.name, el.bjt?.polarity.toUpperCase() ?? "NPN"];
     case "STL":
       return [el.name, shortName(el.stl?.name ?? "—")];
     case "CMP":
@@ -100,7 +109,7 @@ export function elementText(el: SElement): string[] {
   }
 }
 
-const TEXT_OFF: Partial<Record<ElKind, number>> = { R: 16, C: 22, V: 26, I: 26, STL: 28, CMP: 30 };
+const TEXT_OFF: Partial<Record<ElKind, number>> = { R: 16, C: 22, V: 26, I: 26, STL: 34, MOS: 18, D: 22, BJT: 30, CMP: 30 };
 
 export interface ElementViewProps {
   el: SElement;
@@ -158,12 +167,12 @@ function ElementViewImpl({ el, selected, hovered, flagged, ghost, probing }: Ele
         })()
       : null;
   const pinLetters =
-    el.kind === "STL"
+    el.kind === "STL" || el.kind === "MOS" || el.kind === "BJT"
       ? ([["D", 7, -30], ["G", -33, -6], ["S", 7, 34]] as const).map(([l, x, y]) => {
           const p = rotatePt(x, y, el.rot, el.mirror);
           return (
             <text key={l} x={el.x + p.x} y={el.y + p.y + 3} textAnchor="middle" className="sch-pin-letter">
-              {l}
+              {el.kind === "BJT" ? ({ D: "C", G: "B", S: "E" } as const)[l] : l}
             </text>
           );
         })
@@ -171,7 +180,7 @@ function ElementViewImpl({ el, selected, hovered, flagged, ghost, probing }: Ele
   return (
     <g className={cls} data-el={ghost ? undefined : el.id} data-kind={ghost ? undefined : el.kind}>
       <g transform={tf}>
-        <Body kind={el.kind} />
+        <Body kind={el.kind} polarity={el.mos?.polarity ?? el.bjt?.polarity} />
       </g>
       {signs}
       {pinLetters}
@@ -208,15 +217,10 @@ export function PartIcon({ kind, size = 18 }: { kind: ElKind | "wire" | "select"
       return <svg {...common}><path d="M12 4 V12 M5 12 H19 M8 16 H16 M11 20 H13" /></svg>;
     case "LABEL":
       return <svg {...common}><path d="M3 8 H15 L20 12 L15 16 H3 Z" /><path d="M7 12 H12" /></svg>;
-    case "STL":
-      return (
-        <svg {...common}>
-          <path d="M14 2 V7 H9 M14 22 V17 H9 M2 12 H6" />
-          <path d="M9 5 V19" strokeWidth={2.2} />
-          <path d="M6 7.5 V16.5" strokeWidth={2.2} />
-          <path d="M16 13 H19 V10 M18 13 V10 H21" strokeWidth={1.4} />
-        </svg>
-      );
+    case "STL": return <BiristorGlyph size={size} />;
+    case "MOS": return <svg {...common}><path d="M15 2 V7 H10 M15 22 V17 H10 M2 12 H6 M6 6 V18 M10 5 V19 M15 17 L11 15 V19 Z" /></svg>;
+    case "D": return <svg {...common}><path d="M12 2 V6 M12 18 V22 M5 6 H19 L12 18 Z M5 18 H19" /></svg>;
+    case "BJT": return <svg {...common}><circle cx={13} cy={12} r={9} /><path d="M1 12 H9 M9 6 V18 M9 9 L16 5 M9 15 L16 19 M16 19 L12 18 L14 15 Z" /></svg>;
     case "CMP":
       return (
         <svg {...common}>

@@ -4,6 +4,7 @@
 import { ApiError, JobAborted } from "../api/client";
 import { checkCustomResult, isUnknownBenchError, runCustomCircuit, type CustomCircuitRequest, type CustomCircuitResult } from "../api/circuitCustom";
 import { createMockBackend } from "../api/mock";
+import { geometryError } from "../api/geometryPolicy";
 import { isSnapshotFallback } from "../api/snapshot";
 import { translate } from "../i18n";
 import { backendReady, getBackend } from "../state/runner";
@@ -108,7 +109,7 @@ export async function runSchematic(opts: { confirmed?: boolean } = {}): Promise<
     if (aborted()) return;
     const busy = e instanceof ApiError && e.status === 429;
     const msg = (e as Error).message || String(e);
-    patch(RESULT_KEY, { status: "error", error: busy ? translate(useStore.getState().lang, "busy.failed") : msg, progress: 0, message: "" });
+    patch(RESULT_KEY, { status: "error", error: busy ? translate(useStore.getState().lang, "busy.failed") : geometryError(msg, useStore.getState().lang), progress: 0, message: "" });
     // server-side ERC / validation errors name elements and nodes: highlight them on the schematic
     if (!busy) {
       const ids = idsFromMessage(msg);
@@ -133,7 +134,7 @@ function afterRun(result: CustomCircuitResult) {
   if (!traces.length) {
     const labels = new Set(st.doc.elements.filter((e) => e.kind === "LABEL" && e.label).map((e) => `V(${e.label})`));
     const volts = [...keys].filter((k) => labels.has(k));
-    const stl = [...keys].filter((k) => /^I\(.+\.d\)$/.test(k));
+    const stl = [...keys].filter((k) => /^I\(.+\.[dc]\)$/.test(k));
     const bits = [...keys].filter((k) => /\.bit$/.test(k)); // comparator outputs as logic traces
     traces = [...(volts.length ? volts : [...keys].filter((k) => k.startsWith("V(")).slice(0, 3)), ...stl, ...bits].slice(0, 7);
   }

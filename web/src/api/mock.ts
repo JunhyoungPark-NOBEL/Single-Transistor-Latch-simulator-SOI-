@@ -11,6 +11,7 @@ import type {
   VgCurveStochasticResult, XY,
 } from "./types";
 import { BUILTIN_META, RESPONSIVITY_PA_PER_MW } from "../state/presets";
+import { GEOMETRY_LIVE_REQUIRED, hasChangedGeometry } from "./geometryPolicy";
 
 // ---------------------------------------------------------------- helpers
 export function mulberry32(seed: number) {
@@ -650,6 +651,7 @@ let customMod: CustomMod | null = null;
 const isCustom = (kind: Kind, payload: unknown) => kind === "circuit" && (payload as { bench?: string } | null)?.bench === "custom";
 
 function compute(kind: Kind, payload: unknown): unknown {
+  if (hasChangedGeometry(payload)) throw new Error(GEOMETRY_LIVE_REQUIRED);
   const p = payload as never;
   if (isCustom(kind, payload)) {
     if (!customMod) throw new Error("custom-circuit mock not loaded");

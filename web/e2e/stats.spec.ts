@@ -50,9 +50,8 @@ test.describe("statistics summary (mock mode)", () => {
     await page.getByTestId("panel-stats").screenshot({ path: `${SHOTS}/stats-panel-mock.png` });
   });
 
-  test("measured record adds a sub-row and the KS comparison (photo preset)", async ({ page }) => {
+  test("Device 1 measured record adds a sub-row and the KS comparison", async ({ page }) => {
     await freshStochastic(page);
-    await page.getByTestId("preset-photo").click();
     await run(page);
     const table = page.getByTestId("stats-table");
     await expect(table.locator('tr[data-row="V_LU:measured"]')).toBeVisible();
@@ -96,7 +95,6 @@ test.describe("statistics summary (mock mode)", () => {
 
   test("CDF view: KS line under the plot; narrow screens scroll the table inside its card", async ({ page }) => {
     await freshStochastic(page);
-    await page.getByTestId("preset-photo").click();
     await run(page);
     const dist = page.getByTestId("panel-dist");
     await dist.getByRole("radio", { name: "CDF" }).click();
@@ -110,6 +108,6 @@ test.describe("statistics summary (mock mode)", () => {
     });
     expect(m.inner).toBeGreaterThan(m.outer); // the table scrolls inside the card …
     expect(m.right).toBeLessThanOrEqual(m.vw + 1); // … and the card itself stays within the viewport
-    await page.getByTestId("panel-stats").screenshot({ path: `${SHOTS}/stats-panel-mobile.png` });
+    await page.getByTestId("panel-stats").screenshot({ path: "review/stats-panel-mobile.png" });
   });
 });

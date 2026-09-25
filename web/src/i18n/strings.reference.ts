@@ -1,0 +1,28 @@
+import type { L10n } from "../content/physics/types";
+
+export const REF = {
+  fixed: { ko: "기준 데이터", en: "Fixed reference" },
+  title: { ko: "레퍼런스 소자", en: "Reference device" },
+  subtitle: { ko: "측정 데이터와 보정 모델", en: "Measured data and calibrated model" },
+  geometry: { ko: "FDSOI · L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm", en: "FDSOI · L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm" },
+  condition: { ko: "V_G −2 V · 암조건 · 0 ↔ 4 V · 0.4 V/s", en: "V_G −2 V · Dark · 0 ↔ 4 V · 0.4 V/s" },
+  plot: { ko: "I_D–V_D 벤치마크", en: "I_D–V_D benchmark" },
+  measuredUp: { ko: "측정 ↑", en: "Measured ↑" },
+  measuredDown: { ko: "측정 ↓", en: "Measured ↓" },
+  modelUp: { ko: "모델 ↑", en: "Model ↑" },
+  modelDown: { ko: "모델 ↓", en: "Model ↓" },
+  band: { ko: "측정 10–90%", en: "Measured 10–90%" },
+  direction: { ko: "스윕", en: "Sweep" },
+  up: { ko: "상향 ↑", en: "Forward ↑" },
+  down: { ko: "하향 ↓", en: "Reverse ↓" },
+  logError: { ko: "로그 RMSE (dec)", en: "Log RMSE (dec)" },
+  linearError: { ko: "정규화 RMSE (%)", en: "Normalized RMSE (%)" },
+  points: { ko: "비교점", en: "Samples" },
+  method: { ko: "데이터 · 지표 정의", en: "Data · metric definitions" },
+  dataNote: { ko: "방향별 독립 측정 100회의 중앙값입니다. 모델 보정에 사용한 기록으로, 독립 검증 데이터는 아닙니다.", en: "Median of 100 separate measurements per direction. This record was used for calibration; it is not an independent test set." },
+  methodNote: { ko: "측정 V_D에서 모델 전류를 선형 보간합니다. 로그 RMSE는 양의 전류만 사용하며, 정규화 RMSE는 측정 전류의 최댓값−최솟값 기준입니다. 측정 저전류 바닥은 보정하지 않습니다. 준정적 모델과 측정 중앙값의 차이에는 스위칭 분산도 포함됩니다.", en: "Model currents are linearly interpolated at measured V_D. Log RMSE uses positive currents; normalized RMSE divides by the measured current range. The measured low-current floor is not corrected. Differences between the quasi-static model and measured median also include switching variability." },
+  source: { ko: "원본: measured_idvd_parsed.npz · 10 mV 간격", en: "Source: measured_idvd_parsed.npz · 10 mV steps" },
+  demo: { ko: "데모 모드에서는 실제 측정 벤치마크를 표시하지 않습니다. 계산 서버에 연결하면 표시됩니다.", en: "Measured benchmarks are unavailable in demo mode. Connect to the compute server to view them." },
+  missing: { ko: "측정 데이터를 불러오지 못했습니다.", en: "Could not load measured data." },
+  retry: { ko: "다시 불러오기", en: "Reload" },
+} satisfies Record<string, L10n>;

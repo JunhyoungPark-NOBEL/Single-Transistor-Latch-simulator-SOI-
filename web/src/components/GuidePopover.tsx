@@ -1,19 +1,11 @@
-// ⓘ parameter popover (replaces the hover-only InfoTip for sidebar fields). The guide comes first:
-// 쉽게 말하면 (intuitive) → 키우면 (3 effect lines, V_LU blue / V_LD red) → ⚠ caveat → 근거, then a divider
-// and today's technical help (meaning, code index, default, range), then "물리 자세히 보기 →".
-//
-// Behaviour: hover (300 ms) or keyboard focus shows a read-only preview (role="tooltip", same content);
-// click / tap / Enter pins it (role="dialog", non-modal, ✕, Esc, click outside; focus returns to the ⓘ).
-// One popover at a time (module store). It stacks above the Details window, and its Esc handler runs in
-// the capture phase and marks the event handled, so Esc closes the popover before the window.
-// At ≤ 760 px the pinned popover is a bottom sheet (max 70 vh, own scroll).
+// Click-to-open parameter guide: one sentence, two effect chips, and the full documentation link.
+// Keyboard activation, Escape, outside-click dismissal, and mobile bottom sheets are supported.
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { create } from "zustand";
-import type { L10n } from "../content/physics/types";
 import { useT, type T } from "../i18n";
 import { GUIDE } from "../i18n/strings.guide";
-import { effectChips, inlineLead, splitLead, type Effect, type GuideVerb, type ParamGuide } from "../params/guideUi";
+import { effectChips, firstSentence, inlineLead, splitLead, type Effect, type GuideVerb, type ParamGuide } from "../params/guideUi";
 import { IconAlert, IconX } from "./icons";
 import "./guide.css";
 
@@ -91,7 +83,7 @@ export const verbLabel = (t: T, v: GuideVerb): string => t.l(GUIDE[v === "on" ? 
  *  so a chip is never read as "any increase moves V_LU by 80 mV" (and, for a negative V_G, "+0.1 V" says
  *  which way "raise" goes). When neither voltage moves (V_D,max, cycle counts), the guide's third line says
  *  what does change ("래치업되는 사이클 비율만 ↑ …"), so the row never reads as "this knob does nothing". */
-export function EffectChips({ guide, verb, refTag }: { guide: ParamGuide; verb: GuideVerb; refTag?: boolean }) {
+export function EffectChips({ guide, verb, refTag, compact = false }: { guide: ParamGuide; verb: GuideVerb; refTag?: boolean; compact?: boolean }) {
   const t = useT();
   const [lu, ld] = effectChips(guide, t.lang);
   if (!lu?.q && !ld?.q) return null;
@@ -111,7 +103,7 @@ export function EffectChips({ guide, verb, refTag }: { guide: ParamGuide; verb: 
       )}{" "}
       {lu && <EffectChip e={lu} />}{" "}
       {ld && <EffectChip e={ld} />}
-      {why && (
+      {why && !compact && (
         <>
           {" "}
           <span className="gchips-why">
@@ -165,7 +157,7 @@ export function Caveat({ text, interactive }: { text: string; interactive: boole
 export const legendNote = (t: T) => t.l(GUIDE["guide.legend.short"]);
 
 // ---------------------------------------------------------------- popover store (one open at a time)
-type PopMode = "preview" | "pinned";
+type PopMode = "pinned";
 interface PopState {
   id: string | null;
   mode: PopMode | null;
@@ -184,13 +176,10 @@ export const useGuidePop = create<PopState>((set, get) => ({
   },
 }));
 
-/** Pin the popover of a trigger (the inline guide line uses this with the field's ⓘ button). */
+/** Open the guide for a parameter trigger. */
 export function pinGuide(id: string, trigger: HTMLElement | null | undefined) {
   if (trigger) useGuidePop.getState().show(id, "pinned", trigger);
 }
-
-/** Trigger that is getting focus back after its popover closed: that focus must not re-open a preview. */
-let refocusing: HTMLElement | null = null;
 
 const PHONE = "(max-width: 760px)";
 const isPhone = () => typeof window !== "undefined" && !!window.matchMedia?.(PHONE).matches;
@@ -202,64 +191,38 @@ export interface GuideCardProps {
   label: string;
   guide?: ParamGuide | null;
   verb?: GuideVerb;
-  /** Today's technical help block (meaning, code index, default and range). */
-  technical: ReactNode;
+  /** Brief fallback for fields with no authored design guide. */
+  description?: string;
   /** "물리 자세히 보기 →" (pinned only). */
   onMore?: () => void;
 }
 
-function GuideCard({ sym, label, guide, verb = "raise", technical, onMore, pinned, headingId, onClose }: GuideCardProps & { pinned: boolean; headingId: string; onClose: () => void }) {
+/** Keep lengthy glosses, equations, defaults, and caveats in the linked documentation. */
+export const compactGuideSummary = (text: string) => firstSentence(inlineLead(text));
+
+function GuideCard({ sym, label, guide, verb = "raise", description, onMore, headingId, onClose }: GuideCardProps & { headingId: string; onClose: () => void }) {
   const t = useT();
-  const L = (x: L10n) => t.l(x);
+  const summary = compactGuideSummary(guide ? t.l(guide.intuitive) : description ?? "");
   return (
     <>
       <div className="gp-head">
         {sym && <span className="gp-sym">{sym}</span>}
-        <span className="gp-title" id={headingId}>
-          {label}
-        </span>
-        {pinned && (
-          <button type="button" className="icon-btn xs gp-close" onClick={onClose} aria-label={L(GUIDE["guide.close"])} title={`${L(GUIDE["guide.close"])} (Esc)`} data-testid="guide-pop-close">
-            <IconX size={14} />
-          </button>
-        )}
+        <span className="gp-title" id={headingId}>{label}</span>
+        <button type="button" className="icon-btn xs gp-close" onClick={onClose} aria-label={t.l(GUIDE["guide.close"])} title={`${t.l(GUIDE["guide.close"])} (Esc)`} data-testid="guide-pop-close">
+          <IconX size={14} />
+        </button>
       </div>
+      {summary && <p className="gp-intuitive" data-testid="guide-pop-intuitive"><GuideText text={summary} /></p>}
       {guide && (
-        <>
-          <div className="gp-block gp-easy">
-            <div className="gp-h">{L(GUIDE["guide.easy"])}</div>
-            <p className="gp-intuitive" data-testid="guide-pop-intuitive">
-              <GuideText text={L(guide.intuitive)} />
-            </p>
-          </div>
-          <div className="gp-block gp-eff">
-            <div className="gp-h">
-              {verbLabel(t, verb)}
-              {verb === "raise" && <span aria-hidden> ↑</span>}
-            </div>
-            <ul className="gp-effects" data-testid="guide-pop-effects">
-              {guide.effect.map((e, i) => (
-                <li key={i} className={i === 2 ? "why" : undefined}>
-                  <EffectLine line={L(e)} />
-                </li>
-              ))}
-            </ul>
-          </div>
-          {guide.caveat && <Caveat text={L(guide.caveat)} interactive={pinned} />}
-          {/* the guide's provenance note (English, for guide.test.ts) stays in the tooltip, not in the body */}
-          <p className="gp-basis" title={guide.basis ? `${L(GUIDE["guide.basis"])}: ${guide.basis}` : undefined}>
-            <GuideText text={legendNote(t)} plain />
-          </p>
-        </>
+        <div className="gp-compact-effects" data-testid="guide-pop-effects">
+          <EffectChips guide={guide} verb={verb} compact />
+          <span className="gp-reference" title={legendNote(t)}>{t.lang === "ko" ? "기준 소자에서의 변화" : "Reference-device response"}</span>
+        </div>
       )}
-      <div className={`gp-tech${guide ? "" : " solo"}`}>
-        {guide && <div className="gp-h">{L(GUIDE["guide.tech"])}</div>}
-        {technical}
-      </div>
-      {pinned && onMore && (
+      {onMore && (
         <div className="gp-foot">
           <button type="button" className="link-btn gp-more" onClick={onMore} data-testid="guide-pop-more">
-            {L(GUIDE["guide.physics"])} →
+            {t.lang === "ko" ? "상세 문서" : "Documentation"} →
           </button>
         </div>
       )}
@@ -274,47 +237,27 @@ export interface GuidePopoverProps extends GuideCardProps {
   /** Accessible name of the ⓘ button. */
   ariaLabel: string;
   testId?: string;
-  /** Receives the ⓘ button (the inline guide line pins the popover through it). */
+  /** Receives the ⓘ button for restoring focus after documentation closes. */
   triggerRef?: Ref<HTMLButtonElement>;
 }
 
 export function GuidePopover({ id, ariaLabel, testId, triggerRef, ...card }: GuidePopoverProps) {
   const open = useGuidePop((s) => s.id === id);
   const mode = useGuidePop((s) => (s.id === id ? s.mode : null));
-  const btn = useRef<HTMLButtonElement | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const uid = useId();
   const popId = `gp-${uid}`;
   const headingId = `gp-h-${uid}`;
 
   const setBtn = useCallback(
     (el: HTMLButtonElement | null) => {
-      btn.current = el;
       if (typeof triggerRef === "function") triggerRef(el);
       else if (triggerRef) (triggerRef as { current: HTMLButtonElement | null }).current = el;
     },
     [triggerRef],
   );
 
-  useEffect(() => () => clearTimeout(timer.current), []);
   // unmount while open (group collapsed, field hidden): drop the popover
   useEffect(() => () => useGuidePop.getState().hide(id), [id]);
-
-  const pinnedElsewhere = () => {
-    const s = useGuidePop.getState();
-    return s.mode === "pinned" && s.id !== null && s.id !== id;
-  };
-  const preview = () => {
-    if (!btn.current || pinnedElsewhere()) return;
-    const s = useGuidePop.getState();
-    if (s.id === id && s.mode === "pinned") return;
-    s.show(id, "preview", btn.current);
-  };
-  const unpreview = () => {
-    clearTimeout(timer.current);
-    const s = useGuidePop.getState();
-    if (s.id === id && s.mode === "preview") s.hide(id);
-  };
 
   return (
     <>
@@ -325,32 +268,11 @@ export function GuidePopover({ id, ariaLabel, testId, triggerRef, ...card }: Gui
         aria-label={ariaLabel}
         aria-haspopup="dialog"
         aria-expanded={mode === "pinned"}
-        aria-describedby={mode === "preview" ? popId : undefined}
+        aria-controls={open ? popId : undefined}
         data-testid={testId}
-        onMouseEnter={() => {
-          clearTimeout(timer.current);
-          timer.current = setTimeout(preview, 300);
-        }}
-        onMouseLeave={unpreview}
-        onFocus={(e) => {
-          if (refocusing === e.currentTarget) {
-            refocusing = null;
-            return;
-          }
-          // keyboard focus previews at once; a mouse/touch press is followed by a click that pins
-          if (e.currentTarget.matches(":focus-visible")) preview();
-        }}
-        onBlur={unpreview}
-        onKeyDown={(e) => {
-          if (e.key === "Escape" && mode === "preview") {
-            e.preventDefault();
-            unpreview();
-          }
-        }}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          clearTimeout(timer.current);
           const s = useGuidePop.getState();
           if (s.id === id && s.mode === "pinned") s.hide(id);
           else s.show(id, "pinned", e.currentTarget);
@@ -369,7 +291,6 @@ function PopoverLayer({ id, card, mode, popId, headingId }: { id: string; card: 
   const trigger = useGuidePop((s) => s.trigger);
   const [pos, setPos] = useState<{ left: number; top: number; maxHeight?: number } | null>(null);
   const [sheet, setSheet] = useState(() => isPhone());
-  const pinned = mode === "pinned";
 
   const close = useCallback(
     (returnFocus: boolean) => {
@@ -378,9 +299,7 @@ function PopoverLayer({ id, card, mode, popId, headingId }: { id: string; card: 
       s.hide(id);
       if (returnFocus && tr && document.contains(tr))
         setTimeout(() => {
-          refocusing = tr;
           tr.focus({ preventScroll: true });
-          if (document.activeElement !== tr || refocusing === tr) refocusing = null;
         }, 0);
     },
     [id],
@@ -428,7 +347,6 @@ function PopoverLayer({ id, card, mode, popId, headingId }: { id: string; card: 
 
   // pinned: focus moves into the dialog; Esc (capture, before the Details window) and click outside close it
   useEffect(() => {
-    if (!pinned) return;
     ref.current?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -442,7 +360,6 @@ function PopoverLayer({ id, card, mode, popId, headingId }: { id: string; card: 
       if (ref.current?.contains(target)) return;
       const tr = useGuidePop.getState().trigger;
       if (tr && tr.contains(target)) return; // the trigger's own click toggles
-      if ((target as Element).closest?.("[data-guide-pin]")) return; // an inline guide line re-pins
       close(false);
     };
     window.addEventListener("keydown", onKey, true);
@@ -451,23 +368,10 @@ function PopoverLayer({ id, card, mode, popId, headingId }: { id: string; card: 
       window.removeEventListener("keydown", onKey, true);
       document.removeEventListener("pointerdown", onDown, true);
     };
-  }, [pinned, close]);
-
-  // preview: Esc anywhere closes it too (keyboard users on the trigger)
-  useEffect(() => {
-    if (pinned) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        useGuidePop.getState().hide(id);
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [pinned, id]);
+  }, [close]);
 
   const style = sheet ? undefined : pos ? { left: pos.left, top: pos.top, maxHeight: pos.maxHeight } : { left: -9999, top: -9999 };
-  const cls = `gp${pinned ? " pinned" : " preview"}${sheet ? " sheet" : ""}`;
+  const cls = `gp pinned${sheet ? " sheet" : ""}`;
   const more = onMore
     ? () => {
         close(false);
@@ -476,19 +380,18 @@ function PopoverLayer({ id, card, mode, popId, headingId }: { id: string; card: 
     : undefined;
   return createPortal(
     <>
-      {pinned && sheet && <div className="gp-scrim" aria-hidden onClick={() => close(true)} />}
+      {sheet && <div className="gp-scrim" aria-hidden onClick={() => close(true)} />}
       <div
         ref={ref}
         id={popId}
         className={cls}
         style={style}
-        role={pinned ? "dialog" : "tooltip"}
-        aria-modal={pinned ? false : undefined}
-        aria-labelledby={pinned ? headingId : undefined}
-        tabIndex={pinned ? -1 : undefined}
+        role="dialog"
+        aria-modal={sheet}
+        aria-labelledby={headingId}
+        tabIndex={-1}
         onKeyDown={
-          pinned
-            ? (e) => {
+          (e) => {
                 // Tab past either end leaves the popover: close it and continue from the ⓘ
                 if (e.key !== "Tab" || !ref.current) return;
                 const items = Array.from(ref.current.querySelectorAll<HTMLElement>("button, a[href], summary, [tabindex='0']")).filter((el) => !el.hasAttribute("disabled"));
@@ -500,13 +403,12 @@ function PopoverLayer({ id, card, mode, popId, headingId }: { id: string; card: 
                   close(true);
                 }
               }
-            : undefined
         }
         data-testid="guide-pop"
         data-mode={mode}
       >
-        {sheet && pinned && <div className="gp-grab" aria-hidden />}
-        <GuideCard {...card} onMore={more} pinned={pinned} headingId={headingId} onClose={() => close(true)} />
+        {sheet && <div className="gp-grab" aria-hidden />}
+        <GuideCard {...card} onMore={more} headingId={headingId} onClose={() => close(true)} />
       </div>
     </>,
     document.body,

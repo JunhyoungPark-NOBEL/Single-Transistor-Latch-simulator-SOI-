@@ -13,7 +13,14 @@ export type Wave =
   | { kind: "sine"; vo: number; va: number; freq: number; td: number; theta: number };
 export type WaveKind = Wave["kind"];
 
+export interface MosModel { polarity: "nmos" | "pmos"; L_um: number; W_um: number; Vth_V: number; SS_mV_dec: number; k_uA_V2: number; lambda_per_V: number }
+export interface DiodeModel { Is_A: number; n: number }
+export interface BjtModel { polarity: "npn" | "pnp"; Is_A: number; beta_F: number; beta_R: number }
+
 export type CustomElement =
+  | { type: "MOS"; name: string; nodes: { d: string; g: string; s: string }; model: MosModel }
+  | { type: "D"; name: string; nodes: { a: string; k: string }; model: DiodeModel }
+  | { type: "BJT"; name: string; nodes: { c: string; b: string; e: string }; model: BjtModel }
   | { type: "R" | "C"; name: string; nodes: [string, string]; value: number }
   | { type: "V" | "I"; name: string; nodes: [string, string]; wave: Wave }
   | {
@@ -182,13 +189,13 @@ export function valueAt(t: Arr, values: Arr, x: number): number | null {
 
 /** Canonical probe keys (§6.1). */
 export const vKey = (node: string) => `V(${node})`;
-export const iKey = (name: string, terminal?: "d" | "g" | "s") => (terminal ? `I(${name}.${terminal})` : `I(${name})`);
+export const iKey = (name: string, terminal?: "d" | "g" | "s" | "c" | "b" | "e") => (terminal ? `I(${name}.${terminal})` : `I(${name})`);
 
 /** Parse "V(n)" / "I(R1)" / "I(X1.d)" / "X1.u" → description. */
 export function parseProbe(key: string): { type: "V"; node: string } | { type: "I"; el: string; terminal?: string } | { type: "state"; el: string; q: string } | null {
   let m = /^V\((.+)\)$/.exec(key);
   if (m) return { type: "V", node: m[1] };
-  m = /^I\(([^.()]+)(?:\.([dgs]))?\)$/.exec(key);
+  m = /^I\(([^.()]+)(?:\.([dgscbe]))?\)$/.exec(key);
   if (m) return { type: "I", el: m[1], terminal: m[2] };
   m = /^([^.()]+)\.([a-z_]+)$/i.exec(key);
   if (m) return { type: "state", el: m[1], q: m[2] };

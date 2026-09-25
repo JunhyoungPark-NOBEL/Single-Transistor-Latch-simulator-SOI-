@@ -157,9 +157,7 @@ function SimCard() {
         </div>
         {(level === "heavy" || level === "refuse") && <div className="feas-hint">{t("schematic.sim.hintHeavy")}</div>}
         {mode === "stochastic" && level !== "ok" && <div className="feas-hint">{t("schematic.sim.hintSto")}</div>}
-        <div className="feas-note">{t("schematic.sim.roughNote")}</div>
       </div>
-      <div className="small muted">{t("schematic.sim.modeNote")}</div>
     </Card>
   );
 }

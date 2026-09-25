@@ -2,7 +2,6 @@
 // rows, switch, segmented control and a compact card (sidebar style).
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { useT } from "../i18n";
-import { useIsAll } from "../state/layout";
 import { fmtSI, parseSI, toSpice } from "./si";
 
 export function SIInput({
@@ -88,13 +87,13 @@ export function SIInput({
 }
 
 export function Row({ label, children, hint, htmlFor }: { label: ReactNode; children: ReactNode; hint?: ReactNode; htmlFor?: string }) {
+  const t = useT();
   return (
     <div className="sch-row">
-      <label className="sch-row-label" htmlFor={htmlFor}>
-        {label}
-      </label>
+      <div className="sch-row-name"><label className="sch-row-label" htmlFor={htmlFor}>{label}</label>
+        {hint && <details className="sch-field-help"><summary aria-label={t("details")}>i</summary><div>{hint}</div></details>}
+      </div>
       <div className="sch-row-ctl">{children}</div>
-      {hint && <div className="sch-row-hint">{hint}</div>}
     </div>
   );
 }
@@ -162,19 +161,19 @@ export function TextInput({ value, onCommit, testId, ariaLabel, id, placeholder,
 export function Card({ title, desc, children, testId, defaultOpen = true, actions, className }: { title: ReactNode; desc?: string; children: ReactNode; testId?: string; defaultOpen?: boolean; actions?: ReactNode; className?: string }) {
   const [open, setOpen] = useState(defaultOpen);
   const id = useId();
-  const all = useIsAll();
+  const t = useT();
   return (
     <section className={`group sch-card${className ? ` ${className}` : ""}`} data-testid={testId}>
       <div className="group-head">
-        <button type="button" className="group-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} title={all ? undefined : desc}>
+        <button type="button" className="group-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} title={desc}>
           <svg className="chev" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
             <path d="m6 9 6 6 6-6" />
           </svg>
           <span>
             <span className="group-title">{title}</span>
-            {desc && all && <span className="group-desc" style={{ display: "block" }}>{desc}</span>}
           </span>
         </button>
+        {desc && <details className="sch-field-help"><summary aria-label={t("details")}>i</summary><div>{desc}</div></details>}
         {actions && <div className="group-actions">{actions}</div>}
       </div>
       {open && (

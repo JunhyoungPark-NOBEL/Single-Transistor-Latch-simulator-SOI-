@@ -13,6 +13,9 @@ import {
   validationPayload, vgCurvePayload, vgStochPayload,
 } from "../utils/payload";
 import { useStore } from "./store";
+import { useLayout } from "./layout";
+import { csvmPayload, useForcing } from "../device/forcing";
+import { GEOMETRY_LIVE_REQUIRED, geometryError, hasChangedGeometry } from "../api/geometryPolicy";
 
 let backend: Backend = httpBackend;
 let mockBackend: Backend | null = null;
@@ -124,6 +127,7 @@ export async function runKey<T = unknown>(key: string, kind: Kind, payload: unkn
   const isMock = backend.isMock;
   st.patchResult(key, { status: "queued", kind, progress: 0, message: "", error: undefined, startedAt, elapsed: 0, payloadKey, token });
   try {
+    if (backend.isMock && hasChangedGeometry(payload)) throw new Error(GEOMETRY_LIVE_REQUIRED);
     const data = await runJob<T>(backend, kind, payload, {
       isAborted: () => tokens.get(key) !== token,
       // HTTP 429: the server queue is full — say so and retry once after Retry-After instead of failing
@@ -159,7 +163,8 @@ export async function runKey<T = unknown>(key: string, kind: Kind, payload: unkn
     }
     if (tokens.get(key) !== token) return { ok: false };
     const busy = e instanceof ApiError && e.status === 429;
-    const msg = busy ? translate(useStore.getState().lang, "busy.failed") : (e as Error).message || String(e);
+    const detail = (e as Error).message || String(e);
+    const msg = busy ? translate(useStore.getState().lang, "busy.failed") : geometryError(detail, useStore.getState().lang);
     useStore.getState().patchResult(key, { status: "error", error: msg, progress: 0, message: "" });
     return { ok: false };
   }
@@ -206,7 +211,7 @@ function endGroup(id: number) {
 /** Run-group label for the Run bar of a tab/mode (the bar only reports runs of its own context). */
 export function runContext(tab: string, mode: string): string | null {
   if (tab === "circuit") return `circuit ${mode}`;
-  if (tab === "device") return mode;
+  if (tab === "device") return useForcing.getState().forcing === "csvm" ? `csvm ${mode}` : mode;
   return null;
 }
 
@@ -218,8 +223,14 @@ export function cancelActive() {
 }
 
 export async function runDeterministic() {
+  if (useForcing.getState().forcing === "csvm") return runCsvm();
   const s = useStore.getState();
   const p = s.params;
+  if (useLayout.getState().layout === "simple") {
+    const gid = beginGroup(["branches"], "deterministic");
+    try { await runKey("branches", "branches", branchesPayload(p)); } finally { endGroup(gid); }
+    return;
+  }
   const keys = ["branches", "charge_balance", "vg_curve"];
   const gid = beginGroup(keys, "deterministic");
   const cbFixed = s.cbVd;
@@ -241,8 +252,14 @@ export async function runDeterministic() {
 }
 
 export async function runStochastic() {
+  if (useForcing.getState().forcing === "csvm") return runCsvm();
   const s = useStore.getState();
   const p = s.params;
+  if (useLayout.getState().layout === "simple") {
+    const gid = beginGroup(["sweep_mc", "branches"], "stochastic");
+    try { await Promise.all([runKey("sweep_mc", "sweep_mc", sweepMcPayload(p)), runKey("branches", "branches", branchesPayload(p))]); } finally { endGroup(gid); }
+    return;
+  }
   const keys = ["sweep_mc", "hazard", "branches"];
   const gid = beginGroup(keys, "stochastic");
   await Promise.all([
@@ -251,6 +268,24 @@ export async function runStochastic() {
     runKey("branches", "branches", branchesPayload(p)),
   ]);
   endGroup(gid);
+}
+
+/** Device CSVM uses the same live MNA/body-state solver as the free-form circuit editor. */
+export async function runCsvm() {
+  await backendReady;
+  const s = useStore.getState();
+  const payload = csvmPayload(s.params, s.mode, useForcing.getState().settings);
+  const gid = beginGroup(["device_csvm"], `csvm ${s.mode}`);
+  try {
+    if (s.backend !== "online") {
+      s.patchResult("device_csvm", {
+        kind: "circuit", status: "error", progress: 0,
+        error: s.lang === "ko" ? "CSVM은 과도 해석 서버 연결이 필요합니다." : "CSVM requires a live transient solver connection.",
+      });
+      return;
+    }
+    await runKey("device_csvm", "circuit", payload);
+  } finally { endGroup(gid); }
 }
 
 export async function runChargeBalance(vd: number) {
@@ -322,7 +357,7 @@ export function setCircuitRunOverride(fn: (() => Promise<unknown>) | null) {
 export function runCurrent() {
   const s = useStore.getState();
   if (s.tab === "circuit") return circuitRunOverride ? circuitRunOverride() : runCircuit();
-  if (s.tab === "validation") return runValidation("fast");
+  if (s.tab === "validation") return runValidationIV();
   return s.mode === "stochastic" ? runStochastic() : runDeterministic();
 }
 
@@ -357,7 +392,7 @@ export async function loadDesignMap(force = false) {
 /** Device · deterministic with auto-run on and no I–V result yet (nor one on its way). */
 function needsFirstRun(s: ReturnType<typeof useStore.getState>): boolean {
   if (!s.autoRun || s.tab !== "device" || s.mode !== "deterministic") return false;
-  const b = s.results.branches;
+  const b = s.results[useForcing.getState().forcing === "csvm" ? "device_csvm" : "branches"];
   return !b || (b.data === undefined && b.status !== "running" && b.status !== "queued");
 }
 let firstLoadRun = false;
@@ -369,17 +404,24 @@ let firstLoadRun = false;
  */
 export function startAutoRun(debounceMs = 700): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const unsub = useStore.subscribe((s, prev) => {
-    if (!s.autoRun || s.mode !== "deterministic" || s.tab !== "device") return;
-    const changed = s.params.device !== prev.params.device || s.params.sweep !== prev.params.sweep || (s.autoRun && !prev.autoRun);
-    const entered = (s.tab !== prev.tab || s.mode !== prev.mode) && firstLoadRun && needsFirstRun(s);
-    if (!changed && !entered) return;
+  const schedule = (delay = debounceMs) => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      // the user may have left Device · deterministic (or switched auto-run off) during the debounce
       const now = useStore.getState();
       if (now.autoRun && now.mode === "deterministic" && now.tab === "device") void runDeterministic();
-    }, entered && !changed ? 0 : debounceMs);
+    }, delay);
+  };
+  const unsub = useStore.subscribe((s, prev) => {
+    if (!s.autoRun || s.mode !== "deterministic" || s.tab !== "device") return;
+    const changed = s.params.device !== prev.params.device || (useForcing.getState().forcing === "vscm" && s.params.sweep !== prev.params.sweep) || (s.autoRun && !prev.autoRun);
+    const entered = (s.tab !== prev.tab || s.mode !== prev.mode) && firstLoadRun && needsFirstRun(s);
+    if (!changed && !entered) return;
+    schedule(entered && !changed ? 0 : debounceMs);
+  });
+  const unsubForcing = useForcing.subscribe((s, prev) => {
+    const app = useStore.getState();
+    if (!app.autoRun || app.tab !== "device" || app.mode !== "deterministic") return;
+    if (s.forcing !== prev.forcing || (s.forcing === "csvm" && s.settings !== prev.settings)) schedule();
   });
   // first load: one run as soon as the backend is chosen (StrictMode mounts twice — run once)
   void backendReady.then(() => {
@@ -390,6 +432,7 @@ export function startAutoRun(debounceMs = 700): () => void {
   return () => {
     clearTimeout(timer);
     unsub();
+    unsubForcing();
   };
 }
 

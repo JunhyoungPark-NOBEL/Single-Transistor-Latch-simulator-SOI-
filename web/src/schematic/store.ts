@@ -2,16 +2,16 @@
 // waveform traces, time cursor and saved circuits. The document and saved circuits persist in
 // localStorage["stl-websim:schematic"] (validated on load, ./persist.ts).
 import { create } from "zustand";
-import { builtinDevices, deviceName, stochOf, type LibDevice } from "../devices/library";
+import { builtinDevices, deviceName, geometryFromDevice, stochOf, type LibDevice } from "../devices/library";
 import { useDeviceLib } from "../devices/store";
 import { useStore } from "../state/store";
 import { clone } from "../utils/object";
+import { resolveBackGate } from "../params/geometry";
 import type { Estimate } from "./feasibility";
 import { type ElKind, type Rot, type SchematicDoc, type StlRef } from "./model";
 import { defaultDoc, parseStored, SCHEMATIC_KEY, type SavedCircuit } from "./persist";
 import { buildTemplate, TEMPLATE_TEXT, type TemplateId } from "./templates";
 import { translate } from "../i18n";
-import type { StrKey } from "../i18n/strings";
 
 export type Tool =
   | { kind: "select" }
@@ -70,31 +70,36 @@ export interface SchState {
 
 const HISTORY = 100;
 
-/** Library entries available for placement: built-ins, the user's devices and the unsaved current device. */
+/** Compact placement library: Device 1 plus the user's saved devices. */
 export function libraryEntries(): LibDevice[] {
+  return [...builtinDevices(useStore.getState().meta), ...useDeviceLib.getState().devices];
+}
+
+/** Resolve the old unsaved reference without adding a second default library entry. */
+function currentDevice(): LibDevice {
   const app = useStore.getState();
-  const cur: LibDevice = {
+  return {
     id: "current",
     name: translate(app.lang, "schematic.lib.current"),
     technology: "FDSOI",
-    geometry: builtinDevices(app.meta)[0]?.geometry ?? { Lg_nm: 500, W_nm: 200, Tsi_nm: 50, EOT_nm: 14.1 },
+    geometry: geometryFromDevice(app.params.device),
     calibration_label: app.meta.presets[app.preset]?.label ?? { ko: "", en: "" },
-    device: clone(app.params.device),
+    device: clone({ ...app.params.device, geometry: geometryFromDevice(app.params.device), vbg: resolveBackGate(app.params.device.vbg) }),
     stochastic: stochOf(app.params.stochastic),
     created: "",
     notes: "",
   };
-  return [...builtinDevices(app.meta), ...useDeviceLib.getState().devices, cur];
 }
 
 export function stlRefFor(libId: string): StlRef {
-  const lang = useStore.getState().lang;
+  const { lang, meta } = useStore.getState();
   const all = libraryEntries();
-  const d = all.find((x) => x.id === libId) ?? all[0];
-  // canvas-friendly name: built-ins "FDSOI · Reference", user devices their own name
-  const name = d.builtin ? `${d.technology} · ${translate(lang, `preset.${d.device.preset}` as StrKey)}` : d.id === "current" ? `${d.technology} · ${translate(lang, "schematic.lib.current")}` : deviceName(d, lang);
+  const d = all.find((x) => x.id === libId)
+    ?? (libId === "current" ? currentDevice() : libId === "builtin:photo" ? builtinDevices(meta, ["photo"])[0] : undefined)
+    ?? all[0];
+  const name = deviceName(d, lang);
   // acquisition_trend belongs to the device-record lookup engine and is not used by the circuit simulator
-  return { libId: d.id, name, device: clone(d.device), local_state: { ...clone(d.stochastic.local_state), acquisition_trend: false } };
+  return { libId: d.id, name, device: clone({ ...d.device, geometry: geometryFromDevice(d.device), vbg: resolveBackGate(d.device.vbg) }), local_state: { ...clone(d.stochastic.local_state), acquisition_trend: false } };
 }
 
 export function templateDoc(id: TemplateId): SchematicDoc {
@@ -110,13 +115,7 @@ function initial(): { doc: SchematicDoc; saved: SavedCircuit[] } {
     /* ignore */
   }
   let doc = stored.doc;
-  if (!doc) {
-    try {
-      doc = templateDoc("load_line");
-    } catch {
-      doc = defaultDoc();
-    }
-  }
+  if (!doc) doc = defaultDoc();
   return { doc, saved: stored.saved };
 }
 
