@@ -12,7 +12,7 @@ numba compilation).
 |---|---|---|---|
 | Render (Blueprint) | Starter 유료 · paid Starter | 512 MB → `STL_WORKERS=1` | `render.yaml` 포함 · included |
 | Hugging Face Spaces (Docker) | 무료 CPU basic · free | 16 GB, 2 vCPU → `STL_WORKERS=2` | 공개 Space는 코드가 공개됨 · public Spaces expose the code |
-| 연구실 서버 · Lab server | — | 2 GB 이상 권장 · ≥ 2 GB | `docker run -p 80:8000 …` |
+| 연구실 서버 · Lab server | — | 2 GB 이상 권장 · ≥ 2 GB | **자동 배포 키트 · auto-deploy kit: [DEPLOY_LAB.md](DEPLOY_LAB.md)** |
 
 ## 1. Render
 
@@ -54,6 +54,19 @@ the top of the Space's `README.md`, push this repository's `Dockerfile`, `engine
 Space private if the unpublished model must not be public.
 
 ## 3. 연구실 서버 / Lab server
+
+> **권장: [`docs/DEPLOY_LAB.md`](DEPLOY_LAB.md)** — `deploy/lab/`의 키트 하나로 HTTPS 프록시(Caddy), 비밀번호
+> 게이트, GitHub push 자동 배포(5분마다 확인, 빌드 → 카나리 → 교체, 실패하면 이전 버전 유지·되돌리기)까지
+> 설치합니다(`sudo bash install.sh`). GPT/Codex가 push만 해도 앱이 서버에 반영됩니다. 서버를 제어할 수 있는
+> 배포 키트(compose 파일, Caddyfile, 업데이터)는 서버에 고정되어 push로 바뀌지 않고, 소유자가 차이를 확인한 뒤
+> 적용합니다. 아래 `docker run` 방법은 자동 배포 없이 손으로 띄울 때만 씁니다.
+>
+> **Recommended: [`docs/DEPLOY_LAB.md`](DEPLOY_LAB.md)** — the `deploy/lab/` kit installs an HTTPS proxy (Caddy),
+> the password gate and auto-deploy on GitHub push (checked every 5 min; build → canary → switch; on failure the
+> previous version keeps serving or is rolled back) with `sudo bash install.sh`, so pushes from GPT/Codex go live
+> on their own. The deploy kit that controls the server (compose file, Caddyfile, updater) is pinned on the server:
+> pushes never change it; the owner reviews a diff and applies it. The `docker run` recipe below is for a manual
+> setup without auto-deploy.
 
 ```bash
 docker build -t stl-websim .

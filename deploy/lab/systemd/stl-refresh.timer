@@ -1,0 +1,15 @@
+# STL simulator — weekly base-image refresh (runs stl-refresh.service), Sunday night with a random delay.
+#   systemctl list-timers stl-refresh.timer     next / last run
+#   systemctl disable --now stl-refresh.timer   turn it off
+
+[Unit]
+Description=STL simulator: weekly base-image refresh
+
+[Timer]
+OnCalendar=Sun *-*-* 04:17
+RandomizedDelaySec=2h
+Persistent=true
+Unit=stl-refresh.service
+
+[Install]
+WantedBy=timers.target

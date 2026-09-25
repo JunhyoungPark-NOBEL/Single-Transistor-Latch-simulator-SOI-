@@ -1,0 +1,27 @@
+# STL simulator — start the deployed stack at boot (docker compose up -d for the live checkout) and stop it at
+# shutdown. The containers also have restart: unless-stopped; this unit makes the state explicit and ordered.
+#   systemctl status stl-compose       was the site started at boot?
+#   systemctl restart stl-compose      stop + start the whole stack (about a minute of downtime)
+
+[Unit]
+Description=STL simulator: docker compose stack (app + caddy)
+Documentation=file:///opt/stl-sim/app/docs/DEPLOY_LAB.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/stl-sim/stl.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=stl
+Environment=STL_HOME=/opt/stl-sim
+ExecStart=/opt/stl-sim/bin/update.sh --up
+ExecStop=/opt/stl-sim/bin/update.sh --stop
+TimeoutStartSec=20min
+TimeoutStopSec=2min
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
