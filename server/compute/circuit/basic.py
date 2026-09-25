@@ -25,19 +25,25 @@ def pack(kind: str, nodes, model: dict) -> np.ndarray:
                      abs(model["Vth_V"]), model["SS_mV_dec"] * 1e-3 / np.log(10),
                      model["lambda_per_V"], 0]
     elif kind == "D":
-        row[4:7] = [1, model["Is_A"], model["n"] * VT]
+        row[4:8] = [1, model["Is_A"], model["n"] * VT, _xmax(model["Is_A"])]
     else:
-        row[4:8] = [1 if model["polarity"] == "npn" else -1,
-                    model["Is_A"], model["beta_F"], model["beta_R"]]
+        row[4:9] = [1 if model["polarity"] == "npn" else -1,
+                    model["Is_A"], model["beta_F"], model["beta_R"], _xmax(model["Is_A"])]
     return row
 
 
+def _xmax(isat: float) -> float:
+    """Exponent where the C1 linear continuation starts: 40 (as before) or, for a small Is,
+    where the junction current reaches 1 A, so ordinary operating currents stay exponential."""
+    return float(min(max(40.0, np.log(1.0 / isat)), 700.0))
+
+
 @njit(cache=True)
-def _expm1(x):
-    # Linear continuation is C1 at 40 and prevents overflow during Newton trials.
-    if x > 40.0:
-        ex = np.exp(40.0)
-        return ex * (1.0 + x - 40.0) - 1.0, ex
+def _expm1(x, xmax):
+    # Linear continuation is C1 at xmax and prevents overflow during Newton trials.
+    if x > xmax:
+        ex = np.exp(xmax)
+        return ex * (1.0 + x - xmax) - 1.0, ex
     ex = np.exp(x)
     return np.expm1(x), ex
 
@@ -75,15 +81,15 @@ def evaluate(row, voltages):
         for j in range(3):
             jac[2, j] = -jac[0, j]
     elif kind == 2:
-        val, slope = _expm1((voltages[0] - voltages[1]) / row[6])
+        val, slope = _expm1((voltages[0] - voltages[1]) / row[6], row[7])
         current[0] = row[5] * val
         current[1] = -current[0]
         conductance = row[5] * slope / row[6]
         jac[0, 0], jac[0, 1] = conductance, -conductance
         jac[1, 0], jac[1, 1] = -conductance, conductance
     else:
-        ef, gf = _expm1(pol * (voltages[1] - voltages[2]) / VT)
-        er, gr = _expm1(pol * (voltages[1] - voltages[0]) / VT)
+        ef, gf = _expm1(pol * (voltages[1] - voltages[2]) / VT, row[8])
+        er, gr = _expm1(pol * (voltages[1] - voltages[0]) / VT, row[8])
         inv_af, inv_ar = 1.0 + 1.0 / row[6], 1.0 + 1.0 / row[7]
         current[0] = pol * row[5] * (ef - inv_ar * er)
         current[2] = pol * row[5] * (er - inv_af * ef)
@@ -117,19 +123,47 @@ def stamp(x, basic, residual, jacobian):
 
 
 @njit(cache=True)
-def step_limit(dx, basic):
-    """Damp large junction-voltage changes without altering ideal-source constraints."""
+def _junction_alpha(vold, vnew, nvt, isat, alpha):
+    """SPICE pnjlim as a step fraction: only forward-increasing junction voltages above
+    v_crit are damped (logarithmically); reverse or decreasing steps are never limited."""
+    if vnew <= vold:
+        return alpha
+    vcrit = nvt * np.log(nvt / (np.sqrt(2.0) * isat))
+    if vnew <= vcrit or vnew - vold <= 2.0 * nvt:
+        return alpha
+    if vold > 0.0:
+        vlim = vold + nvt * np.log(1.0 + (vnew - vold) / nvt)
+    else:
+        vlim = nvt * np.log(vnew / nvt)
+    if vlim < vold:
+        vlim = vold
+    frac = (vlim - vold) / (vnew - vold)
+    return min(alpha, max(frac, 1e-3))
+
+
+@njit(cache=True)
+def step_limit(x, dx, basic):
+    """Damp large forward junction-voltage increases (diode, BJT b-e and b-c)."""
     alpha = 1.0
     for row in basic:
         kind = int(row[0])
-        for i, j in ((0, 1), (1, 2)):
-            if kind == 2 and j == 2:
-                continue
+        if kind == 1:
+            continue                       # MOS: softplus/square law cannot overflow
+        pol = row[4]
+        nvt = row[6] if kind == 2 else VT
+        isat = row[5]
+        npair = 1 if kind == 2 else 2
+        for q in range(npair):
+            # diode: anode-cathode; BJT: base-emitter, base-collector
+            i = 0 if kind == 2 else 1
+            j = 1 if kind == 2 else (2 if q == 0 else 0)
             a, b = int(row[1 + i]), int(row[1 + j])
-            change = abs((dx[a - 1] if a else 0.0) - (dx[b - 1] if b else 0.0))
-            limit = 1.0 if kind == 1 else 0.2
-            if change > limit:
-                alpha = min(alpha, limit / change)
+            xa = x[a - 1] if a else 0.0
+            xb = x[b - 1] if b else 0.0
+            da = dx[a - 1] if a else 0.0
+            db = dx[b - 1] if b else 0.0
+            vold = pol * (xa - xb)
+            alpha = _junction_alpha(vold, vold + pol * (da - db), nvt, isat, alpha)
     return alpha
 
 

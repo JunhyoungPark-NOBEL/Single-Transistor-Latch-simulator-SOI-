@@ -67,3 +67,25 @@ def test_bjt_forward_gain_and_reverse_operation():
     reverse, _ = evaluate(row, np.array([0.0, 0.65, 2.0]))
     assert forward[0] / forward[1] == pytest.approx(120, rel=1e-6)
     assert reverse[2] / reverse[1] == pytest.approx(3, rel=1e-6)
+
+
+@pytest.mark.parametrize("elements,node,expected", [
+    # 15 V common-emitter stage: the base-collector junction starts 14 V reverse biased
+    ([_source("VCC", "vcc", 15), dict(type="R", name="RC", nodes=["vcc", "c"], value=1e3),
+      dict(type="R", name="RB", nodes=["vcc", "b"], value=1.4e6),
+      dict(type="BJT", name="Q1", nodes=dict(c="c", b="b", e="0"))], "c", (13.5, 14.5)),
+    # diode 20 V reverse biased
+    ([_source("V1", "a", -20), dict(type="R", name="R1", nodes=["a", "x"], value=1e3),
+      dict(type="D", name="D1", nodes=dict(a="x", k="0"))], "x", (-20.001, -19.999)),
+    # small-Is diode must stay exponential at mA currents (V_F = VT ln(I/Is) = 1.64 V)
+    ([_source("V1", "a", 5), dict(type="R", name="R1", nodes=["a", "x"], value=1e3),
+      dict(type="D", name="D1", nodes=dict(a="x", k="0"), model=dict(Is_A=1e-30))], "x", (1.6, 1.68)),
+    # 100 V NMOS inverter, gate low
+    ([_source("VDD", "vdd", 100), _source("VG", "g", 0), dict(type="R", name="RD", nodes=["vdd", "d"], value=1e4),
+      dict(type="MOS", name="M1", nodes=dict(d="d", g="g", s="0"))], "d", (99.9, 100.0)),
+])
+def test_dc_operating_point_at_realistic_supplies(elements, node, expected):
+    result = run_circuit(dict(bench="custom", mode="deterministic", netlist=dict(elements=elements),
+                              tran=dict(t_stop_s=1e-6, dt_max_s=1e-8)))
+    sig = {s["key"]: np.array(s["values"]) for s in result["runs"][0]["signals"]}
+    assert expected[0] <= sig[f"V({node})"][0] <= expected[1]

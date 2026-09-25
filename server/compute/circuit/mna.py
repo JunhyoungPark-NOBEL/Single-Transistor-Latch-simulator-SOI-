@@ -422,7 +422,7 @@ def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival
                 ok = False
         if not ok:
             return False, it + 1
-        alpha = basic_step_limit(dx, basic)
+        alpha = basic_step_limit(x, dx, basic)
         small = True
         for k in range(ns):
             ku = nn - 1 + nv + 2 * k

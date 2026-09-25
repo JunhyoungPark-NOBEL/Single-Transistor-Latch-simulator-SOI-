@@ -74,10 +74,14 @@ I_C=\sigma I_s(F-R/\alpha_R),\quad
 I_E=\sigma I_s(R-F/\alpha_F),\quad I_B=-I_C-I_E.
 \]
 
-The diode/BJT exponential has a C¹ linear continuation above an argument of 40 to keep Newton
-trial values finite. Use the models in their ordinary junction-bias range; this continuation is
-a numerical safeguard, not a high-injection model. Analytic Jacobians are stamped into MNA;
-large junction-voltage updates are damped during iteration.
+The diode/BJT exponential has a C¹ linear continuation above the argument
+x_max = min(max(40, ln(1 A / Is)), 700) to keep Newton trial values finite: x_max = 40 for
+Is ≥ 4.2×10⁻¹⁸ A, and for a smaller Is the continuation starts where Is·exp(x) reaches 1 A, so the
+junction stays exponential at ordinary operating currents. Use the models in their ordinary
+junction-bias range; this continuation is a numerical safeguard, not a high-injection model.
+Analytic Jacobians are stamped into MNA. During Newton iteration, forward-increasing junction
+voltage steps above the critical voltage are damped logarithmically (as SPICE pnjlim); reverse
+or decreasing steps are not limited.
 
 ## Probes and validation
 
@@ -87,4 +91,6 @@ The result echoes resolved parameters under each element's `model` key.
 
 `server/tests/test_circuit_basic.py` checks L/W scaling, threshold influence, subthreshold
 swing, BJT forward/reverse gain, and full nonlinear ramp transients with finite outputs and
-KCL for both transistor polarities and a diode.
+KCL for both transistor polarities and a diode, and DC operating points at realistic supplies
+(15 V common-emitter stage, diode 20 V reverse biased, Is = 10⁻³⁰ A diode at mA currents,
+100 V NMOS inverter).
