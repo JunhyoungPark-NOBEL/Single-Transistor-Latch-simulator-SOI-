@@ -82,9 +82,7 @@ function About({ anchor, onClose }: { anchor: HTMLElement | null; onClose: (refo
 
   const rows: [string, ReactNode][] = [
     [t("brand.about.lab"), t("brand.about.lab.value")],
-    [t("brand.about.advisor"), t("brand.about.advisor.value")],
     [t("brand.about.institution"), t("brand.about.institution.value")],
-    [t("brand.about.developer"), t("brand.about.developer.value")],
     [t("brand.about.version"), <VersionLine key="v" />],
   ];
 
@@ -102,7 +100,6 @@ function About({ anchor, onClose }: { anchor: HTMLElement | null; onClose: (refo
           <div className="about-tagline">{t("brand.about.tagline")}</div>
         </div>
       </div>
-      <p className="about-body">{t("brand.about.body")}</p>
       <div className="about-device">
         <div className="about-device-head">
           {/* the device's equivalent symbol (floating-base NPN), small and monochrome in the brand colour */}

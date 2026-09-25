@@ -1,6 +1,7 @@
 /* Device card (sidebar), library manager and modal. */
 .dev-card { gap: 8px; }
 .dev-head { display: flex; align-items: center; gap: 8px; }
+.dev-card .preset-head { text-transform: none; letter-spacing: 0; }
 .dev-card > .techsel { display: grid; grid-template-columns: repeat(3, 1fr); }
 .dev-card > .techsel .techsel-opt { justify-content: center; padding: 3px 6px; }
 .techsel { display: inline-flex; gap: 3px; padding: 2px; border-radius: 8px; background: var(--surface-3); border: 1px solid var(--border); }

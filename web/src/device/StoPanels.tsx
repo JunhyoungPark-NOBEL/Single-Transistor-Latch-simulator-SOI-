@@ -20,7 +20,7 @@ import { loadDesignMap, loadMeasured, runVgStochastic } from "../state/runner";
 import { useStore } from "../state/store";
 import { describe, diffSeries, ecdf, ks2, meanCI } from "../stats/describe";
 import { fmtP, fmtShare } from "../stats/format";
-import { StatsTable, type StatsRow } from "../stats/StatsTable";
+import { COMPACT_COLUMNS, StatsTable, type StatsRow } from "../stats/StatsTable";
 import { fmtDuration, isNum } from "../utils/format";
 import { powerMW } from "../utils/payload";
 import { isPaperReference, isStale, logRange, nums, pos, useDeviceKeys, useEntry, usePalette } from "./common";
@@ -196,7 +196,7 @@ export function StatsPanel() {
       )}
       {expanded && data && lu && (
         <div className={`stats-panel stats-body${running ? " dim" : ""}`} id={bodyId}>
-          <StatsTable rows={rows} csvName="statistics_vlu_vld" allColumns={full} onAllColumnsChange={setAllCols} />
+          <StatsTable rows={rows} csvName="statistics_vlu_vld" compactColumns={COMPACT_COLUMNS} allColumns={full} onAllColumnsChange={setAllCols} />
           {full && (
             <div className="stats-detail small muted">
               {ci && (
@@ -235,7 +235,7 @@ export function McIvPanel() {
   const { data: br } = useEntry<BranchesResult>("branches");
   const { sweep_mc: key } = useDeviceKeys();
   const [log, setLog] = useState(true);
-  const [showMeas, setShowMeas] = useState(true);
+  const [showMeas, setShowMeas] = useState(false);
   const [showBand, setShowBand] = useState(false);
   const [showTraces, setShowTraces] = useState(true);
   const isAll = useIsAll();
@@ -248,7 +248,7 @@ export function McIvPanel() {
   const plot = useMemo(() => {
     if (!data) return undefined;
     const traces: Data[] = [];
-    if (showMeas) traces.push(...measuredIvTraces(t, c, measured.data, measKind, powerMW(params.device), { band: showBand && measKind === "paper", name: L("leg.meas"), bandName: L("leg.measBand"), onlyBest: !isAll }));
+    if (showMeas) traces.push(...measuredIvTraces(t, c, measured.data, measKind, powerMW(params.device), { band: showBand && measKind === "paper", name: L("leg.meas"), bandName: L("leg.measBand"), onlyBest: !isAll, log }));
     // all MC traces in one trace separated by nulls (fast, one legend entry)
     const x: (number | null)[] = [];
     const y: (number | null)[] = [];
@@ -260,11 +260,11 @@ export function McIvPanel() {
         }
       }
     if (x.length) traces.push({ x, y, type: "scatter", mode: "lines", name: fill(L("leg.traces"), { n: data.traces.length }), line: { color: c.sto, width: 1 }, opacity: 0.38, hoverinfo: "skip", connectgaps: false });
-    const hrs = data.centre.HRS.vd.length ? data.centre.HRS : br ? { vd: br.HRS.vd, id: br.HRS.id } : null;
-    const lrs = data.centre.LRS.vd.length ? data.centre.LRS : br ? { vd: br.LRS.vd, id: br.LRS.id } : null;
-    if (hrs) traces.push({ x: nums(hrs.vd), y: log ? pos(hrs.id) : nums(hrs.id), type: "scatter", mode: "lines", name: L("leg.hrs"), line: { color: c.hrs, width: 2.2 }, hovertemplate: `${HOVER_IV}<extra>HRS</extra>` });
-    if (lrs) traces.push({ x: nums(lrs.vd), y: log ? pos(lrs.id) : nums(lrs.id), type: "scatter", mode: "lines", name: L("leg.lrs"), line: { color: c.lrs, width: 2.2 }, hovertemplate: `${HOVER_IV}<extra>LRS</extra>` });
-    if (br?.latch) traces.push({ x: nums(br.unstable.vd), y: log ? pos(br.unstable.id) : nums(br.unstable.id), type: "scatter", mode: "lines", name: L("leg.unstable"), showlegend: false, line: { color: c.unstable, width: 1.2, dash: "dash" }, hoverinfo: "skip" });
+    // The reference lines follow the actual V_D sweep; the unstable state is not a voltage-sweep result.
+    if (br) for (const [xy, color, name] of [
+      [br.double_sweep.up, c.hrs, L("leg.up")],
+      [br.double_sweep.down, c.lrs, L("leg.down")],
+    ] as const) traces.push({ x: nums(xy.vd), y: log ? pos(xy.id) : nums(xy.id), type: "scatter", mode: "lines", name, line: { color, width: 2 }, hovertemplate: `${HOVER_IV}<extra>${name}</extra>` });
     // per-cycle rug in a bottom strip (V_LU blue, V_LD red)
     const lu = finite(data.V_LU);
     const ld = finite(data.V_LD);
@@ -303,8 +303,8 @@ export function McIvPanel() {
     <Panel
       id="mc-iv"
       primary
-      title={t("p.mciv")}
-      desc={t("p.mciv.desc")}
+      title={L("iv.title")}
+      
       topic="sweep-mc"
       entry={entry}
       hasData={!!data}
@@ -314,7 +314,7 @@ export function McIvPanel() {
       warnings={data?.warnings}
       toolbar={data ? <Seg label={t.l(DEV["menu.y"])} value={log ? "log" : "lin"} onChange={(v) => setLog(v === "log")} options={[{ v: "log", label: t("log") }, { v: "lin", label: t("lin") }]} /> : undefined}
       menu={data ? menu : undefined}
-      foot={data ? fill(L("foot.engine"), { engine: engineName(t, data.engine), n: data.traces.length }) : undefined}
+      foot={isAll && data ? fill(L("foot.engine"), { engine: engineName(t, data.engine), n: data.traces.length }) : undefined}
     />
   );
 }

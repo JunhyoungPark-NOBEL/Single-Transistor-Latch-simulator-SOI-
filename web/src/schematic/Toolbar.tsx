@@ -5,8 +5,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { selectMoreTab } from "../components/MoreCard";
 import { useT, type T } from "../i18n";
-import { subs } from "../plots/labels";
-import { SubText } from "../plots/SubText";
 import type { StrKey } from "../i18n/strings";
 import { deviceName } from "../devices/library";
 import { useDeviceLib } from "../devices/store";
@@ -44,6 +42,9 @@ const PARTS: { kind: ElKind; key: string; label: StrKey }[] = [
   { kind: "I", key: "I", label: "schematic.tool.I" },
   { kind: "GND", key: "G", label: "schematic.tool.GND" },
   { kind: "LABEL", key: "N", label: "schematic.tool.LABEL" },
+  { kind: "MOS", key: "M", label: "schematic.tool.MOS" },
+  { kind: "D", key: "D", label: "schematic.tool.D" },
+  { kind: "BJT", key: "Q", label: "schematic.tool.BJT" },
   { kind: "STL", key: "X", label: "schematic.tool.STL" },
   { kind: "CMP", key: "K", label: "schematic.tool.CMP" },
 ];
@@ -89,12 +90,13 @@ function Menu({ label, icon, children, testId, align = "left", title }: { label:
   );
 }
 
-function ToolBtn({ active, onClick, label, shortcut, children, testId, disabled }: { active?: boolean; onClick: () => void; label: string; shortcut?: string; children: ReactNode; testId?: string; disabled?: boolean }) {
+function ToolBtn({ active, onClick, label, shortcut, children, testId, disabled, caption }: { active?: boolean; onClick: () => void; label: string; shortcut?: string; children: ReactNode; testId?: string; disabled?: boolean; caption?: string }) {
   const t = useT();
   const title = shortcut ? t("schematic.tool.shortcut", { name: label, key: shortcut }) : label;
   return (
-    <button type="button" className={`sch-tool${active ? " active" : ""}`} aria-pressed={active} onClick={onClick} title={title} aria-label={title} data-testid={testId} disabled={disabled}>
+    <button type="button" className={`sch-tool${caption ? " sch-tool-labeled" : ""}${active ? " active" : ""}`} aria-pressed={active} onClick={onClick} title={title} aria-label={title} data-testid={testId} disabled={disabled}>
       {children}
+      {caption && <span className="sch-tool-caption">{caption}</span>}
     </button>
   );
 }
@@ -195,19 +197,19 @@ export function Toolbar() {
   return (
     <div className="sch-toolbar" role="toolbar" aria-label={t("schematic.tool.aria")} data-testid="sch-toolbar">
       <div className="sch-tgroup">
-        <ToolBtn active={tool.kind === "select"} onClick={() => st().setTool({ kind: "select" })} label={t("schematic.tool.select")} shortcut="Esc" testId="tool-select">
+        <ToolBtn active={tool.kind === "select"} onClick={() => st().setTool({ kind: "select" })} label={t("schematic.tool.select")} shortcut="Esc" testId="tool-select" caption={t("schematic.tool.select")}>
           <PartIcon kind="select" />
         </ToolBtn>
-        <ToolBtn active={tool.kind === "wire"} onClick={() => st().setTool({ kind: "wire" })} label={t("schematic.tool.wire")} shortcut="W" testId="tool-wire">
+        <ToolBtn active={tool.kind === "wire"} onClick={() => st().setTool({ kind: "wire" })} label={t("schematic.tool.wire")} shortcut="W" testId="tool-wire" caption={t("schematic.tool.wire")}>
           <PartIcon kind="wire" />
         </ToolBtn>
-        <ToolBtn active={tool.kind === "probe"} onClick={() => st().setTool({ kind: "probe" })} label={t("schematic.tool.probe")} shortcut="P" testId="tool-probe">
+        <ToolBtn active={tool.kind === "probe"} onClick={() => st().setTool({ kind: "probe" })} label={t("schematic.tool.probe")} shortcut="P" testId="tool-probe" caption={t("schematic.tool.probe")}>
           <PartIcon kind="probe" />
         </ToolBtn>
       </div>
-      <div className="sch-tgroup">
+      <div className="sch-tgroup sch-parts">
         {PARTS.map((p) => (
-          <ToolBtn key={p.kind} active={tool.kind === "place" && tool.el === p.kind} onClick={() => placeTool(p.kind)} label={t(p.label)} shortcut={p.key} testId={`tool-${p.kind}`}>
+          <ToolBtn key={p.kind} active={tool.kind === "place" && tool.el === p.kind} onClick={() => placeTool(p.kind)} label={t(p.label)} shortcut={p.key} testId={`tool-${p.kind}`} caption={p.kind === "GND" ? "GND" : p.kind === "LABEL" ? t("schematic.tool.LABEL") : p.kind === "D" ? t("schematic.tool.D") : p.kind}>
             <PartIcon kind={p.kind} />
           </ToolBtn>
         ))}
@@ -224,7 +226,7 @@ export function Toolbar() {
         >
           {entries.map((e) => (
             <option key={e.id} value={e.id}>
-              {e.id === "current" ? t("schematic.lib.current") : e.builtin ? t(`preset.${e.device.preset}` as StrKey) : deviceName(e, lang)}
+              {deviceName(e, lang)}
             </option>
           ))}
         </select>
@@ -288,9 +290,7 @@ export function Toolbar() {
                 }}
               >
                 <strong>{t(TEMPLATE_TEXT[id].title)}</strong>
-                <span className="tpl-desc">
-                  <SubText text={subs(t(TEMPLATE_TEXT[id].desc))} />
-                </span>
+      
               </button>
             ))}
           </>
@@ -442,8 +442,10 @@ export function handleEditorKey(e: React.KeyboardEvent) {
       done();
       placeTool(({ r: "R", c: "C", v: "V", i: "I", g: "GND", n: "LABEL" } as const)[k]);
       return;
+    case "m": done(); placeTool("MOS"); return;
+    case "d": done(); placeTool("D"); return;
+    case "q": done(); placeTool("BJT"); return;
     case "x":
-    case "d":
       done();
       placeTool("STL");
       return;

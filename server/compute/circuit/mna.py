@@ -22,6 +22,13 @@ Residuals:
         5 drift only, outside the cell's noise band (no escape possible there)
   (DC initialisation: E2 replaced by u - u_fix = 0, then pseudo-transient BE.)
 
+Geometry model v1 with split front-/back-gate charge: each row P[k] retains its own geometry and electrostatic field
+table through every element evaluation and finite difference.  Q and F therefore
+use that cell's dimensions and doping.  The C_ox denominator above remains the
+reference capacitance solely as a common numerical scale; residual, Jacobian and
+charge sensitivities all use the same scale.  Updating this kernel's source also
+invalidates Numba's pre-geometry parent-function caches on existing installs.
+
 Latch state (independent of the current thresholds).  Along the quasi-static branch (parameterised
 by u) the HRS is u < u_i (u at the latch-up fold), the unstable branch u_i < u < u_j and the LRS
 u > u_j (u at the latch-down fold).  A cell latches when u reaches u_j and unlatches when u falls to
@@ -46,6 +53,7 @@ import numpy as np
 from numba import njit
 
 from .element import COX, N_EV, QE, stl_eval, pmf_at
+from .basic import stamp as stamp_basic, step_limit as basic_step_limit
 
 GMIN = 1e-18          # S, node-to-ground conductance (keeps floating nodes regular)
 DU_LIM = 0.05         # V, max |du| per Newton iteration
@@ -264,7 +272,7 @@ def fd_partials(x, ci, P, na, vbi, rg, fg, table, ev, part, tmp):
 
 @njit(cache=True)
 def assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-             sD, sG, sS, ev, part, emode, qc, tha, h, J, f, vW, cmp):
+             sD, sG, sS, ev, part, emode, qc, tha, h, J, f, vW, cmp, basic):
     """Residual f(x) and Jacobian J.  emode 0: charge equation, 1: u fixed at qc[k]."""
     nn = ci[CI_NN]
     nv = ci[CI_NV]
@@ -340,6 +348,7 @@ def assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
             f[a - 1] += ival[e]
         if b > 0:
             f[b - 1] -= ival[e]
+    stamp_basic(x, basic, f, J)
     for k in range(ns):
         ku = nn - 1 + nv + 2 * k
         kr = ku + 1
@@ -386,7 +395,7 @@ def assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
 @njit(cache=True)
 def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
            sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, emode, qc, tha, h,
-           refresh, maxit, J, f, xt, evt, vW, cmp, tolmul=1.0):
+           refresh, maxit, J, f, xt, evt, vW, cmp, basic, tolmul=1.0):
     """Solve the nonlinear system at one time point in place (x, ev, part).
     Returns (converged, iterations)."""
     nn = ci[CI_NN]
@@ -402,7 +411,7 @@ def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival
             if not fd_partials(x, ci, P, na, vbi, rg, fg, table, ev, part, tmp):
                 return False, it + 1
         assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                 sD, sG, sS, ev, part, emode, qc, tha, h, J, f, vW, cmp)
+                 sD, sG, sS, ev, part, emode, qc, tha, h, J, f, vW, cmp, basic)
         for i in range(n):
             if not np.isfinite(f[i]):
                 return False, it + 1
@@ -413,7 +422,7 @@ def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival
                 ok = False
         if not ok:
             return False, it + 1
-        alpha = 1.0
+        alpha = basic_step_limit(x, dx, basic)
         small = True
         for k in range(ns):
             ku = nn - 1 + nv + 2 * k
@@ -490,7 +499,7 @@ def sources_at(t, vW, iW, sW, wt, wv, woff, vval, ival, P, Pbase):
 
 @njit(cache=True)
 def sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                  sD, sG, sS, ev, part, J, f, qc0, sens, ss, vW, cmp):
+                  sD, sG, sS, ev, part, J, f, qc0, sens, ss, vW, cmp, basic):
     """dx/dQ_k (charge fixed, theta = 0) and the local relaxation time
     tau_k = 1/|dF_k/dQ_k| along the circuit constraints."""
     nn = ci[CI_NN]
@@ -500,7 +509,7 @@ def sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, i
     if ns == 0:
         return
     assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-             sD, sG, sS, ev, part, 0, qc0, np.zeros(ns), 0.0, J, f, vW, cmp)
+             sD, sG, sS, ev, part, 0, qc0, np.zeros(ns), 0.0, J, f, vW, cmp, basic)
     B = np.zeros((n, ns))
     for k in range(ns):
         B[nn - 1 + nv + 2 * k + 1, k] = 1.0 / COX
@@ -599,7 +608,7 @@ def total_event_rate(unit, gq, lq, r, rv, pmf, pk):
 
 @njit(cache=True)
 def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS, sW,
-          wt, wv, woff, P, Pbase, na, vbi, rg, fg, table, ev, part, t0, hold, cmp):
+          wt, wv, woff, P, Pbase, na, vbi, rg, fg, table, ev, part, t0, hold, cmp, basic):
     """DC operating point at t0: u fixed at 0 (empty body) -> pseudo-transient BE continuation
     of the charge equation (finds the low-current state reachable from an empty body).
     ``hold`` (one conductance per capacitor, S): 0 = capacitor open (the DC operating point); > 0 =
@@ -633,7 +642,7 @@ def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS,
         qc[k] = 0.0
     ok, it = newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
                     sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 1, qc, np.ones(ns), 0.0,
-                    True, 60, J, f, xt, evt, vW, cmp)
+                    True, 60, J, f, xt, evt, vW, cmp, basic)
     if not ok:
         return False
     # phase 2: pseudo-transient
@@ -652,7 +661,7 @@ def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS,
             cap_companion(ci, 0, h, cA, cB, cC, cv, cI, cGeq, cIeq)
         ok, it = newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
                         sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 0, qc, np.ones(ns), h,
-                        True, 40, J, f, xt, evt, vW, cmp)
+                        True, 40, J, f, xt, evt, vW, cmp, basic)
         if not ok:
             for i in range(n):
                 x[i] = xold[i]
@@ -708,7 +717,7 @@ def _set_pending(ss, k, a, t_old, h, xp, x, sD, sS, i0, i1, mainw, wt, wv, woff)
 @njit(cache=True)
 def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS, sW,
               wt, wv, woff, bp, samp, P, Pbase, na, vbi, rg, fg, table, rv, pmf,
-              ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win, cmp):
+              ss, part, sens, ls, cv, cI, sf, si, rec, evb, sbuf, win, cmp, basic):
     """Advance the transient from sf[SF_T] to sf[SF_TSTOP] (or until a budget is hit).
     All state is kept in the arrays; returns the status code (also stored in si[SI_STATUS])."""
     nn = ci[CI_NN]
@@ -955,7 +964,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             tolmul = 20.0 if (carrier and sreg <= 2) else 1.0
             ok, iters = newton(x0, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
                                sD, sG, sS, P, na, vbi, rg, fg, table, ev, part, tmp, 0, qc, tha, h,
-                               refresh, 14, J, f, xt, evt, vW, cmp, tolmul)
+                               refresh, 14, J, f, xt, evt, vW, cmp, basic, tolmul)
             si[SI_NEWT] += iters
             si[SI_DIAG + 3 * sreg + 1] += iters
             if not ok:
@@ -1077,7 +1086,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                 sf[SF_TNEGR] += h
             qc[k] = ev[k, 3]
         sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                      sD, sG, sS, ev, part, J, f, qc, sens, ss, vW, cmp)
+                      sD, sG, sS, ev, part, J, f, qc, sens, ss, vW, cmp, basic)
         cmp_update_state(x, cmp)
         # ---- latch state and event detection ---------------------------------------------
         # The latch state is the body's branch (hysteresis on u between the fold values u_i and u_j);
@@ -1209,7 +1218,7 @@ def seed_rng(seed):
 
 @njit(cache=True)
 def init_state(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS, sW,
-               wt, wv, woff, P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, t0, win, cmp):
+               wt, wv, woff, P, Pbase, na, vbi, rg, fg, table, ss, part, sens, ls, cv, cI, t0, win, cmp, basic):
     """Element state, partials, sensitivities and latch flags at the (DC) initial point
     (latched = physically on the LRS, u >= u_j, independent of the current threshold)."""
     nn = ci[CI_NN]
@@ -1256,6 +1265,6 @@ def init_state(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG
         ss[k, SS_LNI_REC] = np.log(abs(ev[k, 1]) + cf[CF_IFLOOR])
         qc[k] = ev[k, 3]
     sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
-                  sD, sG, sS, ev, part, J, f, qc, sens, ss, vW, cmp)
+                  sD, sG, sS, ev, part, J, f, qc, sens, ss, vW, cmp, basic)
     cmp_update_state(x, cmp)
     return True

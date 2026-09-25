@@ -121,7 +121,7 @@ function timeGrid(req: CustomCircuitRequest, maxPts = 1800): number[] {
 }
 
 type CmpEl = Extract<CustomElement, { type: "CMP" }>;
-const nodesOf = (e: CustomElement): string[] => (e.type === "STL" || e.type === "CMP" ? Object.values(e.nodes) : [...e.nodes]);
+const nodesOf = (e: CustomElement): string[] => Object.values(e.nodes);
 
 interface RunOut {
   t: number[];
@@ -146,7 +146,7 @@ function simulate(req: CustomCircuitRequest, grid: number[], run: number, rand: 
     }
     return k;
   };
-  const two = els.filter((e) => e.type !== "STL" && e.type !== "CMP") as Exclude<CustomElement, { type: "STL" | "CMP" }>[];
+  const two = els.filter((e) => ["R", "C", "V", "I"].includes(e.type)) as Extract<CustomElement, { type: "R" | "C" | "V" | "I" }>[];
   const cmps = els.filter((e) => e.type === "CMP") as CmpEl[];
   const cmpIdx = cmps.map((c) => ({ i: idx(c.nodes.in), o: idx(c.nodes.out) }));
   const nodesOf = two.map((e) => [idx(e.nodes[0]), idx(e.nodes[1])]);
@@ -362,6 +362,7 @@ export function mockCustomCircuit(req: CustomCircuitRequest): CustomCircuitResul
   const t0 = performance.now();
   const els = req.netlist?.elements ?? [];
   if (!els.length) throw new Error("the netlist has no elements");
+  if (els.some((e) => ["MOS", "D", "BJT"].includes(e.type))) throw new Error("MOSFET · diode · BJT simulation requires the live calculation server (실시간 계산 서버가 필요합니다).");
   const touchesGround = els.some((e) => nodesOf(e).some((nd) => GROUND.has(nd)));
   if (!touchesGround) throw new Error("no ground reference: connect at least one element to node 0");
   if (!(req.tran?.t_stop_s > 0)) throw new Error("tran.t_stop_s must be > 0");
@@ -438,7 +439,7 @@ export function mockCustomCircuit(req: CustomCircuitRequest): CustomCircuitResul
   const nodes = [...new Set(els.flatMap((e) => nodesOf(e)))];
   const op: Record<string, number> = {};
   for (const [k, v] of outs[0].sig) op[k] = v[0];
-  const elementsEcho = els.map((e) => ({ ...e, nodes: e.type === "STL" || e.type === "CMP" ? e.nodes : [...e.nodes] })) as unknown as CustomCircuitResult["elements"];
+  const elementsEcho = els.map((e) => ({ ...e, nodes: Array.isArray(e.nodes) ? [...e.nodes] : { ...e.nodes } })) as unknown as CustomCircuitResult["elements"];
   // comparator firing per period of the periodic pulse source with the most periods (as the server)
   const comparators: ComparatorStats[] = [];
   const pulses = els.flatMap((e) => (e.type === "V" || e.type === "I") && e.wave.kind === "pulse" && e.wave.per > 0 ? [{ name: e.name, w: e.wave }] : []);

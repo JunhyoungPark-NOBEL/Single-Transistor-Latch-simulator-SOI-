@@ -137,9 +137,17 @@ def normalize_device(device: Any, warnings: list[str]) -> dict:
     if device:
         if device.get("preset") is not None and not isinstance(device["preset"], str):
             raise ValueError("device.preset must be a string")
-        for section in ("light", "calib", "ext", "state", "numerics"):
+        for section in ("geometry", "light", "calib", "ext", "state", "numerics"):
             _obj(device, section, f"device.{section}")
     d = params.resolve_device(device)          # raises ValueError for an unknown preset
+    for key, (lo, hi) in params.GEOMETRY_LIMITS.items():
+        val = _num(d["geometry"][key], f"device.geometry.{key}")
+        if not lo <= val <= hi:
+            raise ValueError(f"device.geometry.{key} must be within [{lo:g}, {hi:g}]")
+        d["geometry"][key] = val
+    d["vbg"] = _num(d.get("vbg", 0.0), "device.vbg")
+    if not -10.0 <= d["vbg"] <= 10.0:
+        raise ValueError("device.vbg must be within [-10, 10] V")
     d["vg"] = _num(d["vg"], "device.vg")
     if not -10.0 <= d["vg"] <= 10.0:
         raise ValueError("device.vg must be within [-10, 10] V")

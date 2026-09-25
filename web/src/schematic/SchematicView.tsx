@@ -23,6 +23,7 @@ import { useSch } from "./store";
 import { handleEditorKey, Toolbar } from "./Toolbar";
 import { Segmented, Switch } from "./ui";
 import "./schematic.css";
+import "./schematic-redesign.css";
 
 function ErcBar({ erc, hasResult, stale }: { erc: ErcItem[]; hasResult: boolean; stale: boolean }) {
   const t = useT();
@@ -247,7 +248,7 @@ export default function SchematicView() {
             <Inspector conn={conn} />
           </aside>
         </div>
-        <ErcBar erc={erc} hasResult={!!res} stale={stale} />
+        {doc.elements.length > 0 && <ErcBar erc={erc} hasResult={!!res} stale={stale} />}
       </section>
       <Results entry={entry} stale={stale} cells={cells} />
       <NetlistBlock conn={conn} />

@@ -26,10 +26,15 @@ import numpy as np
 from numba import njit
 
 from server.engine_bridge import MODEL, ct, m
+from server.geometry_model import constants_from_p, gate_charge_offset, pack_p
 
 ACTION_INDEX = {"gidl": 9, "local_avalanche": 23, "junction": 19, "multiplication": 20}
 ACTION_UNIT = {"gidl": "V", "local_avalanche": "1", "junction": "V", "multiplication": "1"}
 SECONDS_PER_STEP = 40e-6          # measured: ~35 us per accepted step (1 STL), incl. Newton + FD
+GEOMETRY_NOISE_ERROR = (
+    "geometry-stochastic-unavailable: Geometry scaling currently supports deterministic VSCM/CSVM; "
+    "the carrier-noise kernel is calibrated only at the reference geometry."
+)
 
 
 @dataclass
@@ -84,8 +89,11 @@ def draw_local_states(cfg: LocalStateConfig, n_stl: int, seed: int, run: int) ->
 
 # ---- feasibility -----------------------------------------------------------------------
 def _state_charge(z, u, p):
+    _lch, _width, _tsi, area, cox, na, _vbi = constants_from_p(p)
     psi = u - m.VT * np.log1p(z[10])
-    return m.COX_F * (psi - p[11]) + (z[13] - m.COX_F * u) + m.Q * MODEL.na * m.AREA_CM2 * z[11]
+    if len(p) < 32:   # reference cell: legacy expression (bit-identical)
+        return m.COX_F * (psi - p[11]) + (z[13] - m.COX_F * u) + m.Q * MODEL.na * m.AREA_CM2 * z[11]
+    return cox * psi + gate_charge_offset(p) + (z[13] - cox * u) + m.Q * na * area * z[11]
 
 
 def classify_checked(p: np.ndarray, grid: int):
@@ -117,7 +125,7 @@ def branch_profile(p: np.ndarray, grid: int = 301) -> dict | None:
     """Quasi-static branches of the device and, along the HRS and LRS: tau_rel (fixed V_D), the
     total event rate, and z = |Q - Q_saddle| / SD(Q) (barrier to the saddle on the unstable branch in
     units of the stationary charge fluctuation, SD^2 = D tau/2, D = q^2 (unit + L + II M2/M1))."""
-    p = np.asarray(p, float)
+    p = pack_p(np.asarray(p, float))
     args = (p, MODEL.na, MODEL.vbi, MODEL.rg, MODEL.fg, MODEL.table)
     cl, gap = classify_checked(p, grid)
     rv, pmf = np.asarray(ct.cf.rv, float), np.asarray(ct.cf.pmf, float)

@@ -4,12 +4,12 @@ import { sanitizeDevice, sanitizeLocal } from "../devices/library";
 import { validationBase } from "../devices/store";
 import { DEFAULT_CIRCUIT_STOCH } from "../params/benches";
 import { clone } from "../utils/object";
-import { DEFAULT_CMP, DOC_VERSION, GRID, newId, type ElKind, type Rot, type SchematicDoc, type SElement, type StlRef, type Wire } from "./model";
+import { DEFAULT_CMP, DEFAULT_MOS, DEFAULT_DIODE, DEFAULT_BJT, DOC_VERSION, GRID, newId, type ElKind, type Rot, type SchematicDoc, type SElement, type StlRef, type Wire } from "./model";
 import { parseWave } from "./waves";
 
 export const SCHEMATIC_KEY = "stl-websim:schematic";
 export const CIRCUIT_FORMAT = "stl-circuit";
-const KINDS: ElKind[] = ["R", "C", "V", "I", "STL", "CMP", "GND", "LABEL"];
+const KINDS: ElKind[] = ["R", "C", "V", "I", "MOS", "D", "BJT", "STL", "CMP", "GND", "LABEL"];
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const fin = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
@@ -61,6 +61,13 @@ function parseElement(v: unknown): SElement | null {
     el.stl = parseStl(v.stl);
     el.light = v.light == null ? null : parseWave(v.light);
   }
+  const numericModel = <T extends object>(raw: unknown, defaults: T): T => {
+    const obj = isObj(raw) ? raw : {};
+    return Object.fromEntries(Object.entries(defaults).map(([key, value]) => [key, typeof value === "number" ? (fin(obj[key]) ? obj[key] : value) : (value === "nmos" && obj[key] === "pmos") || (value === "npn" && obj[key] === "pnp") ? obj[key] : value])) as T;
+  };
+  if (kind === "MOS") el.mos = numericModel(v.mos, DEFAULT_MOS);
+  if (kind === "D") el.diode = numericModel(v.diode, DEFAULT_DIODE);
+  if (kind === "BJT") el.bjt = numericModel(v.bjt, DEFAULT_BJT);
   if (kind === "LABEL") el.label = typeof v.label === "string" ? v.label.slice(0, 40) : "";
   if (kind === "CMP") {
     const c = isObj(v.cmp) ? v.cmp : {};

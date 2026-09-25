@@ -11,7 +11,7 @@ import { deepEqual } from "../utils/object";
 import { iphPA } from "../utils/payload";
 import { deleteItems, duplicateItems, mirrorItems, rotateItems } from "./edit";
 import { LABEL_RE, NAME_RE } from "./erc";
-import { CIRCUIT_KINDS, DEFAULT_CMP, pinPositions, type CmpParams, type SElement } from "./model";
+import { CIRCUIT_KINDS, DEFAULT_CMP, DEFAULT_MOS, DEFAULT_DIODE, DEFAULT_BJT, pinPositions, type CmpParams, type SElement } from "./model";
 import type { Connectivity } from "./nets";
 import { pinId } from "./nets";
 import { fmtSI } from "./si";
@@ -22,8 +22,27 @@ import { Row, Segmented, SIInput, TextInput } from "./ui";
 import { WaveEditor } from "./WaveEditor";
 
 const KIND_KEY: Record<SElement["kind"], StrKey> = {
+  MOS: "schematic.tool.MOS", D: "schematic.tool.D", BJT: "schematic.tool.BJT",
   R: "schematic.tool.R", C: "schematic.tool.C", V: "schematic.tool.V", I: "schematic.tool.I", STL: "schematic.tool.STL", CMP: "schematic.tool.CMP", GND: "schematic.tool.GND", LABEL: "schematic.tool.LABEL",
 };
+
+function SemiconductorSection({ el }: { el: SElement }) {
+  const t = useT();
+  const model = el.kind === "MOS" ? el.mos ?? DEFAULT_MOS : el.kind === "D" ? el.diode ?? DEFAULT_DIODE : el.bjt ?? DEFAULT_BJT;
+  const field = el.kind === "MOS" ? "mos" : el.kind === "D" ? "diode" : "bjt";
+  const set = (key: string, value: number | string) => update(el.id, { [field]: { ...model, [key]: value } });
+  const fields: [string, string, string, number, number][] = el.kind === "MOS" ? [
+    ["L_um", "L", "µm", 0.001, 10000], ["W_um", "W", "µm", 0.001, 100000], ["Vth_V", "|Vth|", "V", 0, 100], ["SS_mV_dec", "SS", "mV/dec", 10, 1000],
+    ["k_uA_V2", "k", "µA/V²", 0.001, 1e6], ["lambda_per_V", "λ", "1/V", 0, 10],
+  ] : el.kind === "D" ? [["Is_A", "Is", "A", 1e-30, 1], ["n", "n", "", 0.1, 10]] : [["Is_A", "Is", "A", 1e-30, 1], ["beta_F", "βF", "", 0.01, 1e6], ["beta_R", "βR", "", 0.01, 1e6]];
+  const row = ([key, label, unit, min, max]: typeof fields[number]) => <Row key={key} label={label}><SIInput value={(model as unknown as Record<string, number>)[key]} unit={unit} min={min} max={max} onCommit={(v) => v != null && set(key, v)} testId={`insp-${key}`} ariaLabel={`${el.name} ${label}`} /></Row>;
+  return <>
+    {"polarity" in model && <Row label={t("schematic.insp.polarity")}><Segmented value={model.polarity} options={el.kind === "MOS" ? [{ v: "nmos", label: "NMOS" }, { v: "pmos", label: "PMOS" }] : [{ v: "npn", label: "NPN" }, { v: "pnp", label: "PNP" }]} onChange={(v) => set("polarity", v)} label={t("schematic.insp.polarity")} /></Row>}
+    {fields.slice(0, el.kind === "MOS" ? 4 : 3).map(row)}
+    {el.kind === "MOS" && <details className="insp-help"><summary>{t("schematic.insp.moreModel")}</summary>{fields.slice(4).map(row)}</details>}
+    <details className="insp-help"><summary>{t("schematic.insp.modelGuide")}</summary><p>{t(el.kind === "MOS" ? "schematic.insp.mosGuide" : el.kind === "D" ? "schematic.insp.diodeGuide" : "schematic.insp.bjtGuide")}</p><a href={`${import.meta.env.BASE_URL}docs/basic-circuit-devices.html`} target="_blank" rel="noreferrer">{t("schematic.insp.modelEquations")} ↗</a></details>
+  </>;
+}
 
 /** Comparator parameters: V_ref, output levels and hysteresis (SPICE numbers). */
 function CmpSection({ el }: { el: SElement }) {
@@ -144,7 +163,6 @@ function StlSection({ el }: { el: SElement }) {
               ))}
             </optgroup>
           )}
-          <option value="current">{t("schematic.lib.current")}</option>
         </select>
       </Row>
       <div className="insp-note">
@@ -275,6 +293,7 @@ export function Inspector({ conn }: { conn: Connectivity }) {
         </Row>
       )}
       {(el.kind === "V" || el.kind === "I") && el.wave && <WaveEditor wave={el.wave} unit={el.kind === "V" ? "V" : "A"} tStop={tStop} onChange={(w) => update(el.id, { wave: w })} testId="insp-wave" />}
+      {["MOS", "D", "BJT"].includes(el.kind) && <SemiconductorSection el={el} />}
       {el.kind === "STL" && <StlSection el={el} />}
       {el.kind === "CMP" && <CmpSection el={el} />}
       {el.kind === "LABEL" && (

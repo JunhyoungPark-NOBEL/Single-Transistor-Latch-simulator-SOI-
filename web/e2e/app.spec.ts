@@ -119,50 +119,46 @@ test.describe("STL simulator (mock mode)", () => {
   test("language toggle switches UI strings", async ({ page }) => {
     await fresh(page);
     await expect(page.getByTestId("tab-device")).toContainText("소자");
-    await expect(page.getByTestId("run-button")).toContainText("결정론");
+    await expect(page.getByTestId("run-button")).toContainText("시뮬레이션");
     await page.getByTestId("lang-toggle").click();
     await expect(page.getByTestId("tab-device")).toHaveText("Device");
-    await expect(page.getByTestId("run-button")).toContainText("Run deterministic");
+    await expect(page.getByTestId("run-button")).toContainText("Simulate");
     await expect(page.getByTestId("group-bias")).toContainText("Bias & sweep");
     await page.getByTestId("lang-toggle").click();
     await expect(page.getByTestId("tab-device")).toContainText("소자");
   });
 
-  test("editing a value marks the preset as modified; reset restores it", async ({ page }) => {
+  test("editing Device 1 marks it as modified; reset restores the single default", async ({ page }) => {
     await fresh(page);
-    await expect(page.getByTestId("preset-label")).not.toContainText("수정");
+    await expect(page.getByTestId("preset-card")).toContainText("Device 1");
+    await expect(page.getByTestId("preset-label")).toHaveCount(0);
     const input = page.getByTestId("field-vg").locator("input.input");
     await input.fill("-1.8");
     await input.press("Enter");
-    await expect(page.getByTestId("preset-label")).toContainText("기준 보정에서 수정");
+    await expect(page.getByTestId("preset-label")).toContainText("수정됨");
     await expect(page.getByTestId("field-vg").locator(".field-changed")).toBeVisible();
     // out-of-range input shows a validation message and is not committed
     await input.fill("-9");
     await expect(page.getByTestId("field-vg").locator(".field-err")).toBeVisible();
     await input.press("Escape");
-    await page.getByTestId("group-bias").getByRole("button", { name: /초기화|Reset/ }).click();
-    await expect(page.getByTestId("preset-label")).not.toContainText("수정");
-    // photo preset loads its defaults (power mode, 1200 V/s)
-    await page.getByTestId("preset-photo").click();
-    await expect(page.getByTestId("field-vg").locator("input.input")).toHaveValue("-1.8");
-    await expect(page.getByTestId("light-conversion")).toContainText("pA/mW");
+    await page.getByTestId("preset-paper").click();
+    await expect(input).toHaveValue("-2");
+    await expect(page.getByTestId("preset-label")).toHaveCount(0);
+    await expect(page.getByTestId("preset-photo")).toHaveCount(0);
+    await expect(page.getByTestId("preset-custom")).toHaveCount(0);
   });
 
-  test("circuit tab: bench cards, generic result rendering", async ({ page }) => {
+  test("circuit tab: free-form editor, example circuit, generic result rendering", async ({ page }) => {
     await fresh(page, "#tab=circuit&mode=deterministic");
-    await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
-    await expect(page.getByTestId("bench-picker")).toBeVisible();
-    await expect(page.getByTestId("schematic")).toBeVisible();
-    await expect(page.getByTestId("group-bench")).toBeVisible();
-    await expect(page.getByTestId("group-solver")).toBeVisible();
+    await expect(page.getByTestId("sch-canvas")).toBeVisible();
+    await expect(page.getByTestId("circuit-view-benches")).toHaveCount(0);
+    await page.getByTestId("menu-examples").click();
+    await page.getByTestId("tpl-load_line").click();
     await page.getByTestId("run-button").click();
-    await expect(page.getByTestId("circuit-summary")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("panel-waves").locator(".js-plotly-plot")).toBeVisible();
-    await expect(page.getByTestId("solver-stats")).toBeVisible();
+    await expect(page.getByTestId("sch-summary")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("panel-sch-waves").locator(".js-plotly-plot")).toBeVisible();
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${SHOTS}/circuit.png` });
-    await page.getByTestId("bench-pbit").click();
-    await expect(page.getByTestId("bench-pbit")).toHaveAttribute("aria-checked", "true");
   });
 
   test("physics tab lists all topics with a working search", async ({ page }) => {
@@ -175,11 +171,12 @@ test.describe("STL simulator (mock mode)", () => {
     await expect.poll(async () => page.locator("[data-testid^=topic-]").count()).toBeLessThan(before);
   });
 
-  test("validation tab runs checks", async ({ page }) => {
+  test("reference tab shows the fixed benchmark (the self-check runner was removed)", async ({ page }) => {
     await fresh(page, "#tab=validation&mode=deterministic");
-    await page.getByTestId("val-fast").click();
-    await expect(page.getByTestId("validation-table")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("validation-table").locator(".pass.yes").first()).toBeVisible();
+    await expect(page.getByTestId("reference-fixed-label")).toBeVisible();
+    await expect(page.getByTestId("reference-metrics")).toBeVisible();
+    await expect(page.getByTestId("panel-val-iv").locator(".js-plotly-plot")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("val-fast")).toHaveCount(0);
   });
 
   test("dark theme", async ({ page }) => {
@@ -264,41 +261,37 @@ test.describe("UX regressions", () => {
     expect((await check()).some((x) => x.fit !== "fits")).toBe(true);
   });
 
-  test("mode banner describes the circuit meaning of each mode on the Circuit tab", async ({ page }) => {
+  test("mode strip: short breadcrumb, circuit meaning of each mode in its tooltip", async ({ page }) => {
     await fresh(page, "#tab=circuit&mode=deterministic");
-    await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
     const hint = page.getByTestId("mode-hint");
-    await expect(hint).toContainText("MNA");
-    await expect(hint).toContainText("BE");
-    await expect(hint).not.toContainText("branch와 fold");
-    await page.getByTestId("field-method").getByRole("radio", { name: "TRAP" }).click();
-    await expect(hint).toContainText("TRAP");
+    await expect(hint).toHaveText("회로");
+    await expect(hint).toHaveAttribute("title", /MNA/);
+    await expect(hint).toHaveAttribute("title", /BE/);
+    await expect(hint).not.toHaveAttribute("title", /branch와 fold/);
+    await expect(page.getByTestId("sch-sim")).toBeVisible();
+    const adv = page.locator("details.sch-adv").filter({ has: page.getByTestId("sim-method") });
+    if (!(await adv.evaluate((d) => (d as HTMLDetailsElement).open))) await page.getByTestId("sch-sim-adv").click();
+    await page.getByTestId("sim-method").getByRole("radio", { name: "TRAP" }).click();
+    await expect(hint).toHaveAttribute("title", /TRAP/);
     await page.getByTestId("mode-stochastic").click();
-    // plain sentence with a subscript (Q_B renders as Q<sub>B</sub>); "Eq. 2" only in the technical tooltip
-    await expect(hint).toContainText("QB");
+    await expect(hint).toHaveAttribute("title", /Q_B/);
     await expect(hint).toHaveAttribute("title", /Eq\. 2/);
     await page.getByTestId("tab-device").click();
-    await expect(hint).toContainText("MC");
+    await expect(hint).toContainText("FDSOI");
+    await expect(hint).toHaveAttribute("title", /MC/);
   });
 
-  test("rise/fall edges default to auto (server default) on the pulse bench", async ({ page }) => {
-    await fresh(page, "#tab=circuit&mode=deterministic");
-    await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
-    await page.getByTestId("bench-pulse").click();
-    await expect(page.getByTestId("auto-bench_rise_s")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("auto-bench_fall_s")).toHaveAttribute("aria-pressed", "true");
-    const rise = page.getByTestId("field-bench_rise_s").locator("input.input");
-    await rise.fill("5");
-    await rise.press("Enter");
-    await expect(page.getByTestId("auto-bench_rise_s")).toHaveAttribute("aria-pressed", "false");
-  });
-
-  test("l_GIDL help describes the effective GIDL field length", async ({ page }) => {
+  test("l_GIDL guide never calls it the BTBT region length", async ({ page }) => {
     await fresh(page);
     await page.getByTestId("group-calib").locator(".group-toggle").click();
-    await page.getByTestId("tip-l_gidl").hover();
-    await expect(page.getByRole("tooltip")).toContainText("E_G");
-    await expect(page.getByRole("tooltip")).not.toContainText("BTBT 영역 길이");
+    await page.getByTestId("tip-l_gidl").click();
+    const pop = page.getByTestId("guide-pop");
+    await expect(pop).toBeVisible();
+    await expect(pop).not.toContainText("BTBT 영역 길이");
+    await page.getByTestId("guide-pop-more").click();
+    const row = page.getByTestId("physics-window").getByTestId("pw-guide-row-l_gidl");
+    await expect(row).toContainText("GIDL 전계 길이");
+    await expect(row).not.toContainText("BTBT 영역 길이");
   });
 
   test("run bar reports only runs of the current tab/mode; KPIs dim when parameters change", async ({ page }) => {
@@ -321,30 +314,25 @@ test.describe("UX regressions", () => {
     await expect(page.getByTestId("panel-components").locator(".badge.stale")).toBeVisible();
   });
 
-  test("credits corner opens the About card (lab, advisor, developer, version) and never says “paper”", async ({ page }) => {
+  test("credits corner opens the About card (lab and institution) and never says “paper”", async ({ page }) => {
     await fresh(page);
-    await expect(page.getByTestId("tech-chip")).toHaveText("FDSOI");
     const chip = page.getByTestId("credits-chip");
     await expect(chip).toBeVisible();
     await chip.click();
     const about = page.getByTestId("about");
     await expect(about).toBeVisible();
     await expect(about).toContainText("NOBEL");
-    await expect(about).toContainText("최양규");
-    await expect(about).toContainText("박준형");
     await expect(about).toContainText("KAIST");
     await expect(about).toContainText("500 nm");
     await page.keyboard.press("Escape");
     await expect(about).toHaveCount(0);
     await expect(chip).toBeFocused();
-    await page.getByTestId("lang-toggle").click();
-    await chip.click();
-    await expect(about).toContainText("Prof. Yang-Kyu Choi");
-    await expect(about).toContainText("Junhyoung Park");
     // the credits must not cover the Run bar or the panels: they live in the sticky mode strip
     const box = await chip.boundingBox();
     const strip = await page.getByTestId("modebar").boundingBox();
     expect(box && strip && box.y >= strip.y && box.y + box.height <= strip.y + strip.height).toBe(true);
+    await expect(page.locator("body")).not.toContainText(/\bpaper\b|논문/i);
+    await page.getByTestId("lang-toggle").click();
     await expect(page.locator("body")).not.toContainText(/\bpaper\b|논문/i);
   });
 
@@ -372,8 +360,7 @@ test.describe("UX regressions", () => {
       await expect(page.getByTestId("tab-device")).toHaveAttribute("aria-selected", "true");
       await expect(page.getByTestId("group-bias")).toBeVisible();
       await page.getByTestId("tab-circuit").click();
-      await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
-      await expect(page.getByTestId("bench-load_line")).toHaveAttribute("aria-checked", "true");
+      await expect(page.getByTestId("sch-canvas")).toBeVisible();
     });
   }
 });

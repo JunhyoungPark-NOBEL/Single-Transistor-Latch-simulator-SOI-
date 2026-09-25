@@ -31,7 +31,7 @@ const DARK: PlotPalette = {
 
 export const palette = (theme: Theme): PlotPalette => (theme === "dark" ? DARK : LIGHT);
 
-export const PLOT_FONT = '"Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+export const PLOT_FONT = '"Noto Sans KR Variable", "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
 function axisDefaults(c: PlotPalette) {
   return {
@@ -79,7 +79,14 @@ export function themedLayout(theme: Theme, layout: Partial<Layout> = {}): Partia
   let out = deepMerge(base, layout);
   const axes = new Set(["xaxis", "yaxis", ...Object.keys(layout).filter((k) => /^[xy]axis\d*$/.test(k))]);
   for (const k of axes) {
-    (out as Record<string, unknown>)[k] = deepMerge(axisDefaults(c), (layout as Record<string, unknown>)[k] ?? {});
+    const input = ((layout as Record<string, unknown>)[k] ?? {}) as Record<string, unknown>;
+    (out as Record<string, unknown>)[k] = deepMerge(axisDefaults(c), {
+      // Plotly preserves a zoomed range while uirevision stays the same. A log range contains
+      // exponents, so reusing it as amperes blanks the linear plot. Scope persistence to the scale.
+      uirevision: `${String(layout.uirevision ?? "keep")}:${String(input.type ?? "linear")}`,
+      autorange: !Array.isArray(input.range),
+      ...input,
+    });
   }
   out = deepMerge(out, {});
   return out;
@@ -93,7 +100,7 @@ export function themedLayout(theme: Theme, layout: Partial<Layout> = {}): Partia
 export function currentAxis(log: boolean, title: string) {
   return log
     ? { type: "log" as const, title: { text: title }, tickformat: "~s", exponentformat: "SI" as const, ticksuffix: "A" }
-    : { type: "linear" as const, title: { text: title }, exponentformat: "SI" as const, ticksuffix: "A" };
+    : { type: "linear" as const, range: undefined, autorange: true, title: { text: title }, tickformat: "~s", exponentformat: "SI" as const, ticksuffix: "A" };
 }
 
 export const HOVER_IV = "V<sub>D</sub> = %{x:.3f} V<br>I<sub>D</sub> = %{y:.3~s}A";

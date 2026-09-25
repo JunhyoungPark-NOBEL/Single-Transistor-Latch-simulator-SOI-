@@ -1,399 +1,87 @@
-// Validation tab: `validation` kind (fast/full) check table + comparisons with the measured records
-// (reference-calibration I–V, 8 illumination conditions, V_G dependence of V_LU and σ_LU).
-// The answer comes first: "모델이 측정과 맞나요?" with a big "n / n 통과" status, a 4-column table (항목 · 계산값 ·
-// 기대값 ± 허용오차 · 통과; failures first and expanded; "숫자 모두 보기" adds id, seconds and notes), then the
-// figures in one tabbed card (간단히) or all three in a grid (모두 보기).
+// Reference benchmark: authentic measured ID–VD versus the calibrated quasi-static voltage sweep.
+// Engine reproducibility tests remain in the developer test suite, not an accuracy score in the UI.
 import type { Data, Layout } from "plotly.js";
 import { useEffect, useMemo, useState } from "react";
-import type { BranchesResult, SweepMCResult, ValidationCheck, ValidationResult, VgCurveStochasticResult } from "../api/types";
-import { LayoutToggle } from "../components/LayoutToggle";
-import { entryStatus, FocusLayout, mergeStatus, type MoreTab, type TabStatus } from "../components/MoreCard";
-import { Panel, Progress } from "../components/Panel";
-import { IconPlay, IconStop } from "../components/icons";
+import type { BranchesResult } from "../api/types";
+import { Panel } from "../components/Panel";
+import { logRange, nums, pos, useEntry, usePalette } from "../device/common";
+import { ROW_LEGEND, Seg } from "../device/DetPanels";
 import { useT } from "../i18n";
-import { signed, subs } from "../plots/labels";
+import { REF } from "../i18n/strings.reference";
+import { DEV } from "../i18n/strings.device";
+import { subs } from "../plots/labels";
 import { SubText } from "../plots/SubText";
 import { currentAxis, HOVER_IV } from "../plots/theme";
-import { cancelActive, cancelKey, loadMeasured, runValidation, runValidationIV, runValidationPhoto, runValidationVg } from "../state/runner";
-import { useIsAll } from "../state/layout";
+import { loadMeasured, runValidationIV } from "../state/runner";
 import { useStore } from "../state/store";
-import { fmtDuration } from "../utils/format";
-import { logRange, nums, pos, useEntry, usePalette } from "../device/common";
-import { insideLegend, measuredIvTraces } from "../device/DetPanels";
-import { PhotoConditionsStats } from "./PhotoStats";
-
-const passMark = (c: ValidationCheck) => (
-  <span className={`pass ${c.pass === true ? "yes" : c.pass === false ? "no" : "na"}`} aria-label={c.pass === true ? "pass" : c.pass === false ? "fail" : "not run"}>
-    {c.pass === true ? "✓" : c.pass === false ? "✗" : "—"}
-  </span>
-);
-
-/** Tolerance after the expected value: " ± 1 mV" for a plain ± number, else " (허용 ≤ 1e-12 V)" — never "± ≤". */
-function tolText(t: ReturnType<typeof useT>, s: string): string {
-  const x = s.trim();
-  if (/^±/.test(x)) return ` ± ${x.replace(/^±\s*/, "")}`;
-  if (/^[\d.]/.test(x)) return ` ± ${x}`;
-  return ` (${t("v.tol", { tol: x })})`;
-}
-
-/**
- * The engine's check strings (English, code-like) for the Korean table: common words in Korean, "SD" as σ,
- * "gate_mean" as the base model. Symbols then render as subscripts and minus signs as "−".
- */
-const KO_WORDS: [RegExp, string][] = [
-  [/\bidentical to the base model\b/g, "기본 모델과 동일"],
-  [/ over (\d+) finite \(u, r\) points/g, " ((u, r) 점 $1개)"],
-  [/\bmax rel\. Δ\(currents\)/g, "전류 최대 상대차"],
-  [/\bmax \|/g, "최대 |"],
-  [/\breference record\b/g, "기준 기록"],
-  [/\billumination record\b/g, "광조사 기록"],
-  [/\breference\b/g, "기준"],
-  [/\billumination\b/g, "광조사"],
-  [/\bdark\b/g, "암조건"],
-  [/\bmeans?\b/g, "평균"],
-  [/\bSD\b/g, "σ"],
-  [/\bSD_(LU|LD)\b/g, "σ_$1"],
-  [/\beach\b/g, "각각"],
-  [/\bpeaks?\b/g, "최대"],
-  [/\bpositions\b/g, "위치"],
-  [/\blatch-up at\b/g, "래치업"],
-  [/\blatch-down at\b/g, "래치다운"],
-  [/\bno latch-down event\b/g, "래치다운 없음"],
-  [/\bpooled over (\d+) sweeps\b/g, "$1회 스윕 합산"],
-  [/\bmeasured\b/g, "측정"],
-  [/\b(\d+) cycles\b/g, "$1 사이클"],
-  [/\(engine (\w+)\)/g, "(엔진 $1)"],
-  [/ at /g, " @ "],
-  [/^not run$/, "실행 안 함"],
-  [/^error$/, "오류"],
-];
-export function checkText(lang: string, s: string): string {
-  // a code id is not a label: gate_mean is the base model (every extension at zero); "seed" is 시드
-  let out = s
-    .replace(/identical to gate_mean/g, "identical to the base model")
-    .replace(/gate_mean과 동일/g, "기본 모델과 같음")
-    .replace(/\bgate_mean\b/g, lang === "ko" ? "기본 모델" : "the base model")
-    .replace(/\(seed (\d+)\)/g, lang === "ko" ? "(시드 $1)" : "(seed $1)");
-  if (lang === "ko") for (const [re, to] of KO_WORDS) out = out.replace(re, to);
-  // typographic minus before a digit ("-3.9061" → "−3.9061"), not inside exponents such as 1e-12
-  return out.replace(/(^|[\s(/=,])-(?=\d)/g, "$1−");
-}
-
-/** A check string as a table cell: subscripts; compact rows clamp to one line (full text in the tooltip). */
-function CheckCell({ text, clamp }: { text: string; clamp: boolean }) {
-  return clamp ? (
-    <span className="val-clamp" title={text}>
-      <SubText text={subs(text)} />
-    </span>
-  ) : (
-    <SubText text={subs(text)} />
-  );
-}
-
-/** Compact check table: failures first (with their id and note), 4 columns; `wide` adds id, seconds and notes. */
-function ChecksTable({ res, wide }: { res: ValidationResult; wide: boolean }) {
-  const t = useT();
-  // failures first, then the passed checks, then the ones not run at this level (stable within each group)
-  const rank = (c: ValidationCheck) => (c.pass === false ? 0 : c.pass === true ? 1 : 2);
-  const rows = res.checks.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i);
-  return (
-    <div className="table-wrap val-table-wrap">
-      <table className={`table val-table${wide ? " wide" : ""}`} data-testid="validation-table">
-        <thead>
-          <tr>
-            <th>{t("v.check")}</th>
-            {wide && <th>{t("v.id")}</th>}
-            <th>{t("v.computed")}</th>
-            <th>{t("v.expectedTol")}</th>
-            <th className="center">{t("v.pass")}</th>
-            {wide && <th className="num">{t("v.sec")}</th>}
-            {wide && <th>{t("v.note")}</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ c }) => (
-            <tr key={c.id} className={c.pass === false ? "fail" : c.pass === null ? "na" : undefined} data-check={c.id}>
-              <td title={c.id}>
-                <div className="val-label">
-                  <SubText text={subs(checkText(t.lang, t.l(c.label)))} />
-                </div>
-                {!wide && c.pass === false && (
-                  <div className="val-detail small mono">
-                    {c.id}
-                    {c.note ? ` · ${c.note}` : ""} · {c.seconds.toFixed(2)} s
-                  </div>
-                )}
-              </td>
-              {wide && <td className="mono small muted">{c.id}</td>}
-              <td className="mono small" data-label={t("v.computed")}>
-                <CheckCell text={checkText(t.lang, c.computed)} clamp={!wide} />
-              </td>
-              <td className="mono small" data-label={t("v.expectedTol")}>
-                <CheckCell text={`${checkText(t.lang, c.expected)}${c.tolerance ? tolText(t, checkText(t.lang, c.tolerance)) : ""}`} clamp={!wide} />
-              </td>
-              <td className="center val-pass">{passMark(c)}</td>
-              {wide && <td className="num small">{c.seconds.toFixed(2)}</td>}
-              {wide && <td className="small muted">{c.note ?? ""}</td>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function PaperIvFigure() {
-  const t = useT();
-  const c = usePalette();
-  const measured = useStore((s) => s.measured);
-  const { entry, data } = useEntry<BranchesResult>("val_branches_paper");
-  useEffect(() => {
-    if (!useStore.getState().results.val_branches_paper) void runValidationIV();
-  }, []);
-  useEffect(() => {
-    if (measured.status === "idle") void loadMeasured();
-  }, [measured.status]);
-  const plot = useMemo(() => {
-    if (!data) return undefined;
-    const traces: Data[] = [...measuredIvTraces(t, c, measured.data, "paper", 0)];
-    traces.push(
-      // same colours as the Device tab: the up sweep rides the HRS branch (--hrs), the down sweep the LRS (--lrs)
-      { x: nums(data.double_sweep.up.vd), y: pos(data.double_sweep.up.id), type: "scatter", mode: "lines", name: t("axis.leg.modelUp"), line: { color: c.hrs, width: 2 }, hovertemplate: `${HOVER_IV}<extra>${t("model")} ↑</extra>` },
-      { x: nums(data.double_sweep.down.vd), y: pos(data.double_sweep.down.id), type: "scatter", mode: "lines", name: t("axis.leg.modelDown"), line: { color: c.lrs, width: 2 }, hovertemplate: `${HOVER_IV}<extra>${t("model")} ↓</extra>` },
-      { x: nums(data.unstable.vd), y: pos(data.unstable.id), type: "scatter", mode: "lines", name: t("iv.unstable"), line: { color: c.unstable, width: 1.2, dash: "dash" }, hoverinfo: "skip" },
-    );
-    return { data: traces, layout: { xaxis: { title: { text: t("axis.vd") }, range: [0, 4.1] }, yaxis: { ...currentAxis(true, t("axis.idAbs")), range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) }, legend: insideLegend(c, "tl") } as Partial<Layout> };
-  }, [data, measured.data, c, t]);
-  return <Panel id="val-iv" title={t("v.fig.iv")} desc={t("v.fig.iv.desc")} topic="validation" entry={entry} hasData={!!data} csvName="validation_reference_iv" plot={plot} error={measured.status === "error" ? measured.error : null} />;
-}
-
-function PhotoFigure() {
-  const t = useT();
-  const c = usePalette();
-  const measured = useStore((s) => s.measured);
-  const conds = useStore((s) => s.meta.measured_photo_conditions ?? []);
-  const results = useStore((s) => s.results);
-  useEffect(() => {
-    if (measured.status === "idle") void loadMeasured();
-  }, [measured.status]);
-  const entries = conds.map((_, k) => results[`val_photo_${k}`]);
-  const done = entries.filter((e) => e?.status === "done").length;
-  const running = entries.some((e) => e?.status === "running" || e?.status === "queued");
-  const cur = entries.find((e) => e?.status === "running" || e?.status === "queued");
-  const plot = useMemo(() => {
-    const m = measured.data?.photo ?? [];
-    if (!m.length && !done) return undefined;
-    const traces: Data[] = [];
-    const vgs = [...new Set(conds.map((x) => x.vg))];
-    vgs.forEach((vg, gi) => {
-      const col = gi === 0 ? c.sto : c.categorical[1];
-      const mm = m.filter((x) => Math.abs(x.vg - vg) < 1e-6).sort((a, b) => a.power_mW - b.power_mW);
-      traces.push(
-        { x: mm.map((x) => x.power_mW), y: mm.map((x) => x.mean_V), type: "scatter", mode: "markers", name: t("axis.leg.measVg", { vg: signed(vg, 1) }), marker: { color: c.meas, size: 9, symbol: gi === 0 ? "square" : "diamond" }, hovertemplate: `P = %{x:.2f} mW<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("measured")}</extra>` },
-        { x: mm.map((x) => x.power_mW), y: mm.map((x) => x.sd_mV), yaxis: "y2", type: "scatter", mode: "markers", showlegend: false, marker: { color: c.meas, size: 9, symbol: gi === 0 ? "square-open" : "diamond-open" }, hovertemplate: `P = %{x:.2f} mW<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("measured")}</extra>` },
-      );
-      const model = conds
-        .map((cd, k) => ({ cd, r: results[`val_photo_${k}`]?.data as SweepMCResult | undefined }))
-        .filter((x) => Math.abs(x.cd.vg - vg) < 1e-6 && x.r)
-        .sort((a, b) => a.cd.power_mW - b.cd.power_mW);
-      if (model.length) {
-        traces.push(
-          { x: model.map((x) => x.cd.power_mW), y: model.map((x) => x.r!.stats.LU.mean), type: "scatter", mode: "lines+markers", name: t("axis.leg.modelVg", { vg: signed(vg, 1) }), line: { color: col, width: 2 }, marker: { size: 7 }, hovertemplate: `P = %{x:.2f} mW<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("model")}</extra>` },
-          { x: model.map((x) => x.cd.power_mW), y: model.map((x) => (x.r!.stats.LU.sd ?? NaN) * 1e3), yaxis: "y2", type: "scatter", mode: "lines+markers", showlegend: false, line: { color: col, width: 2, dash: "dash" }, marker: { size: 7 }, hovertemplate: `P = %{x:.2f} mW<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("model")}</extra>` },
-        );
-      }
-    });
-    const layout: Partial<Layout> = {
-      xaxis: { title: { text: t("axis.power") }, anchor: "y2" },
-      yaxis: { title: { text: t("axis.s.vluMean") }, domain: [0.5, 1] },
-      yaxis2: { title: { text: t("axis.s.sigmaLu") }, domain: [0, 0.42], rangemode: "tozero" },
-      margin: { l: 58, r: 16, t: 46, b: 46 },
-    };
-    return { data: traces, layout, className: "plot tall" };
-  }, [measured.data, results, conds, done, c, t]);
-  return (
-    <Panel
-      id="val-photo"
-      title={t("v.fig.photo")}
-      desc={t("v.fig.photo.desc")}
-      topic="photo"
-      hasData={!!plot}
-      csvName="validation_photo_conditions"
-      plot={plot}
-      entry={running ? { status: "running", progress: done / Math.max(1, conds.length), message: `${t("v.progress", { done, total: conds.length })}${cur?.message ? " · " + cur.message : ""}` } : undefined}
-      toolbar={
-        <>
-          <button type="button" className="btn sm primary" onClick={() => void runValidationPhoto()} disabled={running} data-testid="val-photo-run">
-            <IconPlay size={11} /> {t("v.photo.run")}
-          </button>
-          {running && (
-            <button type="button" className="btn sm danger" onClick={cancelActive}>
-              <IconStop size={10} /> {t("run.cancel")}
-            </button>
-          )}
-          {done > 0 && <span className="small muted">{t("v.progress", { done, total: conds.length })}</span>}
-        </>
-      }
-    >
-      <PhotoConditionsStats />
-    </Panel>
-  );
-}
-
-function VgFigure() {
-  const t = useT();
-  const c = usePalette();
-  const { entry, data } = useEntry<VgCurveStochasticResult>("val_vgs");
-  const plot = useMemo(() => {
-    if (!data) return undefined;
-    const vg = nums(data.vg);
-    const traces: Data[] = [
-      { x: vg, y: nums(data.mean_VLU), type: "scatter", mode: "lines+markers", name: t("axis.leg.vluMean"), line: { color: c.sto, width: 2 }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("axis.leg.vluMean")}</extra>` },
-      { x: vg, y: nums(data.fold_centre_V), type: "scatter", mode: "lines", name: t("vgs.fold"), line: { color: c.hrs, width: 1.3, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>V<sub>LU</sub> = %{y:.3f} V<extra>${t("vgs.fold")}</extra>` },
-      { x: vg, y: nums(data.sd_VLU_mV), yaxis: "y2", type: "scatter", mode: "lines+markers", name: t("axis.leg.sdTotal"), line: { color: c.sto, width: 2 }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("axis.leg.sdTotal")}</extra>` },
-      { x: vg, y: nums(data.state_sd_mV), yaxis: "y2", type: "scatter", mode: "lines", name: t("vgs.state"), line: { color: c.categorical[1], width: 1.4, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.state")}</extra>` },
-      { x: vg, y: nums(data.noise_sd_mV), yaxis: "y2", type: "scatter", mode: "lines", name: t("vgs.noise"), line: { color: c.categorical[2], width: 1.4, dash: "dot" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.noise")}</extra>` },
-      { x: [-1.1], y: [4.354], type: "scatter", mode: "markers", name: t("brand.v.refMeanPeak"), marker: { color: c.meas, symbol: "star", size: 11 }, hovertemplate: `${t("brand.v.refMeanPeak")}<extra></extra>` },
-      { x: [-1.25], y: [129.8], yaxis: "y2", type: "scatter", mode: "markers", name: t("brand.v.refSdPeak"), marker: { color: c.meas, symbol: "star-open", size: 11 }, hovertemplate: `${t("brand.v.refSdPeak")}<extra></extra>` },
-    ];
-    const layout: Partial<Layout> = {
-      xaxis: { title: { text: t("axis.vg") }, anchor: "y2" },
-      yaxis: { title: { text: t("axis.s.vluMean") }, domain: [0.5, 1] },
-      yaxis2: { title: { text: t("axis.s.sigmaLu") }, domain: [0, 0.42], rangemode: "tozero" },
-      margin: { l: 58, r: 16, t: 58, b: 46 },
-      legend: { font: { size: 10.5 }, traceorder: "normal" },
-    };
-    return { data: traces, layout, className: "plot tall" };
-  }, [data, c, t]);
-  const running = entry?.status === "running" || entry?.status === "queued";
-  return (
-    <Panel
-      id="val-vg"
-      title={t("v.fig.vg")}
-      desc={t("v.fig.vg.desc")}
-      topic="local-states"
-      entry={entry}
-      hasData={!!data}
-      csvName="validation_vg"
-      plot={plot}
-      warnings={data?.warnings}
-      empty={
-        <>
-          <span>{t("empty.compute")}</span>
-          <button type="button" className="btn primary sm" onClick={() => void runValidationVg()}>{t("compute")}</button>
-        </>
-      }
-      toolbar={
-        <>
-          <button type="button" className="btn sm" onClick={() => void runValidationVg()} disabled={running}>{data ? t("recompute") : t("compute")}</button>
-          {running && <button type="button" className="btn sm danger" onClick={() => cancelKey("val_vgs")}>{t("run.cancel")}</button>}
-        </>
-      }
-    />
-  );
-}
+import { curveError } from "./benchmark";
+import frozen from "./data/reference-idvd.json";
+import "./reference.css";
+export { checkText } from "./checkText";
 
 export function ValidationTab() {
   const t = useT();
-  const all = useIsAll();
-  const { entry, data } = useEntry<ValidationResult>("validation");
-  const running = entry?.status === "running" || entry?.status === "queued";
-  const pass = data?.checks.filter((c) => c.pass === true).length ?? 0;
-  const total = data?.checks.filter((c) => c.pass !== null).length ?? 0;
-  const failed = total - pass;
-  const [wideCols, setWideCols] = useState<boolean | null>(null);
-  const wide = wideCols ?? all;
-  return (
-    <>
-      <section className="panel wide val-card" data-testid="validation" aria-labelledby="val-title">
-        <header className="val-head">
-          <h2 id="val-title" className="val-title">{t("v.question")}</h2>
-          <LayoutToggle />
-        </header>
-        <div className="val-status-row">
-          {data ? (
-            <div className={`val-status ${failed ? "bad" : "good"}`} data-testid="val-status" role="status">
-              {failed ? t("v.failed", { n: failed }) : t("v.passedAll", { pass, total })}
-              {!failed && <span aria-hidden> ✓</span>}
-            </div>
-          ) : (
-            <div className="val-status idle" data-testid="val-status">{running ? t("loading") : t("v.notYet")}</div>
-          )}
-          <div className="val-actions">
-            <button type="button" className="btn primary" onClick={() => void runValidation("fast")} disabled={running} data-testid="val-fast">
-              <IconPlay size={12} /> {t("v.fast")}
-            </button>
-            <button type="button" className="btn" onClick={() => void runValidation("full")} disabled={running} data-testid="val-full">
-              <IconPlay size={12} /> {t("v.full")}
-            </button>
-            {running && (
-              <button type="button" className="btn danger" onClick={() => cancelKey("validation")}>
-                <IconStop size={11} /> {t("run.cancel")}
-              </button>
-            )}
-            {data && !running && <span className="small muted mono">{fmtDuration(data.runtime_s)}</span>}
-            {entry?.mock && data && all && <span className="badge demo">{t("demo")}</span>}
-          </div>
-        </div>
-        {running && (
-          <div className="val-progress">
-            <Progress value={entry?.progress ?? 0} indeterminate={(entry?.progress ?? 0) < 0.01} />
-            <span className="small muted mono">{entry?.message}</span>
-          </div>
-        )}
-        {entry?.status === "error" && (
-          <div className="panel-foot">
-            <div className="err-box" role="alert">{entry.error}</div>
-          </div>
-        )}
-        {data ? (
-          <>
-            <ChecksTable res={data} wide={wide} />
-            <div className="val-foot">
-              <span className="small muted">{wide ? t("v.desc.src") : t("v.desc")}</span>
-              <button type="button" className="link-btn" aria-pressed={wide} onClick={() => setWideCols(!wide)} data-testid="val-cols-all">
-                {wide ? t("v.colsFew") : t("v.colsAll")}
-              </button>
-            </div>
-          </>
-        ) : (
-          !running && <p className="val-empty small muted">{t("v.emptyHint")}</p>
-        )}
-        {data?.warnings && data.warnings.length > 0 && (
-          <div className="panel-foot">
-            <details className="notices"><summary>{t("warnings")} · {data.warnings.length}</summary><ul>{data.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul></details>
-          </div>
-        )}
-      </section>
-      {all ? (
-        <>
-          <div className="section-title">
-            <h2>{t("v.figs")}</h2>
-          </div>
-          <div className="grid">
-            <PaperIvFigure />
-            <PhotoFigure />
-            <VgFigure />
-          </div>
-        </>
-      ) : (
-        <ValidationFigures />
-      )}
-    </>
-  );
-}
+  const c = usePalette();
+  const backend = useStore(s => s.backend);
+  const measured = useStore(s => s.measured);
+  const { entry, data } = useEntry<BranchesResult>("val_branches_paper");
+  const [log, setLog] = useState(true);
+  const genuine = backend === "online" || backend === "snapshot";
+  const reference = (genuine ? measured.data?.paper_iv : null) ?? frozen.measured;
+  const computed = genuine && !entry?.mock ? data : undefined;
+  const model = computed ?? frozen.model;
+  const L = (k: keyof typeof REF) => t.l(REF[k]);
+  useEffect(() => {
+    if (!genuine) return;
+    if (!useStore.getState().results.val_branches_paper || useStore.getState().results.val_branches_paper?.mock) void runValidationIV();
+    if (useStore.getState().measured.status === "idle") void loadMeasured();
+  }, [genuine]);
 
-/** 간단히: the three comparisons as tabs of one card (기준 I–V first). */
-function ValidationFigures() {
-  const t = useT();
-  const iv = useStore((s) => s.results.val_branches_paper);
-  const vgs = useStore((s) => s.results.val_vgs);
-  // a primitive selector result (a new array would re-render forever)
-  const photoStatus = useStore((s): TabStatus | null => mergeStatus(...Object.entries(s.results).filter(([k]) => k.startsWith("val_photo_")).map(([, e]) => entryStatus(e))));
-  const tabs: MoreTab[] = [
-    { id: "val-iv", label: t("v.tab.iv"), panel: <PaperIvFigure />, status: entryStatus(iv), title: t("v.fig.iv") },
-    { id: "val-photo", label: t("v.tab.photo"), panel: <PhotoFigure />, status: photoStatus, title: t("v.fig.photo") },
-    { id: "val-vg", label: t("v.tab.vg"), panel: <VgFigure />, status: entryStatus(vgs), title: t("v.fig.vg") },
-  ];
-  return <FocusLayout testId="val-figures" scope="validation" tabs={tabs} defaultTab="val-iv" />;
+  const plot = useMemo(() => {
+    if (!model || !reference) return undefined;
+    const Y = log ? pos : nums;
+    const traces: Data[] = [];
+    for (const [vd, id, color, name] of [
+      [reference.vd_up, reference.median_up, c.hrs, L("measuredUp")],
+      [reference.vd_down, reference.median_down, c.lrs, L("measuredDown")],
+    ] as const) traces.push({ x: nums(vd), y: Y(id), type: "scatter", mode: "markers", name,
+      marker: { color, symbol: "circle-open", size: 4.5, line: { width: 1 } }, opacity: 0.65,
+      hovertemplate: `${HOVER_IV}<extra>${name}</extra>` });
+    for (const [sweep, color, name] of [
+      [model.double_sweep.up, c.hrs, L("modelUp")],
+      [model.double_sweep.down, c.lrs, L("modelDown")],
+    ] as const) traces.push({ x: nums(sweep.vd), y: Y(sweep.id), type: "scatter", mode: "lines", name,
+      line: { color, width: 2.3 }, hovertemplate: `${HOVER_IV}<extra>${name}</extra>` });
+    const layout: Partial<Layout> = {
+      xaxis: { title: { text: t("axis.vd") }, range: [0, 4.05] },
+      yaxis: { ...currentAxis(log, log ? t("axis.idAbs") : t("axis.id")), ...(log ? { range: logRange(traces.map(tr => (tr as { y?: (number | null)[] }).y)) } : {}) },
+      legend: ROW_LEGEND, margin: { l: 66, r: 20, t: 36, b: 48 },
+    };
+    return { data: traces, layout };
+  }, [model, reference, log, c, t]);
+  const errors = useMemo(() => model && reference ? [
+    { direction: "up" as const, ...curveError(model.double_sweep.up, { vd: reference.vd_up, id: reference.median_up }) },
+    { direction: "down" as const, ...curveError(model.double_sweep.down, { vd: reference.vd_down, id: reference.median_down }) },
+  ] : [], [model, reference]);
+  const fmt = (v: number | null) => v === null ? "—" : v.toFixed(3);
+
+  return <div className="reference-page" data-testid="validation">
+    <header className="reference-header">
+      <div><h2>{L("title")}</h2><p><SubText text={subs(L("geometry"))} /></p></div>
+<div className="reference-header-tags"><span className="badge" data-testid="reference-fixed-label">{L("fixed")}</span><span className="reference-condition"><SubText text={subs(L("condition"))} /></span></div>
+    </header>
+    <>
+      <Panel id="val-iv" title={L("plot")} primary entry={computed ? entry : undefined} hasData={!!plot} plot={plot} csvName="reference_idvd"
+        toolbar={plot ? <Seg label={t.l(DEV["menu.y"])} value={log ? "log" : "lin"} onChange={v => setLog(v === "log")} options={[{ v: "log", label: t("log") }, { v: "lin", label: t("lin") }]} /> : undefined}
+        error={measured.status === "error" ? L("missing") : undefined}
+        empty={<button type="button" className="btn primary sm" onClick={() => { void loadMeasured(true); void runValidationIV(); }}>{L("retry")}</button>}
+      />
+      {errors.length > 0 && <div className="reference-metrics" data-testid="reference-metrics">
+        <table className="table"><thead><tr><th>{L("direction")}</th><th>{L("logError")}</th><th>{L("linearError")}</th><th>{L("points")}</th></tr></thead>
+          <tbody>{errors.map(e => <tr key={e.direction}><td>{L(e.direction)}</td><td className="mono">{fmt(e.logRmse)}</td><td className="mono">{fmt(e.normalizedRmsePct)}</td><td className="mono">{e.n}</td></tr>)}</tbody>
+        </table>
+        <details><summary>{L("method")}</summary><p>{L("dataNote")}</p><p>{L("methodNote")}</p><p className="mono small">{L("source")}</p></details>
+      </div>}
+    </>
+  </div>;
 }

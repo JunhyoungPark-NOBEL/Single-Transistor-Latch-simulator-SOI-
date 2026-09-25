@@ -316,3 +316,28 @@ describe("feasibility and persistence", () => {
     expect(parseStored(JSON.stringify({ doc: d, saved: [{ name: "a", doc: d }, { name: 5 }] })).saved.length).toBe(1);
   });
 });
+
+
+describe("basic semiconductor circuits", () => {
+  it("preserves MOS geometry/polarity and diode/BJT models through saved circuits", () => {
+    for (const id of ["cmos_inverter", "diode_clipper", "bjt_switch"] as const) {
+      const doc = buildTemplate(id, STL, id);
+      const restored = parseDoc(JSON.parse(exportDocJson(doc)));
+      expect(restored).not.toBeNull();
+      const before = buildRequest(doc, extractNets(doc), "deterministic", null);
+      const after = buildRequest(restored!, extractNets(restored!), "deterministic", null);
+      expect(after).toEqual(before);
+      expect(after.netlist.elements.some((e) => e.type === "STL")).toBe(false);
+    }
+  });
+  it("keeps connected MOS terminal probes in a custom circuit request", () => {
+    const doc = buildTemplate("cmos_inverter", STL, "inverter");
+    doc.save_all = false;
+    const req = buildRequest(doc, extractNets(doc), "deterministic", ["I(M1.d)", "I(M2.s)", "V(out)", "I(absent.d)"]);
+    expect(req.probes).toEqual(["I(M1.d)", "I(M2.s)", "V(out)"]);
+    const pmos = req.netlist.elements.find((e) => e.name === "M2");
+    expect(pmos?.type === "MOS" && pmos.model.polarity).toBe("pmos");
+    expect(pmos?.type === "MOS" && pmos.nodes.d).toBe("out");
+    expect(pmos?.type === "MOS" && pmos.nodes.g).toBe("in");
+  });
+});

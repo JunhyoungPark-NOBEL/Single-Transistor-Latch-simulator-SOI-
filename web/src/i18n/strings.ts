@@ -17,8 +17,8 @@ export const STRINGS = {
   "app.subtitle": { ko: "SOI 단일 트랜지스터 래치 시뮬레이터", en: "Single-transistor latch simulator for SOI" },
   "tab.device": { ko: "소자", en: "Device" },
   "tab.circuit": { ko: "회로", en: "Circuit" },
-  "tab.validation": { ko: "검증", en: "Validation" },
-  "tab.physics": { ko: "물리 모델", en: "Physics" },
+  "tab.validation": { ko: "레퍼런스", en: "Reference" },
+  "tab.physics": { ko: "문서", en: "Docs" },
   "tabs.aria": { ko: "주요 화면", en: "Main views" },
   "mode.aria": { ko: "계산 모드", en: "Simulation mode" },
   "mode.deterministic": { ko: "결정론", en: "Deterministic" },
@@ -118,8 +118,8 @@ export const STRINGS = {
 
   // ---------------------------------------------------------------- run bar
   "run": { ko: "실행", en: "Run" },
-  "run.det": { ko: "결정론 계산 실행", en: "Run deterministic" },
-  "run.sto": { ko: "확률 계산 실행", en: "Run stochastic" },
+  "run.det": { ko: "시뮬레이션", en: "Simulate" },
+  "run.sto": { ko: "시뮬레이션", en: "Simulate" },
   "run.circuit": { ko: "과도해석 실행", en: "Run transient" },
   "run.running": { ko: "계산 중", en: "Running" },
   "run.cancel": { ko: "취소", en: "Cancel" },
@@ -148,6 +148,7 @@ export const STRINGS = {
 
   // ---------------------------------------------------------------- parameter groups
   "g.bias": { ko: "바이어스 · 스윕", en: "Bias & sweep" },
+  "g.bias.csvm": { ko: "게이트 바이어스", en: "Gate bias" },
   "g.bias.desc": { ko: "게이트 전압과 드레인 삼각 스윕 (0 → V_D,max → 0)", en: "Gate voltage and triangular drain sweep (0 → V_D,max → 0)" },
   "g.light": { ko: "광조사", en: "Illumination" },
   "g.light.desc": { ko: "바디에 균일하게 주입되는 광생성 정공 전류 I_PH", en: "Photogenerated hole current I_PH injected uniformly into the body" },

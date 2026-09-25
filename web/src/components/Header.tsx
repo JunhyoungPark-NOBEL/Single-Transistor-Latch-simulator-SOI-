@@ -10,6 +10,7 @@ import type { StrKey } from "../i18n/strings";
 import type { Tab } from "../params/schema";
 import { initBackend } from "../state/runner";
 import { useStore } from "../state/store";
+import { useForcing } from "../device/forcing";
 import { subs } from "../plots/labels";
 import { SubText } from "../plots/SubText";
 import { Credits } from "./Credits";
@@ -240,13 +241,15 @@ export function ContextStrip() {
   const mode = useStore((s) => s.mode);
   const tab = useStore((s) => s.tab);
   const method = useStore((s) => s.params.circuit.solver.method);
+  const forcing = useForcing((s) => s.forcing);
   const phone = usePhone();
-  const hint = modeHint(t, tab, mode, method);
+  const csvm = tab === "device" && forcing === "csvm";
+  const hint = csvm ? (t.lang === "ko" ? "전류 구동 · 드레인 전압 파형" : "Current forcing · drain-voltage transient") : modeHint(t, tab, mode, method);
   return (
     <div className={`modestrip${hasMode(tab) ? "" : " no-mode"}`} data-testid="modebar">
       {phone && hasMode(tab) && <ModeToggle compact />}
-      <span className="hint" data-testid="mode-hint" title={modeHintTech(t, tab, mode, method)}>
-        <SubText text={subs(hint)} />
+      <span className="hint" data-testid="mode-hint" title={csvm ? hint : `${hint} · ${modeHintTech(t, tab, mode, method)}`}>
+        <SubText text={subs(tab === "device" ? (csvm ? "FDSOI · VD(t)" : "FDSOI · ID–VD") : tab === "circuit" ? t("tab.circuit") : t(tab === "validation" ? "tab.validation" : "tab.physics"))} />
       </span>
       <StatusPill />
       <Credits />

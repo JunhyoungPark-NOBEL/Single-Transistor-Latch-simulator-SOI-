@@ -1,4 +1,4 @@
-// Guide UI helpers: every main field renders two parsed arrow chips (V_LU, V_LD) in both languages, the
+// Guide UI helpers: calibrated main fields render two parsed arrow chips (V_LU, V_LD) in both languages, the
 // first-sentence cut, the effect-line parser, group leads, and the bench_* fallback to the plain tooltip.
 import { describe, expect, it } from "vitest";
 import { GUIDE_LEGEND, PARAM_GUIDE } from "../content/params/guide";
@@ -15,15 +15,23 @@ const ctx = (mode: Ctx["mode"], tab: Ctx["tab"] = "device"): Ctx => ({ root, mod
 describe("main fields (inline guide)", () => {
   const main = ALL_FIELDS.filter(isMainAnywhere);
 
-  it("are the §2.5 set", () => {
-    expect(main.map((f) => f.key).sort()).toEqual(["c_runs", "iph_pA", "ls_mode", "ls_sigma", "n_cycles", "power_mW", "rate", "vd_max", "vg"].sort());
+  it("include the reference controls and back-gate bias", () => {
+    expect(main.map((f) => f.key).sort()).toEqual(["c_runs", "iph_pA", "ls_mode", "ls_sigma", "n_cycles", "power_mW", "rate", "vd_max", "vg", "vbg"].sort());
     const rate = ALL_FIELDS.find((f) => f.key === "rate")!;
     expect(isMain(rate, ctx("deterministic"))).toBe(false);
     expect(isMain(rate, ctx("stochastic"))).toBe(true);
     expect(isMain(LIGHT_FIELDS.resp, ctx("deterministic"))).toBe(false);
   });
 
-  for (const f of main) {
+  it("back-gate bias links its model documentation without inventing reference sensitivity arrows", () => {
+    const field = main.find((f) => f.key === "vbg")!;
+    expect(field.documentationPath).toBe("docs/geometry-model.html");
+    expect(field.help.ko).toContain("채널 전류");
+    expect(field.help.en).toContain("channel current");
+    expect(guideFor(field.key)).toBeUndefined();
+  });
+
+  for (const f of main.filter((field) => !field.documentationPath)) {
     it(`${f.key}: has a guide whose first two lines parse to V_LU and V_LD arrows`, () => {
       const g = guideFor(f.key);
       expect(g).toBeDefined();
@@ -120,7 +128,7 @@ describe("inlineLead (the line beside a main field)", () => {
     expect(inlineLead(PARAM_GUIDE.iph_pA.intuitive.ko)).toContain("(유량)");
   });
   it("every main field's line has its verb (the plain 'what happens') and fits the 3-line clamp", () => {
-    for (const f of ALL_FIELDS.filter(isMainAnywhere)) {
+    for (const f of ALL_FIELDS.filter((field) => isMainAnywhere(field) && !field.documentationPath)) {
       const g = guideFor(f.key)!;
       const ko = inlineLead(g.intuitive.ko);
       expect(ko, f.key).toMatch(/(니다|다)(\([^)]*\))?\.$/);

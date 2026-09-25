@@ -4,6 +4,7 @@ import type { DeviceBlock, Meta, Mode, PresetDef } from "../api/types";
 import type { CircuitParams, ParamRoot } from "../params/schema";
 import { BENCHES, DEFAULT_CIRCUIT_STOCH, DEFAULT_SOLVER } from "../params/benches";
 import { clone } from "./object";
+import { resolveBackGate, resolveGeometry } from "../params/geometry";
 
 export interface VgRange {
   min: number;
@@ -104,7 +105,7 @@ export function defaultCircuit(): CircuitParams {
 /** Parameter root for a preset (device/sweep/stochastic from the preset, circuit defaults). */
 export function presetRoot(meta: Meta, preset: keyof Meta["presets"]): ParamRoot {
   const pr = meta.presets[preset] ?? meta.presets.paper;
-  return { device: clone(pr.device), sweep: clone(pr.sweep), stochastic: clone(pr.stochastic), circuit: defaultCircuit() };
+  return { device: { ...clone(pr.device), geometry: resolveGeometry(pr.device.geometry), vbg: resolveBackGate(pr.device.vbg) }, sweep: clone(pr.sweep), stochastic: clone(pr.stochastic), circuit: defaultCircuit() };
 }
 
 /** Midpoint between the folds (default V_D for the charge-balance panel). */

@@ -9,8 +9,8 @@ const KEY = "stl-websim:circuit-view";
 
 function load(): CircuitView {
   try {
-    const v = localStorage.getItem(KEY);
-    return v === "benches" ? "benches" : "schematic";
+    localStorage.setItem(KEY, "schematic");
+    return "schematic";
   } catch {
     return "schematic";
   }

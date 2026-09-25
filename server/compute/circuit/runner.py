@@ -13,7 +13,7 @@ from server import params as PR
 from . import benches as B
 from .sim import SolverConfig, simulate
 from .stochastic import (ACTION_UNIT, SECONDS_PER_STEP, branch_profile, draw_local_states, estimate_steps,
-                         classify_checked, noise_bands, parse_local_state)
+                         classify_checked, noise_bands, parse_local_state, GEOMETRY_NOISE_ERROR)
 
 MAX_POINTS = 4000
 MAX_POINTS_OTHER = 1500        # stored runs 1..7 (keeps the JSON result a few MB at most)
@@ -390,6 +390,8 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
     if mode not in ("deterministic", "stochastic"):
         raise ValueError("mode must be 'deterministic' or 'stochastic'")
     device = PR.resolve_device(payload.get("device"))
+    if mode == "stochastic" and PR.uses_geometry_model(device):
+        raise ValueError(GEOMETRY_NOISE_ERROR)
     preset = device.get("preset") or "paper"
     sweep_preset = PR.resolve_section(preset, "sweep", None)
     bp = B.merged(B.BENCH_DEFAULTS[bench], payload.get("bench_params"))

@@ -37,6 +37,7 @@ class Netlist:
     I: list[tuple[str, int, int, int, str]] = field(default_factory=list)
     STL: list[dict[str, Any]] = field(default_factory=list)                   # name, d, g, s, p, light_wave, label
     CMP: list[dict[str, Any]] = field(default_factory=list)
+    basic: list[dict[str, Any]] = field(default_factory=list)
     waves: list[tuple[np.ndarray, np.ndarray]] = field(default_factory=list)
     samples: list[float] = field(default_factory=list)
     extra_breakpoints: list[float] = field(default_factory=list)
@@ -102,6 +103,9 @@ class Netlist:
         self.V.append((name, self.node(out), 0, -1 - j, label or f"comparator v_ref = {float(v_ref):.4g} V"))
         return len(self.V) - 1
 
+    def add_basic(self, kind, name, nodes, model):
+        self.basic.append(dict(kind=kind, name=name, nodes=[self.node(n) for n in nodes], model=dict(model)))
+
     # ---- views ------------------------------------------------------------------------
     def schematic(self) -> dict:
         els = []
@@ -123,6 +127,9 @@ class Netlist:
             nd = [self.nodes[c["inp"]]] if c["inm"] == 0 else [self.nodes[c["inp"]], self.nodes[c["inm"]]]
             els.append(dict(kind="CMP", name=c["name"], nodes=nd, out=self.nodes[c["out"]],
                             value=c["label"] or f"out = [v_in > {c['v_ref']:.4g} V]"))
+        for e in self.basic:
+            els.append(dict(kind=e["kind"], name=e["name"], nodes=[self.nodes[n] for n in e["nodes"]],
+                            value=e["model"].get("polarity", "Diode")))
         return dict(nodes=list(self.nodes), elements=els)
 
     def breakpoints(self) -> np.ndarray:
@@ -138,13 +145,20 @@ class Netlist:
         return b
 
     def compile(self) -> dict:
+        from .basic import pack, WIDTH
+        from server.geometry_model import pack_p
         n_nodes = len(self.nodes)
         ii = lambda xs, j: np.array([x[j] for x in xs], dtype=np.int64)
         ff = lambda xs, j: np.array([x[j] for x in xs], dtype=np.float64)
         wt = np.concatenate([w[0] for w in self.waves]) if self.waves else np.zeros(1)
         wv = np.concatenate([w[1] for w in self.waves]) if self.waves else np.zeros(1)
         woff = np.r_[0, np.cumsum([len(w[0]) for w in self.waves])].astype(np.int64)
-        P = np.array([s["p"] for s in self.STL], dtype=np.float64).reshape(len(self.STL), 26)
+        # A heterogeneous circuit may mix legacy reference devices and geometry
+        # variants.  Pad only that mixed/variant case, with each cell's own field
+        # table; reference-only circuits retain the original 26-column layout.
+        geometry = any(len(s["p"]) > 26 for s in self.STL)
+        P = (np.vstack([pack_p(s["p"], force=geometry) for s in self.STL])
+             if self.STL else np.zeros((0, 26), dtype=np.float64))
         samples = np.sort(np.asarray(self.samples, float))
         return dict(
             n_nodes=n_nodes, nV=len(self.V), nR=len(self.R), nC=len(self.C), nI=len(self.I), nS=len(self.STL),
@@ -159,6 +173,7 @@ class Netlist:
             bp=self.breakpoints().astype(np.float64), samp=samples.astype(np.float64), P=P,
             cmp=np.array([[c["inp"], c["inm"], c["v_ref"], c["v_high"], c["v_low"], c["hysteresis"], c["width"], 0.0]
                           for c in self.CMP], dtype=np.float64).reshape(len(self.CMP), 8),
+            basic=np.array([pack(e["kind"], e["nodes"], e["model"]) for e in self.basic], dtype=float).reshape(-1, WIDTH),
         )
 
     def wave_eval(self, w: int, t) -> np.ndarray:

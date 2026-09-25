@@ -1,6 +1,6 @@
 """Device parameter schema shared by every compute module (pure Python, no numba import).
 
-A *device* object (JSON) is resolved against a preset and converted into the 26-element
+A *device* object (JSON) is resolved against a preset. The reference uses the 26-element
 parameter vector ``p`` used by ``engine/photo_extension/photo_mean.components``:
 
     p[0]  beta (diffusion ratio)          p[13] I_PH (A)
@@ -16,6 +16,9 @@ parameter vector ``p`` used by ``engine/photo_extension/photo_mean.components``:
     p[10] phi_emitter offset (V)          p[23] local path log fluctuation
     p[11] V_G (V)                         p[24] local path carrier definition (0/1/2)
     p[12] channel-II scale                p[25] kappaF (1/V)
+
+Changed geometry/backgate bias appends Lg, W, Tsi, EOT, Tbox, Nbody, VBG at p[26:33].
+The first 26 entries keep their calibration meanings. Worker-only field tables are not public.
 
 All paper-model calibration values are read from the engine JSON files so there is a
 single source of truth.  With every extension at its neutral value the vector equals
@@ -83,10 +86,13 @@ CHANNEL_SEED_OPTIONS = {
     "high_vd_seed": {"seed_ip_pA": 1.33, "seed_S": 0.8},
 }
 
-# Device technology and geometry of the calibrated model (fixed by the model; editable only when a
-# future model supports it).  PDSOI and bulk presets are planned; the UI shows them as "coming soon".
+# Calibration geometry. Tbox was absent from the handoff and is explicitly nominal.
+# The server-owned geometry extension adds deterministic extrapolation around this device.
 TECHNOLOGY = "FDSOI"
-GEOMETRY: dict[str, float] = dict(Lg_nm=500.0, W_nm=200.0, Tsi_nm=50.0, EOT_nm=14.1)
+GEOMETRY: dict[str, float] = dict(Lg_nm=500.0, W_nm=200.0, Tsi_nm=50.0, EOT_nm=14.1, Tbox_nm=140.0, Nbody_cm3=NA_CM3)
+GEOMETRY_KEYS = tuple(GEOMETRY)
+GEOMETRY_LIMITS = dict(Lg_nm=(100., 2000.), W_nm=(20., 10000.), Tsi_nm=(5., 200.),
+                       EOT_nm=(1., 100.), Tbox_nm=(10., 1000.), Nbody_cm3=(1e15, 1e19))
 GEOMETRY_TEXT = "L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm"
 TECHNOLOGIES = [
     dict(id="FDSOI", available=True),
@@ -95,7 +101,9 @@ TECHNOLOGIES = [
 ]
 
 _DEVICE_BASE: dict[str, Any] = dict(
+    geometry=dict(GEOMETRY),
     vg=-2.0,
+    vbg=0.0,
     light=dict(mode="iph", iph_pA=0.0, power_mW=0.0, responsivity_pA_per_mW=RESPONSIVITY_PA_PER_MW),
     calib=DEFAULT_CALIB,
     ext=DEFAULT_EXT,
@@ -179,7 +187,7 @@ def iph_A(device: dict) -> float:
 
 
 def build_p(device: dict, dg: float = 0.0, de: float = 0.0, **ext_over: float) -> list[float]:
-    """26-element parameter vector for photo_mean.components.
+    """Reference vector (26) or geometry/backgate extension (33).
 
     dg, de: local-state deviations added to p[9], p[10] on top of the calibrated means and the
     device's state centre (delta_phi_G0_V, delta_phi_E0_V).  ext_over overrides extension keys
@@ -207,7 +215,31 @@ def build_p(device: dict, dg: float = 0.0, de: float = 0.0, **ext_over: float) -
         float(e["loc_carriers"]),        # 24
         float(e["kappaF"]),              # 25
     ]
+    g = d["geometry"]
+    if uses_geometry_model(d):
+        p += [float(g[k]) for k in GEOMETRY_KEYS] + [float(d.get("vbg", 0.0))]
     return p
+
+
+def is_reference_geometry(device: dict) -> bool:
+    g = device.get("geometry") or GEOMETRY
+    return all(float(g.get(k, v)) == v for k, v in GEOMETRY.items())
+
+
+def uses_geometry_model(device: dict) -> bool:
+    return not is_reference_geometry(device) or float(device.get("vbg", 0.0)) != 0.0
+
+
+def geometry_model_metadata(device: dict) -> dict:
+    return dict(version="fdsoi-scaling-v1", calibrated_geometry=dict(GEOMETRY),
+                reference_geometry=is_reference_geometry(device),
+                tbox_source="nominal assumption; absent from calibration",
+                validated=not uses_geometry_model(device),
+                scope="reference-calibrated" if not uses_geometry_model(device) else "geometry-extrapolation",
+                backgate_coupling="channel overdrive += EOT / (Tbox + Tsi/3) * VBG; relative VBG=0 calibration",
+                junction_lifetime_scaling="tau_j_eff = tau_j_ref * Tsi / 50nm",
+                body_capacitance_scaling="Cf + Cb - Cb0; Cb0 is reference-calibration counterterm",
+                gate_charge="Cf*(psi-VG) + (Cb-Cb0)*psi - Cb*VBG")
 
 
 def is_paper_reference(device: dict) -> bool:
@@ -218,13 +250,15 @@ def is_paper_reference(device: dict) -> bool:
     same_calib = all(abs(float(d["calib"][k]) - float(base["calib"][k])) <= 1e-12 * max(1.0, abs(float(base["calib"][k])))
                      for k in base["calib"])
     same_ext = all(float(d["ext"][k]) == float(DEFAULT_EXT[k]) for k in DEFAULT_EXT)
-    return (abs(float(d["vg"]) + 2.0) < 1e-9 and iph_A(d) == 0.0 and same_calib and same_ext
+    return (not uses_geometry_model(d) and abs(float(d["vg"]) + 2.0) < 1e-9 and iph_A(d) == 0.0 and same_calib and same_ext
             and float(d["state"]["delta_phi_G0_V"]) == 0.0 and float(d["state"]["delta_phi_E0_V"]) == 0.0)
 
 
 def match_photo_condition(device: dict, tol_vg: float = 1e-6, tol_p: float = 1e-6) -> int | None:
     """Column index into data/raw_VLU.npy when (V_G, P) equals a measured photo-device condition."""
     d = resolve_device(device)
+    if uses_geometry_model(d):
+        return None
     light = d["light"]
     p_mw = float(light["power_mW"]) if light.get("mode") == "power" else iph_A(d) * 1e12 / RESPONSIVITY_PA_PER_MW
     for k, (vg, pw) in enumerate(MEASURED_PHOTO_CONDITIONS):
@@ -241,9 +275,12 @@ def meta() -> dict:
                        tau_E_s=TAU_E_S, tau_G_up_s=TAU_G_UP_S, photo_delta_phi_G0_V=PHOTO_DELTA_PHI_G0_V,
                        photo_sigma_phi_V=PHOTO_SIGMA_PHI_V, photo_gamma=PHOTO_GAMMA,
                        responsivity_pA_per_mW=RESPONSIVITY_PA_PER_MW,
-                       geometry=dict(L_nm=500, W_nm=200, T_Si_nm=50, EOT_nm=14.1)),
+                       geometry=dict(L_nm=500, W_nm=200, T_Si_nm=50, EOT_nm=14.1, Tbox_nm=140, Nbody_cm3=NA_CM3)),
         technology=TECHNOLOGY,
         geometry=dict(GEOMETRY),
+        geometry_limits=GEOMETRY_LIMITS,
+        geometry_model=dict(version="fdsoi-scaling-v1", calibrated_geometry=dict(GEOMETRY),
+                            tbox_source="nominal assumption; absent from calibration", validated=False),
         technologies=TECHNOLOGIES,
         channel_seed_options=CHANNEL_SEED_OPTIONS,
         measured_photo_conditions=[dict(vg=vg, power_mW=p) for vg, p in MEASURED_PHOTO_CONDITIONS],

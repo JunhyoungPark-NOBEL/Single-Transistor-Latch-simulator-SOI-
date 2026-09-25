@@ -456,3 +456,33 @@ device/record descriptions; keep figure references descriptive ("V_G dependence 
 asymptotic p-value), `histogram(values, bins?)`.
 `web/src/stats/StatsTable.tsx`: `<StatsTable rows={{ key, label, unit, values, scale? }[]} measured?={...} />`
 compact, copyable (CSV), bilingual; used in the Device tab (stochastic) and by the circuit editor.
+
+## Circuit editor update — September 2026
+
+The Circuit tab opens the free-form schematic editor. A fresh browser starts with an empty
+canvas; existing saved circuits are restored. The quick-bench UI is removed. The bench API
+remains backward compatible. Examples are a secondary menu and use the same editable netlist.
+The visible component palette contains R, C, V, I, ground, net label, STL, comparator, MOSFET,
+diode and BJT. Core semiconductor parameters are edited in the selected-element inspector.
+
+`bench: "custom"` additionally accepts these nonlinear, memoryless devices:
+
+```json
+{"type":"MOS","name":"M1","nodes":{"d":"out","g":"in","s":"0"},"model":{"polarity":"nmos","L_um":1,"W_um":10,"Vth_V":0.5,"SS_mV_dec":80,"k_uA_V2":100,"lambda_per_V":0.02}}
+{"type":"D","name":"D1","nodes":{"a":"out","k":"0"},"model":{"Is_A":1e-14,"n":1}}
+{"type":"BJT","name":"Q1","nodes":{"c":"out","b":"in","e":"0"},"model":{"polarity":"npn","Is_A":1e-15,"beta_F":100,"beta_R":1}}
+```
+
+MOS polarity is `nmos` or `pmos`; BJT polarity is `npn` or `pnp`. `Vth_V` is a magnitude
+(negative imported values are normalized). Additional probe keys are `I(M1.d)`, `I(M1.g)`,
+`I(M1.s)`, `I(D1)`, `I(Q1.c)`, `I(Q1.b)` and `I(Q1.e)`. Current is positive into the specified
+terminal. These elements participate in the operating-point and transient MNA solve alongside
+STL elements; circuits with no STL are supported. Exact equations, parameter bounds and
+scope are in [BASIC_CIRCUIT_DEVICES.md](BASIC_CIRCUIT_DEVICES.md). The browser demo backend
+explicitly rejects the new devices instead of inventing nonlinear results. The live computation
+backend is required for their simulation.
+
+The schematic document format remains version 1 with additive optional `mos`, `diode` and
+`bjt` model objects. Existing document formats and STL snapshots remain compatible. Model
+parameter help is collapsed by default, and detailed model documentation is linked using the
+application's configured base path for embedded/subpath deployments.

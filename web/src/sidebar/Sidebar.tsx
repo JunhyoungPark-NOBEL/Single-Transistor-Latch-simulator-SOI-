@@ -5,6 +5,7 @@
 import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
 import { useCircuitView } from "../circuit/view";
 import { DeviceCard } from "../devices/DeviceCard";
+import { useForcing } from "../device/forcing";
 import { Progress } from "../components/Panel";
 import { IconChevron, IconPlay, IconStop, IconX } from "../components/icons";
 import { useT } from "../i18n";
@@ -17,6 +18,7 @@ import { presetDefaults, useStore } from "../state/store";
 import { fmtDuration } from "../utils/format";
 import { deepEqual, getPath } from "../utils/object";
 import { ParamGroup } from "./ParamGroup";
+import { GeometryControls } from "./GeometryControls";
 import { useSidebarUi } from "./sidebarState";
 import "./sidebar.css";
 
@@ -35,6 +37,7 @@ export function RunBar() {
   const t = useT();
   const tab = useStore((s) => s.tab);
   const mode = useStore((s) => s.mode);
+  useForcing((s) => s.forcing); // keep progress context in sync with the forcing switch
   const autoRun = useStore((s) => s.autoRun);
   const setAutoRun = useStore((s) => s.setAutoRun);
   const lastRun = useStore((s) => s.activeRun);
@@ -140,6 +143,7 @@ export function Sidebar() {
   const t = useT();
   const tab = useStore((s) => s.tab);
   const mode = useStore((s) => s.mode);
+  const forcing = useForcing((s) => s.forcing);
   const params = useStore((s) => s.params);
   const open = useStore((s) => s.sidebarOpen);
   const setOpen = useStore((s) => s.setSidebar);
@@ -148,7 +152,13 @@ export function Sidebar() {
   const ctx: Ctx = { root: params, mode, tab };
   // groups specific to the current tab (e.g. bench/solver on the circuit tab) come first
   const circuitFirst = (g: (typeof GROUPS)[number]) => Number(tab === "circuit" && g.tabs.length === 1 && g.tabs[0] === "circuit");
-  const groups = GROUPS.filter((g) => groupVisible(g, ctx)).sort((a, b) => circuitFirst(b) - circuitFirst(a));
+  const csvm = tab === "device" && forcing === "csvm";
+  const groups = GROUPS.filter((g) => groupVisible(g, ctx)).map((g) => {
+    if (!csvm) return g;
+    // CSVM is one time-domain trace; voltage-sweep/MC sweep controls have no effect here.
+    const hidden = new Set(["n_cycles", "n_traces", "engine", "fold_nodes", "hazard_nodes", "ls_trend"]);
+    return { ...g, ...(g.id === "bias" ? { title: "g.bias.csvm" as const } : {}), fields: g.fields.filter((f) => f.path[0] !== "sweep" && !hidden.has(f.key)) };
+  }).sort((a, b) => circuitFirst(b) - circuitFirst(a));
   const basic = groups.filter((g) => !g.advanced);
   const advanced = groups.filter((g) => g.advanced);
   return (
@@ -168,6 +178,7 @@ export function Sidebar() {
             </Suspense>
           ) : (
             <>
+              <GeometryControls />
               <DeviceCard />
               {basic.map((g) => (
                 <ParamGroup key={g.id} g={g} ctx={ctx} />

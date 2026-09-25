@@ -1,16 +1,20 @@
 // Schematic document model (editor state that is saved/exported) and element geometry: pin positions,
 // rotation/mirroring and bounding boxes in world units (1 grid = GRID world px at zoom 1).
 import type { DeviceBlock, LocalStateBlock } from "../api/types";
-import type { Wave } from "../api/circuitCustom";
+import type { MosModel, DiodeModel, BjtModel, Wave } from "../api/circuitCustom";
 
 export type { Wave };
 export const GRID = 10;
 export const DOC_VERSION = 1;
 
 export type Rot = 0 | 1 | 2 | 3; // multiples of 90° clockwise
-export type ElKind = "R" | "C" | "V" | "I" | "STL" | "CMP" | "GND" | "LABEL";
+export type ElKind = "R" | "C" | "V" | "I" | "MOS" | "D" | "BJT" | "STL" | "CMP" | "GND" | "LABEL";
 /** Kinds that become netlist elements (GND and LABEL are connectivity symbols only). */
-export const CIRCUIT_KINDS: ElKind[] = ["R", "C", "V", "I", "STL", "CMP"];
+export const CIRCUIT_KINDS: ElKind[] = ["R", "C", "V", "I", "MOS", "D", "BJT", "STL", "CMP"];
+
+export const DEFAULT_MOS: MosModel = { polarity: "nmos", L_um: 1, W_um: 10, Vth_V: 0.5, SS_mV_dec: 80, k_uA_V2: 100, lambda_per_V: 0.02 };
+export const DEFAULT_DIODE: DiodeModel = { Is_A: 1e-14, n: 1 };
+export const DEFAULT_BJT: BjtModel = { polarity: "npn", Is_A: 1e-15, beta_F: 100, beta_R: 1 };
 
 /** Comparator parameters (§6.3 CMP element): output = v_high when V(in) > v_ref (± hysteresis/2), else v_low. */
 export interface CmpParams {
@@ -51,6 +55,9 @@ export interface SElement {
   label?: string;
   /** Comparator parameters (CMP). */
   cmp?: CmpParams;
+  mos?: MosModel;
+  diode?: DiodeModel;
+  bjt?: BjtModel;
 }
 
 export interface Wire {
@@ -99,7 +106,7 @@ export interface Pt {
   y: number;
 }
 
-export type PinName = "p" | "n" | "d" | "g" | "s" | "o" | "i" | "q";
+export type PinName = "p" | "n" | "d" | "g" | "s" | "o" | "i" | "q" | "a" | "k" | "c" | "b" | "e";
 export interface PinDef {
   name: PinName;
   x: number;
@@ -112,6 +119,9 @@ export const PINS: Record<ElKind, PinDef[]> = {
   C: [{ name: "p", x: 0, y: -40 }, { name: "n", x: 0, y: 40 }],
   V: [{ name: "p", x: 0, y: -40 }, { name: "n", x: 0, y: 40 }],
   I: [{ name: "p", x: 0, y: -40 }, { name: "n", x: 0, y: 40 }],
+  D: [{ name: "a", x: 0, y: -40 }, { name: "k", x: 0, y: 40 }],
+  MOS: [{ name: "d", x: 0, y: -40 }, { name: "g", x: -40, y: 0 }, { name: "s", x: 0, y: 40 }],
+  BJT: [{ name: "c", x: 0, y: -40 }, { name: "b", x: -40, y: 0 }, { name: "e", x: 0, y: 40 }],
   STL: [{ name: "d", x: 0, y: -40 }, { name: "g", x: -40, y: 0 }, { name: "s", x: 0, y: 40 }],
   // comparator: input (compared with V_ref, referenced to ground) on the left, output on the right
   CMP: [{ name: "i", x: -40, y: 0 }, { name: "q", x: 40, y: 0 }],
@@ -125,6 +135,9 @@ const BOX: Record<ElKind, [number, number, number, number]> = {
   C: [-16, -40, 16, 40],
   V: [-20, -40, 20, 40],
   I: [-20, -40, 20, 40],
+  D: [-16, -40, 16, 40],
+  MOS: [-40, -40, 22, 40],
+  BJT: [-40, -40, 22, 40],
   STL: [-40, -40, 26, 40],
   CMP: [-40, -26, 40, 26],
   GND: [-14, -2, 14, 22],
@@ -194,7 +207,7 @@ export function distToSeg(px: number, py: number, w: Wire): number {
 }
 
 /** Default name prefix per kind (SPICE convention: X for subcircuit-like devices). */
-export const NAME_PREFIX: Record<ElKind, string> = { R: "R", C: "C", V: "V", I: "I", STL: "X", CMP: "CMP", GND: "GND", LABEL: "L" };
+export const NAME_PREFIX: Record<ElKind, string> = { R: "R", C: "C", V: "V", I: "I", MOS: "M", D: "D", BJT: "Q", STL: "X", CMP: "CMP", GND: "GND", LABEL: "L" };
 
 export function nextName(els: SElement[], kind: ElKind): string {
   const pre = NAME_PREFIX[kind];

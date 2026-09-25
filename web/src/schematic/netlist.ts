@@ -4,7 +4,7 @@ import type { CustomCircuitRequest, CustomElement, CustomTran } from "../api/cir
 import type { LocalStateBlock, Mode } from "../api/types";
 import { clone } from "../utils/object";
 import { elementNets } from "./erc";
-import { CIRCUIT_KINDS, DEFAULT_CMP, type SchematicDoc, type SElement, type TranSettings } from "./model";
+import { CIRCUIT_KINDS, DEFAULT_CMP, DEFAULT_MOS, DEFAULT_DIODE, DEFAULT_BJT, type SchematicDoc, type SElement, type TranSettings } from "./model";
 import type { Connectivity } from "./nets";
 import { toSpice } from "./si";
 import { waveSpice } from "./waves";
@@ -43,6 +43,9 @@ export function toCustomElement(e: SElement, conn: Connectivity): CustomElement 
     case "V":
     case "I":
       return { type: e.kind, name: e.name, nodes: [ns[0], ns[1]], wave: clone(e.wave ?? { kind: "dc", value: 0 }) };
+    case "MOS": return { type: "MOS", name: e.name, nodes: { d: ns[0], g: ns[1], s: ns[2] }, model: clone(e.mos ?? DEFAULT_MOS) };
+    case "D": return { type: "D", name: e.name, nodes: { a: ns[0], k: ns[1] }, model: clone(e.diode ?? DEFAULT_DIODE) };
+    case "BJT": return { type: "BJT", name: e.name, nodes: { c: ns[0], b: ns[1], e: ns[2] }, model: clone(e.bjt ?? DEFAULT_BJT) };
     case "STL": {
       if (!e.stl) return null;
       const out: CustomElement = { type: "STL", name: e.name, nodes: { d: ns[0], g: ns[1], s: ns[2] }, device: clone(e.stl.device), light_pA: e.light ? clone(e.light) : null };
@@ -90,9 +93,11 @@ export function buildRequest(doc: SchematicDoc, conn: Connectivity, mode: Mode, 
 export function validProbeKeys(elements: CustomElement[]): Set<string> {
   const keys = new Set<string>(["V(0)"]);
   for (const e of elements) {
-    const nodes = e.type === "STL" || e.type === "CMP" ? Object.values(e.nodes) : e.nodes;
+    const nodes = Object.values(e.nodes);
     for (const n of nodes) keys.add(`V(${n})`);
     if (e.type === "STL") for (const k of [`I(${e.name}.d)`, `I(${e.name}.g)`, `I(${e.name}.s)`, `${e.name}.u`, `${e.name}.r`, `${e.name}.q_b`]) keys.add(k);
+    else if (e.type === "MOS") for (const p of ["d", "g", "s"]) keys.add(`I(${e.name}.${p})`);
+    else if (e.type === "BJT") for (const p of ["c", "b", "e"]) keys.add(`I(${e.name}.${p})`);
     else if (e.type === "CMP") for (const k of [`I(${e.name})`, `${e.name}.bit`]) keys.add(k);
     else keys.add(`I(${e.name})`);
   }
@@ -111,7 +116,7 @@ const fmtV = (v: number) => toSpice(v, 5);
 export function netlistText(doc: SchematicDoc, conn: Connectivity, mode: Mode): string {
   const lines: string[] = [`* ${doc.name || "untitled"} — STL circuit (${mode})`];
   const els = doc.elements.filter((e) => CIRCUIT_KINDS.includes(e.kind));
-  const order: Record<string, number> = { V: 0, I: 1, R: 2, C: 3, STL: 4, CMP: 5 };
+  const order: Record<string, number> = { V: 0, I: 1, R: 2, C: 3, STL: 4, CMP: 5, MOS: 6, D: 7, BJT: 8 };
   for (const e of [...els].sort((a, b) => order[a.kind] - order[b.kind] || a.name.localeCompare(b.name, "en", { numeric: true }))) {
     const ns = elementNets(e, conn).map(nodeName);
     switch (e.kind) {
@@ -123,6 +128,22 @@ export function netlistText(doc: SchematicDoc, conn: Connectivity, mode: Mode): 
       case "I":
         lines.push(`${e.name} ${ns[0]} ${ns[1]} ${e.wave ? waveSpice(e.wave) : "DC 0"}`);
         break;
+      case "MOS": {
+        const m = e.mos ?? DEFAULT_MOS;
+        lines.push(`* ${e.name} basic ${m.polarity}: L=${m.L_um}um W=${m.W_um}um Vth=${m.Vth_V}V SS=${m.SS_mV_dec}mV/dec k=${m.k_uA_V2}uA/V2 lambda=${m.lambda_per_V}/V`);
+        lines.push(`* pins ${e.name}: D=${ns[0]} G=${ns[1]} S=${ns[2]}; see JSON for simulator model`);
+        break;
+      }
+      case "D": {
+        const m = e.diode ?? DEFAULT_DIODE;
+        lines.push(`${e.name} ${ns[0]} ${ns[1]} ${e.name}_model`, `.model ${e.name}_model D(Is=${fmtV(m.Is_A)} N=${m.n})`);
+        break;
+      }
+      case "BJT": {
+        const m = e.bjt ?? DEFAULT_BJT;
+        lines.push(`${e.name} ${ns[0]} ${ns[1]} ${ns[2]} ${e.name}_model`, `.model ${e.name}_model ${m.polarity.toUpperCase()}(Is=${fmtV(m.Is_A)} Bf=${m.beta_F} Br=${m.beta_R})`);
+        break;
+      }
       case "STL": {
         const d = e.stl?.device;
         const parts = [`${e.name} ${ns[0]} ${ns[1]} ${ns[2]} STL`, `dev="${e.stl?.name ?? "?"}"`];

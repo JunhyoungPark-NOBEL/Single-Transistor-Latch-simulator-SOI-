@@ -6,13 +6,16 @@
 // I_in = 1 nA into V(out), C_par = 1 pF, STL drain at V(out), source grounded, gate at −2 V DC.
 import type { StrKey } from "../i18n/strings";
 import { clone } from "../utils/object";
-import { newId, type ElKind, type Rot, type SchematicDoc, type SElement, type StlRef, type Wave, type Wire } from "./model";
+import { DEFAULT_MOS, DEFAULT_DIODE, DEFAULT_BJT, newId, type ElKind, type Rot, type SchematicDoc, type SElement, type StlRef, type Wave, type Wire } from "./model";
 import { DEFAULT_LOCAL } from "./persist";
 import { defaultDoc } from "./persist";
 
-export type TemplateId = "load_line" | "pulse" | "pbit" | "coupled" | "oscillator";
-export const TEMPLATE_ORDER: TemplateId[] = ["load_line", "pulse", "pbit", "coupled", "oscillator"];
+export type TemplateId = "load_line" | "pulse" | "pbit" | "coupled" | "oscillator" | "cmos_inverter" | "diode_clipper" | "bjt_switch";
+export const TEMPLATE_ORDER: TemplateId[] = ["load_line", "pulse", "pbit", "coupled", "oscillator", "cmos_inverter", "diode_clipper", "bjt_switch"];
 export const TEMPLATE_TEXT: Record<TemplateId, { title: StrKey; desc: StrKey }> = {
+  cmos_inverter: { title: "schematic.tpl.cmos_inverter", desc: "schematic.tpl.cmos_inverter.desc" },
+  diode_clipper: { title: "schematic.tpl.diode_clipper", desc: "schematic.tpl.diode_clipper.desc" },
+  bjt_switch: { title: "schematic.tpl.bjt_switch", desc: "schematic.tpl.bjt_switch.desc" },
   load_line: { title: "schematic.tpl.load_line", desc: "schematic.tpl.load_line.desc" },
   pulse: { title: "schematic.tpl.pulse", desc: "schematic.tpl.pulse.desc" },
   pbit: { title: "schematic.tpl.pbit", desc: "schematic.tpl.pbit.desc" },
@@ -72,6 +75,32 @@ export function buildTemplate(id: TemplateId, stl: StlRef, name: string): Schema
   const d = defaultDoc(name);
   const vg = stl.device.vg ?? -2;
   switch (id) {
+    case "cmos_inverter": {
+      d.elements = [
+        el("MOS", "M1", 400, 340, { mos: { ...DEFAULT_MOS } }),
+        el("MOS", "M2", 400, 180, { mos: { ...DEFAULT_MOS, polarity: "pmos", W_um: 20, k_uA_V2: 50 }, mirror: true }, 2),
+        gnd(400, 380),
+        el("V", "VDD", 620, 180, { wave: dc(1.8) }), gnd(620, 220),
+        el("V", "Vin", 120, 300, { wave: pulse(1.8, 20e-6, 0.4e-3, 1e-3, 4) }), gnd(120, 340),
+        el("C", "CL", 620, 340, { value: 10e-12 }), gnd(620, 380),
+        label("out", 520, 260), label("in", 280, 260),
+      ];
+      d.wires = [...path([400, 140], [620, 140]), ...path([400, 220], [400, 300]), ...path([400, 260], [620, 260], [620, 300]), ...path([360, 180], [280, 180], [280, 340], [360, 340]), ...path([120, 260], [280, 260])];
+      d.tran = { ...d.tran, t_stop_s: 4e-3, dt_max_s: 2e-6 };
+      break;
+    }
+    case "diode_clipper": {
+      d.elements = [el("V", "Vin", 100, 220, { wave: { kind: "sine", vo: 0, va: 1.5, freq: 1000, td: 0, theta: 0 } }), gnd(100, 260), el("R", "R1", 240, 140, { value: 1e3 }, 3), el("D", "D1", 440, 220, { diode: { ...DEFAULT_DIODE } }), gnd(440, 260), label("in", 100, 140), label("out", 440, 140)];
+      d.wires = [...path([100, 180], [100, 140], [200, 140]), ...path([280, 140], [440, 140], [440, 180])];
+      d.tran = { ...d.tran, t_stop_s: 3e-3, dt_max_s: 2e-6 };
+      break;
+    }
+    case "bjt_switch": {
+      d.elements = [el("V", "VCC", 100, 160, { wave: dc(3.3) }), gnd(100, 200), el("R", "RC", 400, 160, { value: 1e3 }), el("BJT", "Q1", 400, 260, { bjt: { ...DEFAULT_BJT } }), gnd(400, 300), el("V", "Vin", 100, 340, { wave: pulse(1.8, 10e-6, 0.4e-3, 1e-3, 4) }), gnd(100, 380), el("R", "RB", 240, 260, { value: 10e3 }, 3), label("out", 500, 210), label("in", 150, 260)];
+      d.wires = [...path([100, 120], [400, 120]), ...path([400, 200], [400, 220]), ...path([400, 210], [500, 210]), ...path([100, 300], [100, 260], [200, 260]), ...path([280, 260], [360, 260])];
+      d.tran = { ...d.tran, t_stop_s: 4e-3, dt_max_s: 2e-6 };
+      break;
+    }
     case "load_line": {
       // triangle 0 → 4 V → 0 at 0.4 V/s through R_s = 1 kΩ, C_d = 2 fF (bench defaults for the reference device)
       Object.assign(d, singleCell(triangle(4, 0.4), "Rs", 1e3, "Vsrc", "src", stl, vg));

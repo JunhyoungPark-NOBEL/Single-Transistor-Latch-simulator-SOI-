@@ -136,3 +136,23 @@
   .device-tab .focus-grid .skeleton-plot, .device-tab .focus-grid .empty { height: 300px; }
   .range-form { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* The main workspace is a voltage sweep. Detailed analyses remain in the full layout. */
+.device-sweep .plot, .device-sweep .plot.tall,
+.device-sweep .skeleton-plot, .device-sweep .empty { height: clamp(360px, 55vh, 580px); }
+@media (max-width: 760px) {
+  .device-sweep .plot, .device-sweep .plot.tall,
+  .device-sweep .skeleton-plot, .device-sweep .empty { height: 340px; }
+}
+
+/* Device forcing: a small instrument-style mode bar, with SI-backed inline settings. */
+.forcing-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.forcing-bar > .seg { flex: 0 0 auto; }
+.forcing-fields { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.forcing-field { display: flex; align-items: center; gap: 5px; border: 1px solid var(--border); background: var(--surface); border-radius: 7px; padding: 3px 8px; color: var(--text-2); font-size: 12px; }
+.forcing-field input { width: 54px; min-width: 0; background: transparent; color: var(--text); border: 0; font: 12px var(--mono); text-align: right; padding: 2px 0; -moz-appearance: textfield; }
+.forcing-field input::-webkit-inner-spin-button { appearance: none; }
+.forcing-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 2px; }
+.forcing-unit { color: var(--muted); font-size: 11px; }
+.forcing-help { margin-left: auto; color: var(--muted); text-decoration: none; font-size: 15px; padding: 3px; }
+@media (max-width: 600px) { .forcing-bar { gap: 8px; } .forcing-fields { order: 3; flex-basis: 100%; gap: 5px; } .forcing-field { flex: 1; padding: 4px 6px; } .forcing-field input { width: 40px; flex: 1; } }

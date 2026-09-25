@@ -49,6 +49,8 @@ def main() -> int:
         print(f"[warmup] done in {time.perf_counter() - t0:.1f} s")
         return 0
 
+    step("branches, changed geometry (geometry kernels)",
+         lambda: D.run_branches({"device": {"preset": "paper", "geometry": {"Lg_nm": 400.0}}}))
     step("charge_balance (V_D = 3.2 V)", lambda: D.run_charge_balance({"device": {"preset": "paper"}, "vd": 3.2}))
     step("vg_curve (5 points)", lambda: D.run_vg_curve({"device": {"preset": "paper"}, "n": 5, "refine": False}))
 

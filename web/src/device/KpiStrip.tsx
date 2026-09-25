@@ -69,7 +69,7 @@ interface CellProps {
   title?: string;
 }
 
-function Cell({ id, label, sym, value, unit, pm, sub, color, loading, title }: CellProps) {
+export function KpiCell({ id, label, sym, value, unit, pm, sub, color, loading, title }: CellProps) {
   return (
     <div className={`ans-cell${loading ? " loading" : ""}`} data-testid={`kpi-${id}`} title={title} style={{ "--ans-color": color } as React.CSSProperties}>
       <div className="ans-label">
@@ -84,6 +84,7 @@ function Cell({ id, label, sym, value, unit, pm, sub, color, loading, title }: C
     </div>
   );
 }
+const Cell = KpiCell;
 
 const SYM = {
   vlu: (

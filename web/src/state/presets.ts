@@ -1,7 +1,8 @@
 // Built-in copy of server/params.py PRESETS (GET /api/meta). Used before /api/meta answers and in
 // mock/offline mode. The live values from the backend always replace these when available.
-import type { CalibBlock, DeviceBlock, ExtBlock, Meta, PresetDef, PresetId, StochasticBlock } from "../api/types";
+import type { CalibBlock, DeviceBlock, DeviceGeometry, ExtBlock, Meta, PresetDef, PresetId, StochasticBlock } from "../api/types";
 import { clone } from "../utils/object";
+import { REFERENCE_GEOMETRY, resolveGeometry } from "../params/geometry";
 
 export const RESPONSIVITY_PA_PER_MW = 0.7500000000000002;
 export const PHOTO_GAMMA = 0.2794239352207005;
@@ -13,16 +14,16 @@ export const PHOTO_DELTA_PHI_G0_V = 0.07443208588005665;
 export const PHOTO_SIGMA_PHI_V = 0.21536460239140515;
 
 // Device technology + geometry (server/params.py TECHNOLOGY / GEOMETRY, also sent per preset in /api/meta).
-// The geometry is fixed by the calibrated model; PDSOI and bulk are planned ("coming soon").
+// Geometry is editable relative to this reference calibration. PDSOI and bulk remain unavailable.
 export type Technology = "FDSOI" | "PDSOI" | "Bulk";
-export interface DeviceGeometry { Lg_nm: number; W_nm: number; Tsi_nm: number; EOT_nm: number }
+export type { DeviceGeometry } from "../api/types";
 export interface PresetTech { technology: Technology; geometry: DeviceGeometry }
 export const TECHNOLOGIES: { id: Technology; available: boolean }[] = [
   { id: "FDSOI", available: true },
   { id: "PDSOI", available: false },
   { id: "Bulk", available: false },
 ];
-export const FDSOI_GEOMETRY: DeviceGeometry = { Lg_nm: 500, W_nm: 200, Tsi_nm: 50, EOT_nm: 14.1 };
+export const FDSOI_GEOMETRY: DeviceGeometry = { ...REFERENCE_GEOMETRY };
 const GEOMETRY_TEXT = "L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm";
 const FDSOI: PresetTech = { technology: "FDSOI", geometry: FDSOI_GEOMETRY };
 
@@ -48,7 +49,9 @@ export const NEUTRAL_EXT: ExtBlock = {
 
 const DEVICE_BASE: DeviceBlock = {
   preset: "paper",
+  geometry: { ...REFERENCE_GEOMETRY },
   vg: -2.0,
+  vbg: 0,
   light: { mode: "iph", iph_pA: 0, power_mW: 0, responsivity_pA_per_mW: RESPONSIVITY_PA_PER_MW },
   calib: CALIB,
   ext: NEUTRAL_EXT,
@@ -115,7 +118,7 @@ export const BUILTIN_META: Meta = {
     { vg: -1.8, power_mW: 0 }, { vg: -1.8, power_mW: 1.15 }, { vg: -1.8, power_mW: 2.55 }, { vg: -1.8, power_mW: 3.51 },
     { vg: -1.1, power_mW: 0 }, { vg: -1.1, power_mW: 1.15 }, { vg: -1.1, power_mW: 2.55 }, { vg: -1.1, power_mW: 3.51 },
   ],
-  constants: { NA_cm3: 2.295773162796593e17, geometry: { L_nm: 500, W_nm: 200, T_Si_nm: 50, EOT_nm: 14.1 } },
+  constants: { NA_cm3: REFERENCE_GEOMETRY.Nbody_cm3, geometry: { L_nm: 500, W_nm: 200, T_Si_nm: 50, EOT_nm: 14.1, Tbox_nm: 140 } },
   technology: "FDSOI",
   geometry: FDSOI_GEOMETRY,
   technologies: TECHNOLOGIES,
@@ -127,5 +130,5 @@ export const PRESET_IDS: PresetId[] = ["paper", "photo", "custom"];
 export function presetTech(meta: Meta, id: PresetId): PresetTech {
   const p = meta.presets[id] as (PresetDef & Partial<PresetTech>) | undefined;
   const fb = (BUILTIN_META.presets[id] as PresetDef & PresetTech | undefined) ?? paper;
-  return { technology: p?.technology ?? fb.technology, geometry: p?.geometry ?? fb.geometry };
+  return { technology: p?.technology ?? fb.technology, geometry: resolveGeometry(p?.device.geometry ?? p?.geometry ?? fb.geometry) };
 }
