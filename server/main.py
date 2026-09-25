@@ -19,6 +19,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.concurrency import run_in_threadpool
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import FileResponse, HTMLResponse, Response
 
 from server import auth, jsonutil, params
@@ -122,6 +123,12 @@ app.add_middleware(BodySizeLimit, max_bytes=MAX_BODY_BYTES)
 app.add_middleware(auth.AccessGate)
 app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(GZipMiddleware, minimum_size=2048)
+# Optional Host-header allow-list (outermost): STL_ALLOWED_HOSTS="127.0.0.1,localhost" (the local installer kit sets it)
+# answers 400 to any other Host, so a web page that rebinds its own DNS name to 127.0.0.1 cannot read this server
+# from the browser (DNS rebinding). Unset = no check (deployments behind a proxy set their own domain here).
+_allowed_hosts = [h.strip() for h in os.environ.get("STL_ALLOWED_HOSTS", "").split(",") if h.strip()]
+if _allowed_hosts:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts, www_redirect=False)
 
 
 @app.exception_handler(ValueError)

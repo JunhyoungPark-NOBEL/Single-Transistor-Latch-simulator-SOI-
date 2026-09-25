@@ -6,6 +6,10 @@ The service is one Python process (FastAPI + uvicorn) that owns a pool of comput
 서비스는 하나의 Python 프로세스(FastAPI + uvicorn)이며, 그 안에서 계산 작업 프로세스 풀(numba 엔진)을
 운영하고 빌드된 React 프런트엔드를 함께 제공한다. API 세부 사항은 `docs/API.md` 참고.
 
+연구실 구성원이 자기 컴퓨터(Windows/macOS/Linux)에 Docker로 설치하는 방법(비밀번호로 잠긴 설치 키트)은
+`docs/LOCAL_INSTALL.md`, 키트 만들기는 같은 문서 7절 참고. Lab members installing on their own computers: see
+`docs/LOCAL_INSTALL.md` (password-protected Docker installer kit; building a kit: section 7).
+
 ---
 
 ## 한국어
