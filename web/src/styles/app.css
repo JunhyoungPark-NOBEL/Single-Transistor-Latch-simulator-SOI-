@@ -645,3 +645,11 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .about-row dd { margin: 0; color: var(--text); font-weight: 550; overflow-wrap: anywhere; }
 .about-row dd .mono { font-size: 11.5px; font-weight: 500; }
 /* [brand] end */
+
+/* [snapshot] static snapshot mode (components/SnapshotNotice.tsx) */
+.dot.snapshot { background: var(--hrs); box-shadow: 0 0 0 3px color-mix(in srgb, var(--hrs) 20%, transparent); }
+.banner.snapshot { background: var(--info-soft); border-bottom-color: color-mix(in srgb, var(--hrs) 25%, transparent); }
+.banner.snapshot strong { color: var(--hrs); }
+.banner.snapshot em { font-style: normal; color: var(--warn); font-weight: 550; }
+.banner.snapshot em.near { color: var(--hrs); }
+/* [snapshot] end */

@@ -10,7 +10,7 @@ import { parsePersisted, PERSIST_VERSION, restoreParams, restoreRange, TABS, typ
 
 export type { Lang, Theme } from "./persist";
 import type { Lang, Theme } from "./persist";
-export type BackendState = "checking" | "online" | "offline" | "mock";
+export type BackendState = "checking" | "online" | "offline" | "mock" | "snapshot";
 export type EntryStatus = "idle" | "queued" | "running" | "done" | "error" | "cancelled";
 
 export interface ResultEntry {

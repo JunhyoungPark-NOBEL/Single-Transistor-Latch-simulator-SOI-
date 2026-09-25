@@ -1,6 +1,9 @@
 // Offline demo backend. Deterministic, plausible-looking fixtures that follow the result shapes of
 // docs/WEB_CONTRACT.md §2/§4 (folds at 3.70 / 2.60 V for the reference calibration at V_G = −2 V). These are
-// NOT model results — the UI shows a "demo data" banner whenever this backend is active.
+// NOT model results — the UI shows a "demo data" banner whenever this backend is active. The HRS current follows
+// the model qualitatively: GIDL dominates (÷18 per +0.5 V of V_G), the subthreshold channel current rises one
+// decade per n·60 mV of V_G (n ≈ 1.78), impact ionisation and the channel seed grow near the latch-up fold, and
+// V_LU rises by ≈ 0.4 V per +0.5 V of V_G around −2 V.
 import type { Backend } from "./client";
 import type {
   Arr, BranchesResult, ChargeBalanceResult, CircuitResult, CircuitRun, Components, Curve, DeviceBlock, HazardResult,
@@ -84,25 +87,43 @@ function mockFolds(dev: Dev) {
   const { vg, iph, dG, dE } = dev;
   const taper = Math.sqrt(clamp((vg + 3.9) / 0.5, 0, 1) * clamp((-0.815 - vg) / 0.35, 0, 1));
   const VLD = 2.5979 - 41 * dE - 0.0007 * iph + 0.02 * (vg + 2) ** 2;
-  const W0 = 1.1058 + 0.8035 * (vg + 2) - 0.36 * Math.max(0, vg + 2) ** 2 - 0.215 * iph - 0.8 * dG;
+  const W0 = 1.1058 + 0.8035 * (vg + 2) - 0.05 * Math.max(0, vg + 2) ** 2 - 0.215 * iph - 0.8 * dG;
   const W = W0 * taper;
   const latch = W > 0.02;
   return { latch, VLU: VLD + Math.max(W, 0), VLD };
 }
-const I_HRS = (vd: number, VLU: number, vg: number, iph: number) =>
-  1e-13 * Math.exp(vd / 0.55) * (1 + 2 * (vd / VLU) ** 14) * Math.exp(-0.4 * (vg + 2)) + iph * 1e-12 * 3;
+// HRS current components (A). Reference points (model, V_D = 3 V): V_G −2 → −1.5 V gives GIDL 1.21e-13 → 6.75e-15 A
+// and channel 9.9e-22 → 5.2e-17 A.
+const GIDL = (vd: number, vg: number) => {
+  const v = Math.max(vd, 0.05);
+  return 1.21e-13 * (v / 3) ** 2 * Math.exp(35.7 / 3 - 35.7 / v) * Math.exp(-5.78 * (vg + 2));
+};
+const CHANNEL = (vd: number, vg: number) => 9.9e-22 * 10 ** ((vg + 2) / (1.78 * 0.06)) * (1 - Math.exp(-Math.max(vd, 0) / 0.0259));
+const BTBT = (vd: number) => 2.7e-23 * Math.exp((vd - 3) / 0.25);
+function hrsParts(vd: number, VLU: number, vg: number, iph: number) {
+  const gidl = GIDL(vd, vg);
+  const channel = CHANNEL(vd, vg);
+  const btbt = BTBT(vd);
+  const photo = iph * 1e-12;
+  const fb = (gidl + channel + btbt + photo) * 2 * clamp(vd / VLU, 0, 1) ** 14; // body charging near the fold
+  return { gidl, channel, btbt, photo, seed: 0.7 * fb, ii: 0.3 * fb, total: gidl + channel + btbt + photo + fb };
+}
+const I_HRS = (vd: number, VLU: number, vg: number, iph: number) => hrsParts(vd, VLU, vg, iph).total;
 const I_LRS = (vd: number, VLD: number) => 1.1e-6 + Math.max(0, vd - VLD) * 1.25e-5 + 2e-7 * Math.max(0, vd - VLD) ** 2;
 
-function comps(vd: number[], id: number[], u: number[], vg: number, iph: number): Components {
+function comps(vd: number[], id: number[], u: number[], vg: number, iph: number, VLU: number): Components {
   const n = vd.length;
   const m = (f: (i: number) => number): Arr => Array.from({ length: n }, (_, i) => f(i));
+  const parts = vd.map((v) => hrsParts(v, VLU, vg, iph));
+  // the channel carries whatever the other components do not (the whole on-state current in the LRS)
+  const others = (i: number) => parts[i].gidl + parts[i].btbt + parts[i].photo + parts[i].seed + parts[i].ii;
   return {
-    channel: m((i) => id[i] * 0.93),
-    seed: m((i) => id[i] * 0.05),
-    ii_total: m((i) => id[i] * 0.02 * Math.exp(Math.min(6, (vd[i] - 3) / 0.45))),
-    btbt_junction: m((i) => 2e-16 * Math.exp(vd[i] / 0.52)),
-    gidl: m((i) => 6e-17 * Math.exp(vd[i] / 0.47) * Math.exp(-1.2 * (vg + 2))),
-    photo: m(() => iph * 1e-12),
+    channel: m((i) => Math.max(parts[i].channel, id[i] - others(i))),
+    seed: m((i) => parts[i].seed),
+    ii_total: m((i) => parts[i].ii),
+    btbt_junction: m((i) => parts[i].btbt),
+    gidl: m((i) => parts[i].gidl),
+    photo: m((i) => parts[i].photo),
     loss_bulk_srh: m((i) => 3e-16 * Math.exp(u[i] / 0.055)),
     loss_diffusion: m((i) => 8e-17 * Math.exp(u[i] / 0.04)),
     loss_junction_srh: m((i) => 1.5e-16 * Math.exp(u[i] / 0.07)),
@@ -112,8 +133,8 @@ function comps(vd: number[], id: number[], u: number[], vg: number, iph: number)
     r_access_ohm: m(() => 1),
   };
 }
-function curve(vd: number[], id: number[], u: number[], vg: number, iph: number): Curve {
-  return { vd, id, u, r: vd.map((v, i) => v - u[i]), comp: comps(vd, id, u, vg, iph) };
+function curve(vd: number[], id: number[], u: number[], vg: number, iph: number, VLU: number): Curve {
+  return { vd, id, u, r: vd.map((v, i) => v - u[i]), comp: comps(vd, id, u, vg, iph, VLU) };
 }
 
 export function mockBranches(payload: { device?: DeviceBlock; sweep?: SweepBlock }): BranchesResult {
@@ -143,10 +164,10 @@ export function mockBranches(payload: { device?: DeviceBlock; sweep?: SweepBlock
     down.vd.push(v);
     down.id.push(latch && v >= VLD && vdMax >= VLU ? I_LRS(v, VLD) : I_HRS(Math.min(v, VLU), VLU, dev.vg, dev.iph));
   }
-  const HRS = curve(vH, iH, uH, dev.vg, dev.iph);
-  const unstable = curve(vU, iU, uU, dev.vg, dev.iph);
-  const LRS = curve(vL, iL, uL, dev.vg, dev.iph);
-  const full = curve([...vH, ...vU, ...vL], [...iH, ...iU, ...iL], [...uH, ...uU, ...uL], dev.vg, dev.iph);
+  const HRS = curve(vH, iH, uH, dev.vg, dev.iph, VLU);
+  const unstable = curve(vU, iU, uU, dev.vg, dev.iph, VLU);
+  const LRS = curve(vL, iL, uL, dev.vg, dev.iph, VLU);
+  const full = curve([...vH, ...vU, ...vL], [...iH, ...iU, ...iL], [...uH, ...uU, ...uL], dev.vg, dev.iph, VLU);
   return {
     latch,
     HRS, unstable, LRS, full,
@@ -208,7 +229,7 @@ export function mockVgCurve(payload: { device?: DeviceBlock; vg_min?: number; vg
     vg: vgs,
     V_LU: rows.map((r) => (r.latch ? r.VLU : null)),
     V_LD: rows.map((r) => (r.latch ? r.VLD : null)),
-    I_LU: rows.map((r) => (r.latch ? I_HRS(r.VLU, r.VLU, -2, base.iph) : null)),
+    I_LU: rows.map((r, k) => (r.latch ? I_HRS(r.VLU, r.VLU, vgs[k], base.iph) : null)),
     latch: rows.map((r) => r.latch),
     window: { vg_low: inWin.length ? Math.min(...inWin) : null, vg_high: inWin.length ? Math.max(...inWin) : null },
     runtime_s: 0.9,

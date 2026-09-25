@@ -5,6 +5,7 @@ import { translate } from "../i18n";
 import { checkResult } from "../api/guards";
 import { normalizeDesignMap, normalizeMeasured } from "../api/measured";
 import { createMockBackend } from "../api/mock";
+import { createSnapshotBackend, isSnapshotFallback, loadSnapshot, type Snapshot } from "../api/snapshot";
 import type { BranchesResult, Kind, Meta, PresetId } from "../api/types";
 import { canonical } from "../utils/object";
 import {
@@ -15,6 +16,9 @@ import { useStore } from "./store";
 
 let backend: Backend = httpBackend;
 let mockBackend: Backend | null = null;
+/** Static snapshot (snapshot/index.json next to the page) — probed once, used instead of the demo backend. */
+let snapshotProbe: Promise<Snapshot | null> | null = null;
+let snapshotBackend: Backend | null = null;
 let markReady: () => void = () => undefined;
 /** Resolves once the first backend probe finished (HTTP or mock chosen). */
 export const backendReady: Promise<void> = new Promise((r) => (markReady = r));
@@ -29,6 +33,20 @@ function useMock(forced: boolean) {
   mockBackend ??= createMockBackend();
   backend = mockBackend;
   useStore.setState({ backend: forced ? "mock" : "offline", forcedMock: forced, health: { ok: true, version: "mock", workers: 0 } });
+}
+
+/** Backend unreachable: use the static snapshot when the page ships one, else the demo backend. */
+async function useSnapshotOrMock(): Promise<void> {
+  snapshotProbe ??= loadSnapshot();
+  const snap = await snapshotProbe;
+  if (!snap) {
+    useMock(false);
+    return;
+  }
+  snapshotBackend ??= createSnapshotBackend(snap, { fallback: () => (mockBackend ??= createMockBackend()) });
+  backend = snapshotBackend;
+  useStore.setState({ backend: "snapshot", forcedMock: false, health: await snapshotBackend.health() });
+  if (snap.index.meta?.presets) useStore.getState().setMeta(snap.index.meta);
 }
 
 function forcedMockFromUrl(): boolean {
@@ -54,7 +72,7 @@ async function probeBackend(): Promise<void> {
   try {
     const h = await httpBackend.health();
     if (!h || !h.ok) throw new Error("unhealthy");
-    const wasMock = backend.isMock;
+    const wasMock = backend !== httpBackend; // mock or snapshot data → reload measured data from the server
     backend = httpBackend;
     useStore.setState({ backend: "online", health: h, ...(wasMock ? { measured: { status: "idle" as const }, designMap: { status: "idle" as const } } : {}) });
     try {
@@ -64,7 +82,7 @@ async function probeBackend(): Promise<void> {
       /* keep built-in presets */
     }
   } catch {
-    useMock(false);
+    await useSnapshotOrMock();
   }
 }
 
@@ -72,16 +90,17 @@ async function probeBackend(): Promise<void> {
 export function startHealthPolling(intervalMs = 20000): () => void {
   const id = setInterval(async () => {
     const s = useStore.getState();
-    if (s.forcedMock) return;
+    if (s.forcedMock || s.backend === "snapshot") return; // snapshot: re-probe from the status dot instead
     try {
       const h = await httpBackend.health();
+      if (!h || !h.ok) throw new Error("unhealthy");
       if (s.backend !== "online") {
         backend = httpBackend;
         useStore.setState({ backend: "online", health: h, measured: { status: "idle" }, designMap: { status: "idle" } });
         httpBackend.meta().then((m) => m?.presets && useStore.getState().setMeta(m)).catch(() => undefined);
       } else useStore.setState({ health: h });
     } catch {
-      if (s.backend === "online") useMock(false);
+      if (s.backend === "online") void useSnapshotOrMock();
     }
   }, intervalMs);
   return () => clearInterval(id);
@@ -129,7 +148,7 @@ export async function runKey<T = unknown>(key: string, kind: Kind, payload: unkn
       return { ok: false };
     }
     useStore.getState().patchResult(key, {
-      status: "done", data, dataKey: payloadKey, progress: 1, message: "", mock: isMock, elapsed: (performance.now() - startedAt) / 1000,
+      status: "done", data, dataKey: payloadKey, progress: 1, message: "", mock: isMock || isSnapshotFallback(data), elapsed: (performance.now() - startedAt) / 1000,
     });
     return { ok: true, data };
   } catch (e) {

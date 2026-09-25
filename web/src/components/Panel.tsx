@@ -13,6 +13,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { IconChart, IconDownload, IconImage, IconPlay } from "./icons";
 import { runCurrent } from "../state/runner";
 import { exportPlotPng, Plot } from "./Plot";
+import { SnapshotMissNotice } from "./SnapshotNotice";
 
 export interface PanelProps {
   id: string;
@@ -109,6 +110,7 @@ export function Panel(p: PanelProps) {
         </div>
       </header>
       {p.toolbar && <div className="panel-toolbar">{p.toolbar}</div>}
+      <SnapshotMissNotice show={!!e?.mock && p.hasData} data={e && "data" in e ? e.data : undefined} />
       {err && (
         <div className="panel-foot">
           <div className="err-box" role="alert">

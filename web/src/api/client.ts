@@ -1,6 +1,12 @@
 // Typed HTTP client for the FastAPI service (docs/WEB_CONTRACT.md §3) and the job runner used by
 // the store: POST /api/compute/{kind}?wait=…, then poll GET /api/jobs/{id}, cancel with DELETE.
 import type { Health, JobStatus, Kind, Meta } from "./types";
+import { createRecorder } from "./snapshot";
+
+/** Dev-only snapshot recorder (localStorage["stl-websim:record"] = "1"; scripts/record-snapshot.mjs). Null in builds. */
+const recorder = import.meta.env.DEV ? createRecorder() : null;
+const rec = <T,>(name: "health" | "meta" | "measured" | "design_map", p: Promise<T>): Promise<T> =>
+  recorder ? p.then((v) => (recorder.data(name, v), v)) : p;
 
 export interface Backend {
   readonly isMock: boolean;
@@ -86,15 +92,15 @@ async function request<T>(method: string, url: string, body?: unknown, timeoutMs
 
 export const httpBackend: Backend = {
   isMock: false,
-  health: () => request<Health>("GET", "/api/health", undefined, 4000),
-  meta: () => request<Meta>("GET", "/api/meta"),
+  health: () => rec("health", request<Health>("GET", "/api/health", undefined, 4000)),
+  meta: () => rec("meta", request<Meta>("GET", "/api/meta")),
   submit: (kind, payload, wait = 1.5) => request<JobStatus>("POST", `/api/compute/${kind}?wait=${wait}`, payload, 60000),
   job: (id) => request<JobStatus>("GET", `/api/jobs/${encodeURIComponent(id)}`),
   cancel: async (id) => {
     await request<unknown>("DELETE", `/api/jobs/${encodeURIComponent(id)}`);
   },
-  measured: () => request<unknown>("GET", "/api/data/measured", undefined, 60000),
-  designMap: () => request<unknown>("GET", "/api/data/design_map", undefined, 60000),
+  measured: () => rec("measured", request<unknown>("GET", "/api/data/measured", undefined, 60000)),
+  designMap: () => rec("design_map", request<unknown>("GET", "/api/data/design_map", undefined, 60000)),
 };
 
 export class JobAborted extends Error {
@@ -139,6 +145,18 @@ async function submitWithRetry(backend: Backend, kind: Kind, payload: unknown, o
 
 /** Submit a job and poll until it finishes. Resolves the result, rejects with ApiError / JobAborted. */
 export async function runJob<T>(backend: Backend, kind: Kind, payload: unknown, opt: RunOptions = {}): Promise<T> {
+  if (!recorder) return runJobCore<T>(backend, kind, payload, opt);
+  const end = recorder.begin();
+  try {
+    const result = await runJobCore<T>(backend, kind, payload, opt);
+    if (backend === httpBackend) recorder.compute(kind, payload, result); // live results only
+    return result;
+  } finally {
+    end();
+  }
+}
+
+async function runJobCore<T>(backend: Backend, kind: Kind, payload: unknown, opt: RunOptions): Promise<T> {
   const pollMs = opt.pollMs ?? 400;
   let st = await submitWithRetry(backend, kind, payload, opt);
   opt.onStatus?.(st);

@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "snapshot:record": "node scripts/record-snapshot.mjs",
+    "build:artifact": "node scripts/build-artifact.mjs",
+    "verify:artifact": "node scripts/verify-artifact.mjs"
   },
   "dependencies": {
     "katex": "^0.18.9",

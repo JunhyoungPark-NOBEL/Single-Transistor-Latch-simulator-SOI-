@@ -10,6 +10,7 @@ import { useStore } from "../state/store";
 import { Credits } from "./Credits";
 import { IconMenu, IconMoon, IconSun } from "./icons";
 import { Logo } from "./Logo";
+import { snapshotStatusText } from "./SnapshotNotice";
 
 const TABS: { id: Tab; key: StrKey; en: string }[] = [
   { id: "device", key: "tab.device", en: "Device" },
@@ -75,11 +76,11 @@ function StatusDot() {
   const backend = useStore((s) => s.backend);
   const health = useStore((s) => s.health);
   const text =
-    backend === "online" ? t("status.online", { n: health?.workers ?? "?" }) : backend === "mock" ? t("status.mock") : backend === "offline" ? t("status.offline") : t("status.checking");
+    backend === "online" ? t("status.online", { n: health?.workers ?? "?" }) : backend === "mock" ? t("status.mock") : backend === "offline" ? t("status.offline") : backend === "snapshot" ? snapshotStatusText(t, health) : t("status.checking");
   return (
     <button type="button" className="status" title={`${text}${health?.version ? ` · v${health.version}` : ""}`} aria-label={text} data-testid="backend-status" onClick={() => void initBackend()}>
       <span className={`dot ${backend}`} aria-hidden />
-      <span className="status-text">{backend === "online" ? `API · ${health?.workers ?? "?"}w` : backend === "mock" ? "mock" : backend === "offline" ? "offline" : "…"}</span>
+      <span className="status-text">{backend === "online" ? `API · ${health?.workers ?? "?"}w` : backend === "mock" ? "mock" : backend === "offline" ? "offline" : backend === "snapshot" ? t("snapshot.status.short") : "…"}</span>
     </button>
   );
 }

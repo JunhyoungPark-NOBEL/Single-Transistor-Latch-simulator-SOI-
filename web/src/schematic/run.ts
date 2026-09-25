@@ -4,6 +4,7 @@
 import { ApiError, JobAborted } from "../api/client";
 import { checkCustomResult, isUnknownBenchError, runCustomCircuit, type CustomCircuitRequest, type CustomCircuitResult } from "../api/circuitCustom";
 import { createMockBackend } from "../api/mock";
+import { isSnapshotFallback } from "../api/snapshot";
 import { translate } from "../i18n";
 import { backendReady, getBackend } from "../state/runner";
 import { useStore } from "../state/store";
@@ -97,7 +98,7 @@ export async function runSchematic(opts: { confirmed?: boolean } = {}): Promise<
       return;
     }
     const data: SchematicRunData = { result, request: req, demoFallback };
-    patch(RESULT_KEY, { status: "done", data, dataKey: key, progress: 1, message: "", mock: backend.isMock, elapsed: (performance.now() - startedAt) / 1000 });
+    patch(RESULT_KEY, { status: "done", data, dataKey: key, progress: 1, message: "", mock: backend.isMock || isSnapshotFallback(result), elapsed: (performance.now() - startedAt) / 1000 });
     afterRun(result);
   } catch (e) {
     if (e instanceof JobAborted) {

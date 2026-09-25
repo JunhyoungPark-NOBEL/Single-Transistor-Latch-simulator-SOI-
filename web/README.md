@@ -30,8 +30,28 @@ npx playwright test    # e2e (Chromium, headless). mock 모드 + 백엔드가 :8
 ```
 e2e 스크린샷은 `e2e/screenshots/`에 저장된다. `playwright install`은 실행하지 말 것(브라우저는 `/opt/pw-browsers`).
 
+### 정적 스냅샷 (서버 없이 공개하는 페이지)
+백엔드 없이 올리는 정적 페이지(claude.ai 아티팩트)는 `/api`에 닿지 못하면 `./snapshot/index.json`을 찾아
+**스냅샷 모드**로 동작합니다(`src/api/snapshot.ts`). 각 계산 요청은 `sha256(정렬된 JSON {kind, payload})` 키로
+찾아 기록된 실제 모델 결과(`snapshot/<키>.json.gz`, DecompressionStream으로 해제, 없으면 `.json`)를 돌려주고,
+스냅샷에 없는 조건은 데모 데이터로 계산하며 패널과 배너에 그렇게 표시합니다. 결정론 소자 결과(branch, 전하 균형,
+V_G 곡선)는 V_G 격자(−3.8 … −0.9 V, 0.1 V 간격, 두 프리셋)와 광조사 측정 조건(V_G × P)에서도 기록되어, V_G(또는 광
+파워)만 바뀐 요청은 가장 가까운 격자점의 실제 결과를 “가장 가까운 미리 계산된 V_G = x V” 표시와 함께 보여 줍니다.
+`?mock=1`과 “백엔드 없음 + 스냅샷 없음”은 예전처럼 데모 모드입니다.
+```bash
+# 백엔드가 :8000에서 실행 중일 때 (다른 주소: STL_API=http://127.0.0.1:8011)
+npm run snapshot:record && npm run build:artifact   # web/snapshot/ 기록 → web/dist-artifact/ (gitignore)
+npm run verify:artifact -- --shots /tmp/shots     # 정적 호스트처럼 제공(/api 404)하고 Chromium으로 확인
+```
+기록기(`scripts/record-snapshot.mjs`)는 Vite 개발 서버 + Chromium으로 두 언어의 기본 흐름(소자 탭 결정론·확률 ×
+두 프리셋, 확률 V_G 곡선, 회로도 예제 전부 결정론·확률, 빠른 벤치 전부 결정론 + load_line 확률, 검증 탭 빠른 검사·
+기준 I–V·광조사 8조건)과 V_G/P 격자(한 번)를 실행하고 앱이 받은 결과를 그대로 저장합니다(개발 모드에서
+`localStorage["stl-websim:record"]="1"`일 때만 켜지는 훅, 빌드에는 포함되지 않음). 모델·프리셋·예제·페이로드가
+바뀌면 다시 기록해야 합니다(키가 달라지면 그 조건은 데모 데이터로 표시됨). `web/snapshot/`은 생성물이므로
+커밋하지 않습니다. 게시: `dist-artifact/stl-simulator.html`(doctype/html/head/body 없는 조각) + `files.json`의 파일들.
+
 ### 화면 구성
-- 헤더: 로고(biristor 형태의 2단자 기호 + S자 래치 특성, `components/Logo.tsx`·`public/favicon.svg`), 제목과
+- 헤더: 로고(biristor 기호 — 원 안의 NPN, 컬렉터 위·이미터 아래, 베이스는 떠 있음; `components/Logo.tsx`·`public/favicon.svg`), 제목과
   기술 칩(FDSOI — 마우스를 올리면 L_g·W·T_Si·EOT), 탭(소자 · 회로 · 검증 · 물리 모델), **Deterministic |
   Stochastic** 토글(모드별 강조색: 청록/보라), 백엔드 상태 점, KO/EN, 밝은/어두운 테마.
 - 모드 막대 오른쪽 끝: 크레딧(KAIST 전기및전자공학부 · NOBEL 연구실 · 지도교수 최양규 · 개발 박준형, 화면 폭에
@@ -83,6 +103,8 @@ e2e/          Playwright 테스트, screenshots/
 3. 계산 실행: `state/runner.ts`의 `runKey(key, kind, payload)`(페이로드는 `utils/payload.ts`에 순수 함수로).
    실행 버튼에 묶으려면 `runDeterministic`/`runStochastic`의 목록에 추가.
 4. 문자열은 `src/i18n/strings.ts`에 KO/EN으로 추가.
+   축 제목·범례·hover 문구는 `axis.*` 키(`src/i18n/strings.brand.ts`): x축과 단일 y축은 “이름 기호 (단위)”
+   (예: `드레인 전압 V<sub>D</sub> (V)`), 위아래로 쌓인 subplot의 y축은 “기호 (단위)”.
 
 ### 문구 규칙
 한국어 라벨은 명사형, 문장은 합니다체로 씁니다. 영어는 문장형 대소문자(sentence case)와 미국식 철자.
@@ -121,8 +143,30 @@ npx playwright test    # e2e (Chromium, headless): mock-mode specs + a live spec
 ```
 Screenshots are written to `e2e/screenshots/`. Never run `playwright install` (browsers are in `/opt/pw-browsers`).
 
+### Static snapshot (published page without a server)
+A static copy of the app (the claude.ai artifact) cannot reach `/api`; it then loads `./snapshot/index.json` and runs
+in **snapshot mode** (`src/api/snapshot.ts`): each compute request is looked up by `sha256(sorted-key JSON of
+{kind, payload})` and answered with the recorded model result (`snapshot/<key>.json.gz`, inflated with
+DecompressionStream, plain `.json` fallback); requests that are not in the snapshot get demo data and the panel and
+banner say so. Deterministic device results (branches, charge balance, V_G curve) are also recorded on a V_G grid
+(−3.8 … −0.9 V in 0.1 V steps, both presets) and at the measured illumination conditions (V_G × P); a request that
+only changes V_G (or the optical power) shows the nearest grid point's real result, marked "nearest precomputed
+V_G = x V". `?mock=1` and "no backend, no snapshot" still give the demo mode.
+```bash
+# with the backend on :8000 (elsewhere: STL_API=http://127.0.0.1:8011)
+npm run snapshot:record && npm run build:artifact   # records web/snapshot/ → builds web/dist-artifact/ (gitignored)
+npm run verify:artifact -- --shots /tmp/shots     # serves it like the host (/api → 404) and checks it in Chromium
+```
+The recorder (`scripts/record-snapshot.mjs`) drives a Vite dev server + Chromium through the default flows in both
+languages (Device tab deterministic/stochastic for both presets, stochastic V_G curve, every schematic example
+deterministic and stochastic, every quick bench deterministic + load line stochastic, Validation fast checks,
+reference I–V and the 8 illumination conditions) plus the V_G/P grid (once) and stores exactly what the app received (dev-only hook enabled by
+`localStorage["stl-websim:record"]="1"`, compiled out of builds). Re-record whenever the model, presets, examples or
+payloads change (a changed key simply shows demo data). `web/snapshot/` is generated and not committed. Publish
+`dist-artifact/stl-simulator.html` (a fragment without doctype/html/head/body) plus the files in `files.json`.
+
 ### UI overview
-- Header: logo (stylised biristor-style two-terminal symbol with the S-shaped latch characteristic,
+- Header: logo (the biristor symbol: an NPN in a circle, collector up, emitter down, base left floating;
   `components/Logo.tsx` and `public/favicon.svg`), title and technology chip (FDSOI; hover for L_g, W, T_Si,
   EOT), tabs (Device · Circuit · Validation · Physics), the **Deterministic | Stochastic** toggle (teal / violet
   accent follows the mode), backend status dot, KO/EN, light/dark theme.
@@ -166,6 +210,9 @@ with a `scale` (e.g. τ_bulk in µs, σ_φ in mV).
 3. Compute with `runKey(key, kind, payload)` from `src/state/runner.ts` (payload builders are pure functions
    in `src/utils/payload.ts`); add the key to `runDeterministic` / `runStochastic` to bind it to Run.
 4. Add KO/EN strings to `src/i18n/strings.ts`.
+   Axis titles, legend names and hover words use the `axis.*` keys (`src/i18n/strings.brand.ts`): x-axes and
+   single-panel y-axes are “Name symbol (unit)” (e.g. `Drain voltage V<sub>D</sub> (V)`), stacked subplot
+   y-axes are “symbol (unit)”.
 
 ### Wording
 Korean labels are noun phrases and sentences use 합니다체; English uses sentence case and American spelling.

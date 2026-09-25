@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { CircuitTab } from "./circuit/CircuitTab";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Header, ModeBar } from "./components/Header";
+import { SnapshotBanner } from "./components/SnapshotNotice";
 import { DeviceTab } from "./device/DeviceTab";
 import { useT } from "./i18n";
 import { PhysicsTab } from "./physics/PhysicsTab";
@@ -73,6 +74,7 @@ export default function App() {
       <Header />
       <ModeBar />
       <Banner />
+      <SnapshotBanner />
       <div className={`layout${hasSidebar ? "" : " no-sidebar"}`}>
         {hasSidebar && <Sidebar />}
         <main className="main" id="main" role="tabpanel" aria-labelledby={`tab-${tab}`} data-testid={`main-${tab}`}>
