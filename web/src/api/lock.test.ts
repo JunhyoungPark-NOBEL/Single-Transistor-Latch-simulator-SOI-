@@ -134,7 +134,7 @@ describe("locked snapshot layout (loadSnapshot with the gate's key)", () => {
     return b ? new Response(new Blob([b as BlobPart])) : new Response("not found", { status: 404 });
   };
 
-  it("with the key from the gate: index.bin and the result files are decrypted", async () => {
+  it("with the key from the gate: the locked index and the result files are decrypted", async () => {
     const { salt, files } = await lockedFiles(PASSWORD);
     g.__STL_LOCK__ = { key: await gate.importAesKey(await gate.deriveKeyBytes(PASSWORD, salt, ITER)) };
     const log: string[] = [];
@@ -143,7 +143,7 @@ describe("locked snapshot layout (loadSnapshot with the gate's key)", () => {
     expect(snap.size).toBe(1);
     expect(await snap.lookup("branches", { x: 1 })).toEqual({ folds: { V: 3.7 } });
     expect(await snap.data("measured")).toEqual({ photo: 1 });
-    expect(log).toEqual(["s/index.bin", "s/k1.bin", "s/m1.bin"]);
+    expect(log).toEqual([`s/${LOCKED_INDEX}`, "s/k1.bin", "s/m1.bin"]);
   });
 
   it("without a key (plain page) it asks for index.json; with a wrong key it finds no snapshot", async () => {

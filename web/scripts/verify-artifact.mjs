@@ -29,7 +29,7 @@ const opt = (n, d) => {
 const DIST = path.resolve(WEB, opt("dist", "dist-artifact"));
 const SHOTS = path.resolve(opt("shots", path.join(WEB, "test-results/artifact")));
 const PORT = Number(opt("port", 0));
-const TYPES = { ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".gz": "application/gzip", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".html": "text/html", ".bin": "application/octet-stream" };
+const TYPES = { ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".gz": "application/gzip", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".html": "text/html", ".bin": "application/octet-stream", ".wasm": "application/wasm" };
 const LOCKED = fs.existsSync(path.join(DIST, "lock.json"));
 if (argv.some((a) => a === "--password" || a.startsWith("--password="))) {
   console.error("[verify] the password is read only from STL_ARTIFACT_PASSWORD, not from the command line");

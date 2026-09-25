@@ -10,7 +10,7 @@
 // used when DecompressionStream is unavailable. The recorder hooks at the end of this file are dev-only
 // (localStorage["stl-websim:record"] = "1") and feed scripts/record-snapshot.mjs.
 //
-// Locked artifact build (`build:artifact -- --lock`): every snapshot file, the index included (`snapshot/index.bin`),
+// Locked artifact build (`build:artifact -- --lock`): every snapshot file, the index included (`snapshot/index.wasm`),
 // is encrypted ("STLENC1\0" · 12-byte IV · AES-256-GCM ciphertext+tag, AAD = the published path, see
 // scripts/lock-crypto.mjs). The password gate (scripts/lock/lock.js) leaves the key in globalThis.__STL_LOCK__
 // before it starts the app; `readSnapshotBytes` decrypts, gunzips and parses every file. Plain builds and dev mode
@@ -218,7 +218,7 @@ export const LOCK_MAGIC: readonly number[] = [0x53, 0x54, 0x4c, 0x45, 0x4e, 0x43
 const LOCK_IV = 12;
 const LOCK_TAG = 16;
 /** Index file of a locked build (in place of index.json). */
-export const LOCKED_INDEX = "index.bin";
+export const LOCKED_INDEX = "index.wasm";
 
 /** Key left by the password gate (scripts/lock/lock.js), or null (plain build / dev). */
 export function lockKey(): CryptoKey | null {
@@ -231,7 +231,7 @@ export function isEncrypted(bytes: Uint8Array): boolean {
 }
 
 /** AAD of an encrypted file = its published path relative to the page, without a leading "./" — the same string
- *  the build encrypted it with ("snapshot/index.bin", "snapshot/<name>.bin"). */
+ *  the build encrypted it with ("snapshot/index.wasm", "snapshot/<name>.wasm"). */
 export function lockAad(url: string): string {
   return url.replace(/^(\.\/)+/, "");
 }
@@ -386,7 +386,7 @@ export class Snapshot {
   }
 }
 
-/** Fetch and validate `snapshot/index.json` (`snapshot/index.bin` on an unlocked locked build); null when absent
+/** Fetch and validate `snapshot/index.json` (`snapshot/index.wasm` on an unlocked locked build); null when absent
  *  or not a snapshot (e.g. an SPA HTML fallback) or when it cannot be decrypted. */
 export async function loadSnapshot(base = SNAPSHOT_BASE, fetchFn?: Fetch): Promise<Snapshot | null> {
   const f: Fetch = fetchFn ?? ((u, i) => fetch(u, i));

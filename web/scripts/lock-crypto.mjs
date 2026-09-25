@@ -1,7 +1,7 @@
 // File format of the locked artifact build (scripts/build-artifact.mjs --lock), Node side.
 //   file = "STLENC1\0" (8 bytes) · IV (12 random bytes) · AES-256-GCM ciphertext · 16-byte tag
 //   key  = PBKDF2-HMAC-SHA256(NFC(password), salt (16 random bytes, lock.json), iterations ≥ 600 000) → 32 bytes
-//   AAD  = the file's published path relative to the page, UTF-8, without a leading "./" ("snapshot/index.bin")
+//   AAD  = the file's published path relative to the page, UTF-8, without a leading "./" ("snapshot/index.wasm")
 // The browser side is scripts/lock/lock.js (app bundle) and src/api/snapshot.ts (snapshot files); both read the
 // same format with Web Crypto. Nothing here ever logs or stores the password.
 import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from "node:crypto";

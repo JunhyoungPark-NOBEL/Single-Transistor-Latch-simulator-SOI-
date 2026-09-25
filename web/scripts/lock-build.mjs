@@ -4,12 +4,12 @@
 //                       public/favicon.svg; no names — the gate gives a password guesser no vocabulary), ./lock.js
 //   lock.js, lock.css   the gate (scripts/lock/), identical in every build
 //   lock.json           {v, kdf, cipher, salt, iterations, app, css, index, files} — plaintext parameters only
-//   assets/app-<rand>.bin   the whole app as ONE classic IIFE script (vite JS API, inlineDynamicImports, no source
+//   assets/app-<rand>.wasm   the whole app as ONE classic IIFE script (vite JS API, inlineDynamicImports, no source
 //                       maps), gzip → AES-256-GCM
-//   assets/style-<rand>.bin the app stylesheet (KaTeX included), gzip → AES-256-GCM; applied by the gate after unlock
+//   assets/style-<rand>.wasm the app stylesheet (KaTeX included), gzip → AES-256-GCM; applied by the gate after unlock
 //   assets/KaTeX_*.woff2    plain, byte-identical to node_modules/katex/dist/fonts (checked)
-//   snapshot/index.bin, snapshot/<rand>.bin     every snapshot file (index with presets/meta included), gzip →
-//                       AES-256-GCM; published as application/octet-stream
+//   snapshot/index.wasm, snapshot/<rand>.wasm     every snapshot file (index with presets/meta included), gzip →
+//                       AES-256-GCM; published as application/wasm (binary; see ENC_EXT)
 // Key = PBKDF2-SHA256(password, random 16-byte salt, ≥ 600 000 iterations); every file has its own random IV and
 // its published path as AAD. The build writes to a temporary sibling folder, decrypts everything once (self-check),
 // scans every plaintext file for model strings (leak check) and every output file for the password, and only when
@@ -21,8 +21,11 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { LIMITS, TEXT_EXT, escapeFffd, fmtMB, walk, woff2Only } from "./artifact-common.mjs";
 import { MIN_ITERATIONS, SALT_BYTES, decryptFile, deriveKey, encryptFile, isEncrypted, newSalt } from "./lock-crypto.mjs";
 
-export const LOCK_INDEX = "snapshot/index.bin";
-export const ENC_TYPE = "application/octet-stream";
+// Encrypted files are published as .wasm (application/wasm): a binary type the artifact host serves unchanged
+// (it refuses application/octet-stream); the bytes are only fetched and decrypted, never compiled.
+export const ENC_EXT = ".wasm";
+export const LOCK_INDEX = `snapshot/index${ENC_EXT}`;
+export const ENC_TYPE = "application/wasm";
 /** Strings that must never appear in a plaintext file of the locked build. */
 export const LEAK_PATTERNS = [
   [/gidl/i, "GIDL"],
@@ -224,13 +227,13 @@ async function writeLocked({ WEB, OUT, DIR, SNAP_SRC, ENTRY, password, log, iter
   const encrypted = new Map(); // published path → kind (for the self-check)
 
   // ------------------------------------------------------------ 3. app + stylesheet (gzip → encrypt)
-  const appPath = `assets/app-${randName()}.bin`;
+  const appPath = `assets/app-${randName()}${ENC_EXT}`;
   const appGz = gzipSync(Buffer.from(chunk.code, "utf8"), { level: 9 });
   fs.writeFileSync(path.join(DIR, appPath), encryptFile(appGz, key, appPath));
   encrypted.set(appPath, "app");
   log(`app: ${fmtMB(chunk.code.length)} JS → ${fmtMB(appGz.length)} gzip → ${appPath}`);
   // the stylesheet sits in assets/ like before, so its url(./KaTeX_….woff2) references keep their meaning
-  const cssPath = `assets/style-${randName()}.bin`;
+  const cssPath = `assets/style-${randName()}${ENC_EXT}`;
   fs.writeFileSync(path.join(DIR, cssPath), encryptFile(gzipSync(Buffer.from(css, "utf8"), { level: 9 }), key, cssPath));
   encrypted.set(cssPath, "css");
   log(`stylesheet: ${fmtMB(css.length)} (${fffd} U+FFFD escaped) → ${cssPath}; ${fonts} KaTeX woff2 font(s) plain, ${dropped} unused font file(s) dropped`);
@@ -257,7 +260,7 @@ async function writeLocked({ WEB, OUT, DIR, SNAP_SRC, ENTRY, password, log, iter
         }
         const raw = fs.readFileSync(src);
         const gz = raw[0] === 0x1f && raw[1] === 0x8b ? raw : gzipSync(raw, { level: 9 });
-        const file = `${randName()}.bin`;
+        const file = `${randName()}${ENC_EXT}`;
         const enc = encryptFile(gz, key, `snapshot/${file}`);
         fs.writeFileSync(path.join(DIR, "snapshot", file), enc);
         encrypted.set(`snapshot/${file}`, "json");
@@ -299,7 +302,7 @@ async function writeLocked({ WEB, OUT, DIR, SNAP_SRC, ENTRY, password, log, iter
   const files = walk(DIR).filter((f) => f !== ENTRY && f !== "files.json");
   fs.writeFileSync(
     path.join(DIR, "files.json"),
-    JSON.stringify(files.map((f) => (f.endsWith(".bin") ? { path: f, contentType: ENC_TYPE } : { path: f })), null, 1) + "\n",
+    JSON.stringify(files.map((f) => (f.endsWith(ENC_EXT) ? { path: f, contentType: ENC_TYPE } : { path: f })), null, 1) + "\n",
   );
   let total = 0;
   const sizes = [];
@@ -357,7 +360,7 @@ async function writeLocked({ WEB, OUT, DIR, SNAP_SRC, ENTRY, password, log, iter
   const snapBytes = sizes.filter(([f]) => f.startsWith("snapshot/")).reduce((s, [, b]) => s + b, 0);
   log(`${rel}/${ENTRY} + ${files.length} files (${snapFiles.length} snapshot, ${encrypted.size} encrypted) = ${files.length + 1} files, ${fmtMB(total)} (snapshot ${fmtMB(snapBytes)})`);
   log("plaintext files:", plainFiles.filter((f) => !/\.woff2$/.test(f)).join(", "), `+ ${plainFiles.filter((f) => /\.woff2$/.test(f)).length} woff2 fonts`);
-  log(`publish: file_path ${rel}/${ENTRY}, root ${rel}, files from ${rel}/files.json (.bin as ${ENC_TYPE})`);
+  log(`publish: file_path ${rel}/${ENTRY}, root ${rel}, files from ${rel}/files.json (${ENC_EXT} as ${ENC_TYPE})`);
   if (problems.length) {
     for (const p of problems) console.error(`[artifact] PROBLEM: ${p}`);
     return false;

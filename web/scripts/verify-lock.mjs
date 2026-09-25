@@ -51,9 +51,9 @@ export async function lockedChecks({ WEB, browser, BASE, DIST, PASSWORD, check, 
   const notEnc = cfg.files.filter((f) => !isEncrypted(fs.readFileSync(path.join(DIST, f))));
   check("every encrypted file starts with the STLENC1 magic", notEnc.length === 0, notEnc.slice(0, 3).join(", "));
   const paths = listed.map((f) => f.path);
-  const badType = listed.filter((f) => f.path.endsWith(".bin") !== (f.contentType === "application/octet-stream"));
+  const badType = listed.filter((f) => f.path.endsWith(".wasm") !== (f.contentType === "application/wasm"));
   const missing = [...cfg.files, "lock.js", "lock.css", "lock.json"].filter((f) => !paths.includes(f));
-  check("files.json lists the gate + every encrypted file (.bin as application/octet-stream)", !badType.length && !missing.length, [...badType.map((f) => f.path), ...missing].join(", "));
+  check("files.json lists the gate + every encrypted file (.wasm as application/wasm)", !badType.length && !missing.length, [...badType.map((f) => f.path), ...missing].join(", "));
   const plain = [ENTRY, ...paths].filter((f) => !cfg.files.includes(f));
   const leaks = scanLeaks(DIST, plain, { fingerprints, stock: stockFonts(WEB) });
   check("leak scan of every plaintext file (fonts = stock KaTeX)", leaks.length === 0, leaks.slice(0, 3).join(" | ") || `${plain.length} plaintext files, ${fingerprints.length} calibration numbers`);
@@ -175,8 +175,8 @@ export async function lockedChecks({ WEB, browser, BASE, DIST, PASSWORD, check, 
   await page.waitForTimeout(1500);
   const snapReqs = page.reqs.filter((r) => r.startsWith("/snapshot/"));
   check(
-    "snapshot data decrypted: index.bin + result files fetched, no misses on screen",
-    snapReqs.includes("/snapshot/index.bin") && snapReqs.length >= 2 && !(await visible("[data-testid=snapshot-miss]")),
+    "snapshot data decrypted: index.wasm + result files fetched, no misses on screen",
+    snapReqs.includes("/snapshot/index.wasm") && snapReqs.length >= 2 && !(await visible("[data-testid=snapshot-miss]")),
     `${snapReqs.length} snapshot files`,
   );
   const css = await cssState(page);
