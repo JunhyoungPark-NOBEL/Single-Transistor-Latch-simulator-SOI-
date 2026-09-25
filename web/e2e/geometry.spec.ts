@@ -112,9 +112,13 @@ test("actual resized branch result reaches IDVD and both commercial export metad
     await page.getByTestId(`model-export-${format}`).check();
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("model-export-download").click()]);
     const content = readFileSync((await download.path())!, "utf8");
+    // the fixed geometry is recorded; the calibration descriptors and engine vector are left out by default
+    expect(content).toContain('"fixed_geometry"');
     expect(content).toContain('"W_nm": 400');
     expect(content).toContain('"Tbox_nm": 140');
-    expect(content).toContain('"geometry"');
+    expect(content).toContain('"calibration_included": false');
+    expect(content).not.toContain("effective_engine_p");
+    expect(content).not.toContain("submitted_device");
   }
   expect(requests).toHaveLength(4);
   for (const request of requests.slice(1)) expect(request.device.geometry.W_nm).toBe(400);
