@@ -2,7 +2,7 @@
 # other packages append their own lines below, one requirement per line).
 numpy>=2.0
 scipy>=1.11
-numba>=0.59
+numba>=0.60
 fastapi>=0.110
 uvicorn[standard]>=0.29
 orjson>=3.9
