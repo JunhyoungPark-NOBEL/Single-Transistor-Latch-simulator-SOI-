@@ -109,3 +109,33 @@ def test_geometry_noise_is_refused_before_running_reference_noise_kernel(custom,
         ]})
     with pytest.raises(ValueError, match="geometry-stochastic-unavailable"):
         run_circuit(payload)
+
+
+def test_reference_cell_charge_is_bit_identical_to_the_legacy_expression():
+    """A 26-entry (reference) cell must keep the pre-geometry body-charge expression
+    C_ox (psi - V_GS) + (z13 - C_ox u) + q N_A A L_n bit for bit: the reassociated form
+    C_ox psi - C_ox V_GS differs in the last bit at ~30 % of states, which shifts accepted time
+    steps and changes every seeded stochastic realisation relative to earlier releases."""
+    from numba import njit
+    from server.compute.circuit.element import AREA, COX, QE, VT, components
+    from server.compute.circuit.stochastic import _state_charge
+
+    @njit
+    def legacy_q(u, r, p, na, vbi, rg, fg, table):
+        z = components(u, r, p, na, vbi, rg, fg, table)
+        psi = u - VT * np.log1p(z[10])
+        return COX * (psi - p[11]) + (z[13] - COX * u) + QE * na * AREA * z[11]
+
+    p = _p()
+    args = (MODEL.na, MODEL.vbi, MODEL.rg, MODEL.fg, MODEL.table)
+    out = np.empty(N_EV)
+    checked = 0
+    for u in np.linspace(0.0, 1.0, 21):
+        for r in np.linspace(0.0, 10.0, 21):
+            if not stl_eval(u, r, p, *args, out):
+                continue
+            checked += 1
+            assert out[3] == legacy_q(u, r, p, *args), (u, r)
+            z = components(u, r, p, *args)
+            assert _state_charge(z, u, p) == legacy_q(u, r, p, *args), (u, r)
+    assert checked > 200

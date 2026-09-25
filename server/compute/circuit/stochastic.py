@@ -91,6 +91,8 @@ def draw_local_states(cfg: LocalStateConfig, n_stl: int, seed: int, run: int) ->
 def _state_charge(z, u, p):
     _lch, _width, _tsi, area, cox, na, _vbi = constants_from_p(p)
     psi = u - m.VT * np.log1p(z[10])
+    if len(p) < 32:   # reference cell: legacy expression (bit-identical)
+        return m.COX_F * (psi - p[11]) + (z[13] - m.COX_F * u) + m.Q * MODEL.na * m.AREA_CM2 * z[11]
     return cox * psi + gate_charge_offset(p) + (z[13] - cox * u) + m.Q * na * area * z[11]
 
 

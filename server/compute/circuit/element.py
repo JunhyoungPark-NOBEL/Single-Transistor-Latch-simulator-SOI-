@@ -93,7 +93,10 @@ def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
     flag = 0.0
     if u >= 0.0:
         psi = u - VT * np.log1p(z[10])
-        q = cox * psi + gate_charge_offset(p) + (z[13] - cox * u) + QE * na * area * z[11]
+        if len(p) < 32:   # reference cell: legacy expression, bit-identical to the calibrated path
+            q = COX * (psi - p[11]) + (z[13] - COX * u) + QE * na * AREA * z[11]
+        else:
+            q = cox * psi + gate_charge_offset(p) + (z[13] - cox * u) + QE * na * area * z[11]
     else:
         flag += 1.0
         du = 1e-4
@@ -119,7 +122,10 @@ def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
         ws = wdep(sb, na)
         wd = wdep(vbi + rc, na)
         psi = u - VT * np.log1p(delta / na)
-        q = cox * psi + gate_charge_offset(p) + z[13] + QE * na * area * (lch - wd - ws)
+        if len(p) < 32:
+            q = COX * (psi - p[11]) + z[13] + QE * na * AREA * (LCH - wd - ws)
+        else:
+            q = cox * psi + gate_charge_offset(p) + z[13] + QE * na * area * (lch - wd - ws)
     if r < 0.0:
         flag += 2.0
         if vbi + r < 0.02:
