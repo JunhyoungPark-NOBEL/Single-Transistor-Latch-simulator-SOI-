@@ -81,11 +81,11 @@ STL_ARTIFACT_PASSWORD='…' npm run verify:artifact           # 틀린/맞는 �
   같은 링크에 다시 게시할 때는 이전 평문 파일(옛 JS 청크, `snapshot/*.json.gz`, `snapshot/index.json`)을 지워야 합니다.
 
 ### 화면 구성
-- 헤더: 로고(biristor 기호 — 원 안의 NPN, 컬렉터 위·이미터 아래, 베이스는 떠 있음; `components/Logo.tsx`·`public/favicon.svg`), 제목과
-  기술 칩(FDSOI — 마우스를 올리면 L_g·W·T_Si·EOT), 탭(소자 · 회로 · 검증 · 물리 모델), **Deterministic |
+- 헤더: 로고(biristor 기호 — 원, 기울어진 평행사변형 루프, 좌우로 마주 보는 리드; `components/Logo.tsx`·`public/favicon.svg`), 제목과
+  기술 칩(FDSOI — 마우스를 올리면 L_g·W·T_Si·EOT), 탭(소자 · 회로 · 레퍼런스 · 문서), **Deterministic |
   Stochastic** 토글(모드별 강조색: 청록/보라), 백엔드 상태 점, KO/EN, 밝은/어두운 테마.
-- 모드 막대 오른쪽 끝: 크레딧(KAIST 전기및전자공학부 · NOBEL 연구실 · 지도교수 최양규 · 개발 박준형, 화면 폭에
-  따라 줄여 표시). 누르면 소개 창(`components/Credits.tsx`: 설명, 소자·모델 범위, 연구실, 버전)이 열립니다.
+- 모드 막대 오른쪽 끝: **정보**(KAIST · NOBEL 연구실). 누르면 소개 창(`components/Credits.tsx`: 설명, 소자·모델
+  범위, 연구실, 버전)이 열립니다.
 - 왼쪽 사이드바: 프리셋(기준 보정/광조사 보정/사용자 정의 — 값을 바꾸면 “사용자 정의 (…에서 수정)”), 그룹별 파라미터
   카드(각 카드에 **상세** 버튼, 초기화 링크, 기본값 대비 변경 점, ⓘ 툴팁), 하단 고정 실행 바(진행률, 메시지,
   경과 시간, 취소, 결정론 자동 실행, Ctrl/⌘+Enter).
@@ -230,12 +230,11 @@ STL_ARTIFACT_PASSWORD='…' npm run verify:artifact           # wrong/right pass
   `snapshot/*.json.gz`, `snapshot/index.json`).
 
 ### UI overview
-- Header: logo (the biristor symbol: an NPN in a circle, collector up, emitter down, base left floating;
+- Header: logo (the biristor symbol: a circle, a slanted parallelogram loop and opposed horizontal leads;
   `components/Logo.tsx` and `public/favicon.svg`), title and technology chip (FDSOI; hover for L_g, W, T_Si,
-  EOT), tabs (Device · Circuit · Validation · Physics), the **Deterministic | Stochastic** toggle (teal / violet
+  EOT), tabs (Device · Circuit · Reference · Docs), the **Deterministic | Stochastic** toggle (teal / violet
   accent follows the mode), backend status dot, KO/EN, light/dark theme.
-- Mode strip, right end: credits (NOBEL Lab · Prof. Yang-Kyu Choi · School of Electrical Engineering, KAIST ·
-  Developed by Junhyoung Park; shortened on narrow screens) opening the About card (`components/Credits.tsx`:
+- Mode strip, right end: **About** (KAIST · NOBEL Lab) opening the About card (`components/Credits.tsx`:
   description, device and model scope, lab, version from `/api/health`).
 - Sidebar: preset selector (reference / illumination / custom — editing shows “Custom (edited from …)”), grouped
   collapsible parameter cards (Details button, reset link, changed-from-default dot, ⓘ tooltip with symbol,

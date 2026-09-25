@@ -178,3 +178,15 @@
 - [circuit] A reference cell (26-entry p) keeps the legacy body-charge expression so reference circuit results stay bit-identical to earlier releases. Basic-device Newton steps use a pnjlim-style limiter on forward junction steps only; the exponential continuation starts at min(max(40, ln(1 A/Is)), 700).
 - [cache] The result-cache key covers server/geometry_model.py and server/payloads.py.
 - [test] The CSVM request fixture used by a unit test lives in `web/src/device/fixtures/` because the installer kit excludes `web/e2e`.
+
+## 2026-09-25 — Owner decisions on the GPT update (D1–D9)
+
+- D1 [frontend] Parameter guides open on click only (no hover pop-ups); the guide text comes first in the popover.
+- D2 [brand] Credits read "KAIST · NOBEL 연구실" / "KAIST · NOBEL Lab" everywhere (mode strip "정보/About", About card, server password page, READMEs).
+- D3 [library] The only built-in device is `Device 1`; user devices live on the five-slot shelf.
+- D4 [circuit] New browsers start the circuit editor on an empty canvas; examples stay in a secondary menu.
+- D5 [reference] The Reference headline metric is the floor-excluded log RMSE plus ΔV_LU / ΔV_LD against the measured median.
+- D6 [device] The default Device view shows forward/reverse ID–VD only; "모두 보기 / Show all" (`?view=all`) adds the other analyses, and the runner fills their results only then.
+- D7 [sidebar] Geometry (L, W, T_Si, EOT, T_BOX, N_body, V_BG) is the topmost sidebar group.
+- D8 [geometry] The n⁺ source/drain junction saturation currents (`isp` in geometry_model.py, `isd` in circuit/element.py) scale with the junction area W·T_Si only; the fixed n⁺ doping gets no extra length or thickness term. N_body is accepted in [3e16, 1.1e18] cm⁻³; other out-of-domain geometry returns 422 with the reason.
+- D9 [export] LTspice / Verilog-A exports leave the calibration descriptors and the engine vector out by default; the checkbox "보정값과 엔진 벡터도 함께 넣기" adds them, and `calibration_included` records the choice.
