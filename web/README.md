@@ -58,8 +58,8 @@ STL_ARTIFACT_PASSWORD='…' npm run verify:artifact           # 틀린/맞는 �
 ```
 - 비밀번호는 환경 변수로만 받습니다(명령줄 인자·파일·로그에 남기지 않음; `verify:artifact`도 `--password`를 거부).
   변수가 없거나 앞뒤 공백·줄바꿈 같은 제어 문자가 섞여 있으면 `--lock` 빌드를 거부합니다.
-- 암호화: 앱 전체(IIFE 스크립트 하나, `assets/app-*.bin`), 앱 스타일시트(`assets/style-*.bin`), 스냅샷 파일
-  전부(`snapshot/index.bin` 포함)를 gzip 후 AES-256-GCM으로 암호화합니다. 키 = PBKDF2-SHA256(비밀번호, 무작위
+- 암호화: 앱 전체(IIFE 스크립트 하나, `assets/app-*.wasm`), 앱 스타일시트(`assets/style-*.wasm`), 스냅샷 파일
+  전부(`snapshot/index.wasm` 포함)를 gzip 후 AES-256-GCM으로 암호화합니다. 키 = PBKDF2-SHA256(비밀번호, 무작위
   16바이트 salt, 600 000회), 파일마다 무작위 IV, 게시 경로가 AAD입니다(형식: `scripts/lock-crypto.mjs`). 평문으로
   남는 것은 비밀번호 카드(`stl-simulator.html`, `lock.js`, `lock.css` — 연구실·사람 이름 없음), 공개 파라미터
   (`lock.json`: salt·반복 횟수·파일 이름), KaTeX 원본 글꼴(원본과 바이트 단위로 같은지 확인)뿐입니다.
@@ -204,8 +204,8 @@ STL_ARTIFACT_PASSWORD='…' npm run verify:artifact           # wrong/right pass
 - The password is read only from the environment variable (never a flag, file or log line; `verify:artifact` refuses
   `--password` too). `--lock` is refused when the variable is missing or has leading/trailing whitespace or a control
   character such as a newline.
-- Encryption: the whole app (one IIFE script, `assets/app-*.bin`), the app stylesheet (`assets/style-*.bin`) and every
-  snapshot file (`snapshot/index.bin` included) are gzipped and encrypted with AES-256-GCM; key = PBKDF2-SHA256(password,
+- Encryption: the whole app (one IIFE script, `assets/app-*.wasm`), the app stylesheet (`assets/style-*.wasm`) and every
+  snapshot file (`snapshot/index.wasm` included) are gzipped and encrypted with AES-256-GCM; key = PBKDF2-SHA256(password,
   random 16-byte salt, 600 000 iterations), a random IV per file, the published path as AAD (format:
   `scripts/lock-crypto.mjs`). Plaintext is only the password card (`stl-simulator.html`, `lock.js`, `lock.css` — no lab
   or people names), the public parameters (`lock.json`: salt, iterations, file names) and the stock KaTeX fonts
