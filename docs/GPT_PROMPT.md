@@ -29,7 +29,7 @@ STL(single-transistor latch) 웹 시뮬레이터다. 결정론 모델과 확률 
 - web/: Vite 8 + React 19 + TS strict + Plotly + KaTeX + Zustand, KO/EN.
   - 탭은 Device, Circuit, Validation, Physics 네 개다.
 - 저장소: JunhyoungPark-NOBEL/Single-Transistor-Latch-simulator-SOI- (현재 public)
-  - 브랜치 claude/stl-simulator-web-j0yy9i, 기준 커밋 16dd9ad (그 뒤에 인수인계 문서 커밋이 더해졌을 수 있다)
+  - 브랜치 claude/stl-simulator-web-j0yy9i, 기준 커밋 16dd9ad + 인수인계 문서 커밋(a80f397 이후)
   - PR #1 → main (열려 있음, 미병합). main에는 예전 Streamlit 앱만 있다.
 
 # 코드 제공 방식
@@ -37,7 +37,7 @@ STL(single-transistor latch) 웹 시뮬레이터다. 결정론 모델과 확률 
 - (B) GitHub 접근이 있다면 위 브랜치를 checkout한다.
 - docs/HANDOFF_GPT.md 와 docs/GPT_PROMPT.md 가 저장소에 없으면 첨부 파일을 읽는다.
 - web/snapshot/ 과 web/dist-artifact/ 는 gitignore 대상이라 zip이나 GitHub에 없다.
-  - 정적 페이지를 다시 게시할 때만 필요하다. 그때는 소유자에게 요청한다.
+  - 정적 페이지를 다시 게시할 때만 필요하다. 소유자가 가진 stl-websim-build-data.zip(web/snapshot = 녹화된 모델 결과, 평문 / web/dist-artifact = 암호화된 게시본)에 들어 있으니 그때 요청한다.
   - 이 폴더들은 공개 저장소에 절대 커밋하지 않는다.
 - 파일을 읽을 수 없거나 없으면 추측하지 말고, 무엇이 없는지 말한다.
 
