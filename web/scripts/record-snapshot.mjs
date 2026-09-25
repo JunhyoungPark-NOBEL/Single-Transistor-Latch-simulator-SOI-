@@ -228,6 +228,8 @@ async function setField(page, key, group, text) {
 async function vgStochCompute(page) {
   const empty = page.getByTestId("vgs-compute");
   if (await empty.isVisible().catch(() => false)) return empty.click();
+  const again = page.getByTestId("vgs-recompute");
+  if (await again.isVisible().catch(() => false)) return again.click();
   return page.locator("[data-testid=panel-vg-sto] .panel-toolbar button.btn").last().click();
 }
 
