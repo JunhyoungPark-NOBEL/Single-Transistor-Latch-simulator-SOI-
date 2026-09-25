@@ -1,6 +1,7 @@
 // Plotly component (react-plotly.js factory + the cartesian Plotly bundle: scatter, bar, histogram, heatmap,
 // contour … — every trace type the app uses; 1.4 MB instead of 4.7 MB). Loaded lazily by ./Plot.tsx.
 import Plotly from "plotly.js-cartesian-dist-min";
+import { useEffect, useRef } from "react";
 import createPlotlyComponent from "react-plotly.js/factory";
 import type { PlotImplProps } from "./Plot";
 
@@ -10,6 +11,27 @@ const factory: Factory = ((createPlotlyComponent as unknown as { default?: Facto
 const PlotlyComponent = factory(Plotly);
 
 export default function PlotImpl({ data, layout, config, onGraph, className }: PlotImplProps) {
+  // react-plotly's resize handler only follows the window: also follow the container, whose height changes
+  // with the number of stacked subplots (e.g. waveform viewers adding a charge or state axis)
+  const gdRef = useRef<HTMLElement | null>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
+  useEffect(() => () => roRef.current?.disconnect(), []);
+  const track = (gd: HTMLElement) => {
+    if (gdRef.current === gd || typeof ResizeObserver === "undefined") return;
+    gdRef.current = gd;
+    roRef.current?.disconnect();
+    let last = "";
+    roRef.current = new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect;
+      const key = r ? `${Math.round(r.width)}x${Math.round(r.height)}` : "";
+      if (!r || key === last) return;
+      const first = last === "";
+      last = key;
+      if (!first) void Plotly.Plots.resize(gd as never);
+    });
+    const box = gd.parentElement ?? gd;
+    roRef.current.observe(box);
+  };
   return (
     <PlotlyComponent
       data={data}
@@ -24,8 +46,14 @@ export default function PlotImpl({ data, layout, config, onGraph, className }: P
       useResizeHandler
       className={className}
       style={{ width: "100%", height: "100%" }}
-      onInitialized={(_, gd) => onGraph?.(gd as unknown as HTMLElement)}
-      onUpdate={(_, gd) => onGraph?.(gd as unknown as HTMLElement)}
+      onInitialized={(_, gd) => {
+        track(gd as unknown as HTMLElement);
+        onGraph?.(gd as unknown as HTMLElement);
+      }}
+      onUpdate={(_, gd) => {
+        track(gd as unknown as HTMLElement);
+        onGraph?.(gd as unknown as HTMLElement);
+      }}
     />
   );
 }

@@ -67,6 +67,8 @@ export function themedLayout(theme: Theme, layout: Partial<Layout> = {}): Partia
     colorway: c.categorical,
     modebar: { bgcolor: "rgba(0,0,0,0)", color: c.muted, activecolor: c.text } as Layout["modebar"],
     uirevision: "keep",
+    // size from the container on every update (panels change height with their stacked subplots)
+    autosize: true,
   };
   let out = deepMerge(base, layout);
   const axes = new Set(["xaxis", "yaxis", ...Object.keys(layout).filter((k) => /^[xy]axis\d*$/.test(k))]);
@@ -77,11 +79,15 @@ export function themedLayout(theme: Theme, layout: Partial<Layout> = {}): Partia
   return out;
 }
 
-/** Axis settings for a current axis in amperes (SI ticks: 1p, 10p … with "A"). */
-export function currentAxis(log: boolean, title = "|I<sub>D</sub>| (A)") {
+/**
+ * Axis settings for a current axis in amperes with SI tick prefixes and an "A" suffix. Log: one prefix per
+ * decade (1pA, 10pA … 1µA); linear: Plotly's shared engineering exponent, so every tick carries the same
+ * prefix (0.5µA, 1µA, 1.5µA). The title comes from the axis.* dictionary (e.g. t("axis.idAbs")).
+ */
+export function currentAxis(log: boolean, title: string) {
   return log
     ? { type: "log" as const, title: { text: title }, tickformat: "~s", exponentformat: "SI" as const, ticksuffix: "A" }
-    : { type: "linear" as const, title: { text: title }, tickformat: "~s", exponentformat: "SI" as const, ticksuffix: "A" };
+    : { type: "linear" as const, title: { text: title }, exponentformat: "SI" as const, ticksuffix: "A" };
 }
 
 export const HOVER_IV = "V<sub>D</sub> = %{x:.3f} V<br>I<sub>D</sub> = %{y:.3~s}A";

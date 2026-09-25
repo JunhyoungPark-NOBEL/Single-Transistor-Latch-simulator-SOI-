@@ -12,3 +12,8 @@
 @media (max-width: 560px) {
   .view-tab-text span { display: none; }
 }
+
+/* [axes-logo] waveform viewers (quick benches, schematic results): taller plots for 4–5 stacked subplots so
+   every axis keeps ≈ 80 px and its title fits (see src/circuit/axes.ts). */
+.plot.tall.x4 { height: 500px; }
+.plot.tall.x5 { height: 580px; }

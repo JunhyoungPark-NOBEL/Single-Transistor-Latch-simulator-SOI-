@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { BranchesResult, ChargeBalanceResult, MeasuredData, VgCurveResult } from "../api/types";
 import { Panel } from "../components/Panel";
 import { useT, type T } from "../i18n";
+import { signed } from "../plots/labels";
 import { currentAxis, HOVER_IV, type PlotPalette } from "../plots/theme";
 import { loadMeasured, runChargeBalance, runVgCurve } from "../state/runner";
 import { useStore } from "../state/store";
@@ -109,8 +110,8 @@ export function IvPanel() {
     traces.push(br(data.HRS, t("iv.hrs"), c.hrs, "solid", 2.4), br(data.unstable, t("iv.unstable"), c.unstable, "dash", 1.6), br(data.LRS, t("iv.lrs"), c.lrs, "solid", 2.4));
     if (showSweep) {
       for (const [dir, xy, color, name] of [
-        ["up", data.double_sweep.up, c.up, t("iv.up")],
-        ["down", data.double_sweep.down, c.down, t("iv.down")],
+        ["up", data.double_sweep.up, c.up, t("axis.leg.up")],
+        ["down", data.double_sweep.down, c.down, t("axis.leg.down")],
       ] as const) {
         const x = nums(xy.vd);
         const y = log ? pos(xy.id) : nums(xy.id);
@@ -127,13 +128,13 @@ export function IvPanel() {
       traces.push({
         x: [f.V_LU, f.V_LD], y: [f.I_LU, f.I_LD], type: "scatter", mode: "markers", name: "folds", showlegend: false,
         marker: { symbol: "diamond", size: 10, color: [c.hrs, c.lrs], line: { color: c.surface, width: 1.5 } },
-        hovertemplate: "fold: %{x:.4f} V<br>%{y:.3~s}A<extra></extra>",
+        hovertemplate: "V<sub>D</sub> = %{x:.4f} V<br>I<sub>D</sub> = %{y:.3~s}A<extra>fold</extra>",
       });
     }
     const yr = log ? logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) : undefined;
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: "V<sub>D</sub> (V)" }, range: [0, params.sweep.vd_max_V + 0.15], zeroline: false },
-      yaxis: { ...currentAxis(log), ...(yr ? { range: yr } : {}) },
+      xaxis: { title: { text: t("axis.vd") }, range: [0, params.sweep.vd_max_V + 0.15], zeroline: false },
+      yaxis: { ...currentAxis(log, log ? t("axis.idAbs") : t("axis.id")), ...(yr ? { range: yr } : {}) },
       annotations: log && data.latch ? foldAnnotations(f, c) : [],
       margin: { l: 64, r: 16, t: 16, b: 46 },
       legend: insideLegend(c, "tl"),
@@ -156,7 +157,7 @@ export function IvPanel() {
       toolbar={
         <>
           <Seg label="y" value={log ? "log" : "lin"} onChange={(v) => setLog(v === "log")} options={[{ v: "log", label: t("log") }, { v: "lin", label: t("lin") }]} />
-          <Check checked={showSweep} onChange={setShowSweep} label={`${t("iv.up")}/${t("iv.down")}`} />
+          <Check checked={showSweep} onChange={setShowSweep} label={t("axis.leg.updown")} />
           {measKind && <Check checked={showMeas} onChange={setShowMeas} label={t("measured")} testId="toggle-measured" />}
         </>
       }
@@ -194,12 +195,14 @@ export function ComponentsPanel() {
       return {
         x: nums(cv.vd), y: log ? pos(abs(cv.comp?.[k.key])) : abs(cv.comp?.[k.key]), type: "scatter", mode: "lines", name,
         line: { color: c.categorical[i], width: k.loss ? 1.6 : 2, dash: k.loss ? "dash" : "solid" },
-        hovertemplate: `V<sub>D</sub> = %{x:.3f} V<br>%{y:.3~s}A<extra>${name}</extra>`,
+        hovertemplate: `V<sub>D</sub> = %{x:.3f} V<br>|I| = %{y:.3~s}A<extra>${name}</extra>`,
       } as Data;
     });
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: `V<sub>D</sub> (V) — ${used === "full" ? t("all") : used}` } },
-      yaxis: { ...currentAxis(log, "|I| (A)"), ...(log ? { range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y), 1e-18, 12) } : {}) },
+      xaxis: { title: { text: t("axis.vd") } },
+      yaxis: { ...currentAxis(log, t("axis.icomp")), ...(log ? { range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y), 1e-18, 12) } : {}) },
+      // which branch the components follow (the whole traced locus when there is no latch)
+      annotations: [{ x: 0.01, y: 0.99, xref: "paper", yref: "paper", xanchor: "left", yanchor: "top", showarrow: false, text: used === "full" ? t("axis.ann.full") : t("axis.ann.branch", { b: used }), font: { size: 11, color: c.text2 }, bgcolor: c.surface, borderpad: 2 }],
       legend: { orientation: "h", y: 1.01, yanchor: "bottom", x: 0, font: { size: 11 } },
       margin: { l: 64, r: 16, t: 62, b: 46 },
     };
@@ -250,9 +253,9 @@ export function ChargeBalancePanel() {
   const plot = useMemo(() => {
     if (!data) return undefined;
     const x = xq === "u" ? nums(data.u) : nums(data.Q_C).map((q) => (q == null ? null : q * 1e15));
-    const xTitle = xq === "u" ? "u (V) — source–body bias" : "Q<sub>B</sub> (fC)";
+    const xTitle = xq === "u" ? t("axis.cb.u") : t("axis.cb.q");
     const xr = (u: number, q: number) => (xq === "u" ? u : q * 1e15);
-    const hv = xq === "u" ? "u = %{x:.3f} V" : "Q = %{x:.3f} fC";
+    const hv = xq === "u" ? "u = %{x:.3f} V" : "Q<sub>B</sub> = %{x:.3f} fC";
     const traces: Data[] = [
       { x, y: pos(data.generation_A), type: "scatter", mode: "lines", name: t("cb.G"), line: { color: c.categorical[0], width: 2 }, hovertemplate: `${hv}<br>G = %{y:.3~s}A<extra></extra>` },
       { x, y: pos(data.loss_A), type: "scatter", mode: "lines", name: t("cb.L"), line: { color: c.categorical[1], width: 2, dash: "dash" }, hovertemplate: `${hv}<br>L = %{y:.3~s}A<extra></extra>` },
@@ -288,8 +291,8 @@ export function ChargeBalancePanel() {
     const layout: Partial<Layout> = {
       grid: undefined,
       xaxis: { title: { text: xTitle }, anchor: "y2" },
-      yaxis: { ...currentAxis(true, "G, L (A)"), domain: [0.44, 1], range: logRange([pos(data.generation_A), pos(data.loss_A)], 1e-17, 12) },
-      yaxis2: { domain: [0, 0.36], title: { text: "U (k<sub>B</sub>T)" }, zeroline: true, range: uRange },
+      yaxis: { ...currentAxis(true, t("axis.s.gl")), domain: [0.44, 1], range: logRange([pos(data.generation_A), pos(data.loss_A)], 1e-17, 12) },
+      yaxis2: { domain: [0, 0.36], title: { text: t("axis.s.u") }, zeroline: true, range: uRange },
       shapes,
       margin: { l: 64, r: 16, t: 40, b: 46 },
     };
@@ -324,7 +327,7 @@ export function ChargeBalancePanel() {
     >
       {data && (
         <div className="panel-foot small muted mono">
-          {data.roots.length} roots · {data.roots.map((r) => `${r.kind === "stable" ? "●" : "○"} u=${r.u.toFixed(3)} V`).join("  ")}
+          {t("axis.cb.roots", { n: data.roots.length })} · {data.roots.map((r) => `${r.kind === "stable" ? "●" : "○"} u=${r.u.toFixed(3)} V`).join("  ")}
         </div>
       )}
     </Panel>
@@ -353,13 +356,13 @@ export function VgPanel() {
     const w = data.window;
     if (isNum(w.vg_low) && isNum(w.vg_high)) {
       shapes.push({ type: "rect", xref: "x", yref: "paper", x0: w.vg_low, x1: w.vg_high, y0: 0, y1: 1, fillcolor: c.detSoft, opacity: 0.35, line: { width: 0 }, layer: "below" });
-      ann.push({ x: (w.vg_low + w.vg_high) / 2, y: 1, xref: "x", yref: "paper", yanchor: "bottom", text: `${t("vg.window")}: ${w.vg_low.toFixed(2)} … ${w.vg_high.toFixed(2)} V`, showarrow: false, font: { size: 11, color: c.det } });
+      ann.push({ x: (w.vg_low + w.vg_high) / 2, y: 1, xref: "x", yref: "paper", yanchor: "bottom", text: `${t("vg.window")}: ${signed(w.vg_low, 2)} … ${signed(w.vg_high, 2)} V`, showarrow: false, font: { size: 11, color: c.det } });
     }
     shapes.push({ type: "line", xref: "x", yref: "paper", x0: vgNow, x1: vgNow, y0: 0, y1: 1, line: { color: c.text2, width: 1.2, dash: "dash" } });
-    ann.push({ x: vgNow, y: 0.97, xref: "x", yref: "paper", yanchor: "top", text: `${t("vg.current")} ${vgNow.toFixed(2)} V`, showarrow: false, xanchor: "left", xshift: 4, font: { size: 11, color: c.text2 }, bgcolor: c.surface });
+    ann.push({ x: vgNow, y: 0.97, xref: "x", yref: "paper", yanchor: "top", text: t("axis.ann.setVg", { v: signed(vgNow, 2) }), showarrow: false, xanchor: "left", xshift: 4, font: { size: 11, color: c.text2 }, bgcolor: c.surface });
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: "V<sub>G</sub> (V)" } },
-      yaxis: { title: { text: "fold V<sub>D</sub> (V)" } },
+      xaxis: { title: { text: t("axis.vg") } },
+      yaxis: { title: { text: t("axis.foldV") } },
       shapes,
       annotations: ann,
       margin: { l: 58, r: 16, t: 46, b: 46 },

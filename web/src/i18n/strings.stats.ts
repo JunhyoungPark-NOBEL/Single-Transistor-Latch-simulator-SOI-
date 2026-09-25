@@ -15,7 +15,7 @@ export const STATS_STRINGS = {
   "stats.meta.seed": { ko: "시드", en: "Seed" },
   "stats.meta.sweep": { ko: "스윕 0 → {v} V · {rate} V/s", en: "Sweep 0 → {v} V · {rate} V/s" },
   "stats.meta.latched": { ko: "스윕 안에서 래치업 {pct}", en: "Latched up within the sweep: {pct}" },
-  "stats.meta.censored": { ko: "검열 {n}회 ({pct})", en: "Censored: {n} ({pct})" },
+  "stats.meta.censored": { ko: "중도절단 {n}회 ({pct})", en: "Censored: {n} ({pct})" },
   "stats.meta.ci": { ko: "평균 V_LU의 95 % 신뢰구간 {lo} … {hi} V", en: "95 % CI of mean V_LU: {lo} … {hi} V" },
   "stats.engine.calibrated_lookup": { ko: "보정 조회표 (calibrated lookup)", en: "Calibrated lookup" },
   "stats.engine.general": { ko: "일반 (general)", en: "General" },
@@ -29,7 +29,7 @@ export const STATS_STRINGS = {
   },
   "stats.row.hazard": { ko: "캐리어 잡음만", en: "carrier noise only" },
   "stats.row.hazard.tip": {
-    ko: "중심 local state에서 hazard h(V_D)로 계산한 V_LU 분포입니다. 캐리어(first-passage) 잡음만 들어 있고 상태 산포와 검열은 없습니다. MC 행과의 차이가 곧 local state가 더하는 산포입니다.",
+    ko: "중심 local state에서 hazard h(V_D)로 계산한 V_LU 분포입니다. 캐리어(first-passage) 잡음만 들어 있고 상태 산포와 중도절단은 없습니다. MC 행과의 차이가 곧 local state가 더하는 산포입니다.",
     en: "V_LU distribution from the hazard h(V_D) at the centre local state: carrier (first-passage) noise only, no state spread and no censoring. The difference from the MC row is the spread added by the local states.",
   },
   "stats.row.hazard.atom": { ko: "폴드 도달 {pct}", en: "{pct} reach the fold" },
@@ -62,7 +62,7 @@ export const STATS_STRINGS = {
   "stats.c.kurt": { ko: "첨도", en: "kurt." },
   "stats.c.lag1": { ko: "lag-1", en: "lag-1" },
   "stats.c.n": { ko: "n", en: "n" },
-  "stats.c.censored": { ko: "검열", en: "cens." },
+  "stats.c.censored": { ko: "중도절단", en: "cens." },
   "stats.c.m_mean": { ko: "측정 평균", en: "meas. mean" },
   "stats.c.m_sd": { ko: "측정 SD", en: "meas. SD" },
   "stats.c.dmean": { ko: "평균 차", en: "Δmean" },
@@ -72,7 +72,7 @@ export const STATS_STRINGS = {
 
   // ---------------------------------------------------------------- column tooltips
   "stats.tip.mean": {
-    ko: "평균 — 값이 있는 사이클의 산술평균입니다. 스윕 안에서 전이가 없어 값이 없는(검열된) 사이클은 빠집니다.",
+    ko: "평균 — 값이 있는 사이클의 산술평균입니다. 스윕 안에서 전이가 없어 값이 없는(중도절단된) 사이클은 빠집니다.",
     en: "Mean — the arithmetic average over cycles that have a value. Censored cycles (no transition within the sweep) are left out.",
   },
   "stats.tip.ci95": {
@@ -100,8 +100,8 @@ export const STATS_STRINGS = {
     ko: "95번째 백분위수 — 사이클의 95 %가 이 값보다 낮습니다. p5와 p95 사이에 90 %가 들어갑니다.",
     en: "95th percentile — 95 % of the cycles lie below this value; 90 % lie between p5 and p95.",
   },
-  "stats.tip.min": { ko: "관측된 가장 작은 값 (검열된 사이클 제외).", en: "Smallest observed value (censored cycles excluded)." },
-  "stats.tip.max": { ko: "관측된 가장 큰 값 (검열된 사이클 제외).", en: "Largest observed value (censored cycles excluded)." },
+  "stats.tip.min": { ko: "관측된 가장 작은 값 (중도절단된 사이클 제외).", en: "Smallest observed value (censored cycles excluded)." },
+  "stats.tip.max": { ko: "관측된 가장 큰 값 (중도절단된 사이클 제외).", en: "Largest observed value (censored cycles excluded)." },
   "stats.tip.skew": {
     ko: "왜도(표본 보정) — 분포가 얼마나 한쪽으로 치우쳤는지. 0이면 좌우 대칭, 양수면 높은 쪽 꼬리가, 음수면 낮은 쪽 꼬리가 깁니다.",
     en: "Skewness (sample-adjusted) — how lopsided the distribution is. 0 is symmetric; positive means a longer tail towards high values, negative towards low values.",
@@ -111,12 +111,12 @@ export const STATS_STRINGS = {
     en: "Excess kurtosis (sample-adjusted) — 0 for a normal distribution. Positive: heavier tails, extreme cycles are more common; negative: lighter tails, a flatter distribution.",
   },
   "stats.tip.lag1": {
-    ko: "자기상관(lag-1) — 연속한 두 사이클 값 사이의 상관계수입니다. 0 근처면 사이클끼리 독립이고, 양수면 한 사이클의 값이 다음 사이클로 이어집니다(천천히 변하는 local state 등). 검열된 사이클을 사이에 둔 쌍은 뺍니다.",
+    ko: "자기상관(lag-1) — 연속한 두 사이클 값 사이의 상관계수입니다. 0 근처면 사이클끼리 독립이고, 양수면 한 사이클의 값이 다음 사이클로 이어집니다(천천히 변하는 local state 등). 중도절단된 사이클을 사이에 둔 쌍은 뺍니다.",
     en: "Lag-1 autocorrelation — the correlation between consecutive cycles. Near 0: cycles are independent; positive: one cycle's value carries over to the next (e.g. a slowly varying local state). Pairs that straddle a censored cycle are skipped.",
   },
   "stats.tip.n": { ko: "값이 있는 사이클 수 (스윕 안에서 전이가 관측된 사이클).", en: "Number of cycles with a value (the transition was observed within the sweep)." },
   "stats.tip.censored": {
-    ko: "검열 — 스윕 범위 안에서 전이가 일어나지 않아 값이 없는 사이클 수와, 전체 사이클에 대한 비율입니다.",
+    ko: "중도절단 — 스윕 범위 안에서 전이가 일어나지 않아 값이 없는 사이클 수와, 전체 사이클에 대한 비율입니다.",
     en: "Censored — cycles without a value because the transition did not happen within the sweep, and their share of all cycles.",
   },
   "stats.tip.m_mean": { ko: "측정 기록의 평균.", en: "Mean of the measured record." },
@@ -147,7 +147,7 @@ export const STATS_STRINGS = {
   "stats.opt.hide": { ko: "{cols} 열 숨기기", en: "Hide {cols}" },
   "stats.units": { ko: "수준 {level} · 퍼짐 {spread}", en: "levels in {level} · spreads in {spread}" },
   "stats.foot.censoring": {
-    ko: "통계와 KS 비교는 값이 있는 사이클만 씁니다. 검열된 사이클은 개수로만 셉니다.",
+    ko: "통계와 KS 비교는 값이 있는 사이클만 씁니다. 중도절단된 사이클은 개수로만 셉니다.",
     en: "Statistics and the KS comparison use only cycles that have a value; censored cycles are counted but not averaged.",
   },
   "stats.foot.measured": { ko: "측정 기록: {label}", en: "Measured record: {label}" },
@@ -157,18 +157,18 @@ export const STATS_STRINGS = {
 
   // ---------------------------------------------------------------- distribution panel (CDF)
   "stats.dist.plateau": {
-    ko: "CDF는 모든 사이클 기준이라 스윕 안에서 전이한 비율 {pct}에서 멈춥니다 (나머지는 검열).",
+    ko: "CDF는 모든 사이클 기준이라 스윕 안에서 전이한 비율 {pct}에서 멈춥니다 (나머지는 중도절단).",
     en: "CDF over all cycles: it levels off at the {pct} that switched within the sweep (the rest are censored).",
   },
   "stats.dist.ks": { ko: "모델 vs 측정 KS D = {d}, p = {p}", en: "model vs measured KS D = {d}, p = {p}" },
 
   // ---------------------------------------------------------------- V_G curve (stochastic) censoring
-  "stats.vgs.censored": { ko: "검열 비율", en: "Censored" },
+  "stats.vgs.censored": { ko: "중도절단 비율", en: "Censored" },
   "stats.vgs.noLatch": { ko: "래치 없음 (폴드 없음)", en: "no latch (no fold)" },
   "stats.vgs.beyond": { ko: "스윕 최대 {v} V 너머", en: "beyond the {v} V sweep maximum" },
-  "stats.vgs.axis": { ko: "검열 (%)", en: "censored (%)" },
+  "stats.vgs.axis": { ko: "중도절단 (%)", en: "censored (%)" },
   "stats.vgs.foot": {
-    ko: "평균과 σ는 스윕 안에서 래치업하는 사이클만으로 계산합니다. 검열 비율은 V_G = {vg} V에서 최대 {max}입니다 (래치 없음 {nl}, 스윕 너머 {bs}).",
+    ko: "평균과 σ는 스윕 안에서 래치업하는 사이클만으로 계산합니다. 중도절단 비율은 V_G = {vg} V에서 최대 {max}입니다 (래치 없음 {nl}, 스윕 너머 {bs}).",
     en: "Mean and σ are over the cycles that latch up within the sweep. The censored share peaks at {max} at V_G = {vg} V (no latch {nl}, beyond the sweep {bs}).",
   },
 

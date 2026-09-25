@@ -13,6 +13,8 @@ import { currentAxis, HOVER_IV } from "../plots/theme";
 import { useStore } from "../state/store";
 import { fmtDuration, fmtInt, fmtSig, isNum, siPrefix } from "../utils/format";
 import { splitUnit } from "./summary";
+import { AXES, circuitAxisTitle, siTicks, stackClass, sweepAxisTitle, type AxisKind } from "./axes";
+import { subs, withUnit } from "../plots/labels";
 
 export { splitUnit };
 import { circuitPayload } from "../utils/payload";
@@ -24,8 +26,6 @@ import { Schematic } from "./Schematic";
 import { useCircuitView, type CircuitView } from "./view";
 import "./circuit.css";
 
-const AXES = ["voltage", "current", "charge", "state", "logic"] as const;
-type AxisKind = (typeof AXES)[number];
 const axisOf = (s: Signal): AxisKind =>
   (s.axis as AxisKind) ?? (s.unit === "V" ? "voltage" : s.unit === "A" ? "current" : s.unit === "C" ? "charge" : s.unit === "1" ? "logic" : "state");
 
@@ -111,7 +111,7 @@ function WaveformPanel({ res, entry, currentKey }: { res: CircuitResult | undefi
     const [ts, tu] = timeScale(res.runs[0].t);
     const traces: Data[] = [];
     let k = 0; // colour index shared by all signals (identity is kept across subplots)
-    const layout: Partial<Layout> = { margin: { l: 70, r: 16, t: 40, b: 46 }, xaxis: { title: { text: `${t("c.t")} (${tu})` }, anchor: `y${n > 1 ? n : ""}` as never } };
+    const layout: Partial<Layout> = { margin: { l: 70, r: 16, t: 40, b: 46 }, xaxis: { title: { text: t("axis.time", { u: tu }) }, anchor: `y${n > 1 ? n : ""}` as never } };
     present.forEach((ax, i) => {
       const yName = i === 0 ? "yaxis" : `yaxis${i + 1}`;
       const top = 1 - i * (h + gap);
@@ -119,9 +119,8 @@ function WaveformPanel({ res, entry, currentKey }: { res: CircuitResult | undefi
       const cur = ax === "current";
       (layout as Record<string, unknown>)[yName] = {
         domain: [Math.max(0, top - h), top],
-        ...(cur ? { ...currentAxis(logI), ...(logI ? { range: logRange(runs.flatMap((r) => r.signals.filter((x) => axisOf(x) === "current").map((x) => pos(x.values.map((v) => (v == null ? null : Math.abs(v))))))) } : {}) } : {}),
-        title: { text: `${t(`c.axis.${ax}` as StrKey)}${unit && unit !== "1" ? ` (${unit})` : ""}`, font: { size: 11 } },
-        ...(ax === "charge" ? { tickformat: "~s", ticksuffix: "C", exponentformat: "SI" } : {}),
+        ...(cur ? { ...currentAxis(logI, ""), ...(logI ? { range: logRange(runs.flatMap((r) => r.signals.filter((x) => axisOf(x) === "current").map((x) => pos(x.values.map((v) => (v == null ? null : Math.abs(v))))))) } : {}) } : ax === "logic" ? {} : siTicks(unit)),
+        title: { text: circuitAxisTitle(t, ax, unit, logI), font: { size: 11 } },
         ...(ax === "logic" ? { range: [-0.2, 1.2], dtick: 1 } : {}),
       };
       for (const r of runs) {
@@ -132,11 +131,11 @@ function WaveformPanel({ res, entry, currentKey }: { res: CircuitResult | undefi
             x: nums(r.t).map((v) => (v == null ? null : v * ts)),
             y: cur && logI ? pos(s.values.map((v) => (v == null ? null : Math.abs(v)))) : nums(s.values),
             type: "scatter", mode: "lines", yaxis: i === 0 ? "y" : (`y${i + 1}` as never), xaxis: "x",
-            name: `${t.l(s.label)}${runs.length > 1 ? ` · #${r.run}` : ""}`,
+            name: `${subs(t.l(s.label))}${runs.length > 1 ? ` · #${r.run}` : ""}`,
             legendgroup: s.key, showlegend: runs.length === 1 || r === runs[0],
             line: { color: runs.length > 1 ? c.categorical[r.run % c.categorical.length] : color, width: runs.length > 1 ? 1 : 1.8, shape: ax === "logic" ? "hv" : "linear" },
             opacity: runs.length > 1 ? 0.7 : 1,
-            hovertemplate: `t = %{x:.4g} ${tu}<br>%{y:.4~s}${s.unit === "1" ? "" : s.unit}<extra>${t.l(s.label)}</extra>`,
+            hovertemplate: `t = %{x:.4g} ${tu}<br>%{y:.4~s}${s.unit === "1" ? "" : s.unit}<extra>${subs(t.l(s.label))}</extra>`,
           });
         }
       }
@@ -148,7 +147,7 @@ function WaveformPanel({ res, entry, currentKey }: { res: CircuitResult | undefi
         line: { color: e.kind === "latch_up" ? c.lrs : e.kind === "latch_down" ? c.hrs : c.muted, width: 1, dash: "dot" },
       })) as Partial<Shape>[];
     }
-    return { data: traces, layout, className: "plot tall" };
+    return { data: traces, layout, className: stackClass(n) };
   }, [res, run, logI, showEvents, c, t]);
   return (
     <Panel
@@ -192,13 +191,13 @@ function TrajectoryPanel({ res, entry, currentKey }: { res: CircuitResult | unde
     const traces: Data[] = [];
     if (br) {
       traces.push(
-        { x: nums(br.HRS.vd), y: pos(br.HRS.id), type: "scatter", mode: "lines", name: "HRS", line: { color: c.hrs, width: 2 }, hovertemplate: `${HOVER_IV}<extra>HRS</extra>` },
+        { x: nums(br.HRS.vd), y: pos(br.HRS.id), type: "scatter", mode: "lines", name: t("iv.hrs"), line: { color: c.hrs, width: 2 }, hovertemplate: `${HOVER_IV}<extra>HRS</extra>` },
         { x: nums(br.unstable.vd), y: pos(br.unstable.id), type: "scatter", mode: "lines", name: t("iv.unstable"), line: { color: c.unstable, width: 1.4, dash: "dash" }, hoverinfo: "skip" },
-        { x: nums(br.LRS.vd), y: pos(br.LRS.id), type: "scatter", mode: "lines", name: "LRS", line: { color: c.lrs, width: 2 }, hovertemplate: `${HOVER_IV}<extra>LRS</extra>` },
+        { x: nums(br.LRS.vd), y: pos(br.LRS.id), type: "scatter", mode: "lines", name: t("iv.lrs"), line: { color: c.lrs, width: 2 }, hovertemplate: `${HOVER_IV}<extra>LRS</extra>` },
       );
     }
-    traces.push({ x: nums(res.trajectory.vd), y: pos(res.trajectory.id), type: "scatter", mode: "lines", name: "run 0", line: { color: c.categorical[6], width: 1.6 }, hovertemplate: `${HOVER_IV}<extra>trajectory</extra>` });
-    return { data: traces, layout: { xaxis: { title: { text: "V<sub>D</sub> (V)" } }, yaxis: { ...currentAxis(true), range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) } } as Partial<Layout> };
+    traces.push({ x: nums(res.trajectory.vd), y: pos(res.trajectory.id), type: "scatter", mode: "lines", name: t("axis.leg.run0"), line: { color: c.categorical[6], width: 1.6 }, hovertemplate: `${HOVER_IV}<extra>${t("axis.leg.run0")}</extra>` });
+    return { data: traces, layout: { xaxis: { title: { text: t("axis.vd") } }, yaxis: { ...currentAxis(true, t("axis.idAbs")), range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) } } as Partial<Layout> };
   }, [res, br, c, t]);
   return <Panel id="trajectory" title={t("c.traj")} desc={t("c.traj.desc")} topic="circuit-element" entry={entry} hasData={!!plot} currentKey={currentKey} csvName="trajectory" plot={plot ?? { data: [], layout: {} }} />;
 }
@@ -212,8 +211,8 @@ function DistributionsPanel({ res, stale }: { res: CircuitResult; stale: boolean
   const plot = useMemo(() => {
     if (!d) return undefined;
     return {
-      data: [{ x: finite(d.values), type: "histogram", marker: { color: c.sto, line: { color: c.surface, width: 1 } }, opacity: 0.85, name: t.l(d.label), nbinsx: 30 } as Data],
-      layout: { xaxis: { title: { text: `${t.l(d.label)} (${d.unit})` } }, yaxis: { title: { text: "counts" } }, bargap: 0.02 } as Partial<Layout>,
+      data: [{ x: finite(d.values), type: "histogram", marker: { color: c.sto, line: { color: c.surface, width: 1 } }, opacity: 0.85, name: subs(t.l(d.label)), nbinsx: 30, hovertemplate: `%{x} ${d.unit === "1" ? "" : d.unit}<br>n = %{y}<extra></extra>` } as Data],
+      layout: { xaxis: { title: { text: withUnit(subs(t.l(d.label)), d.unit) } }, yaxis: { title: { text: t("axis.count") } }, bargap: 0.02 } as Partial<Layout>,
     };
   }, [d, c, t]);
   if (!dists.length) return null;
@@ -240,9 +239,9 @@ function SweepsPanel({ res, stale }: { res: CircuitResult; stale: boolean }) {
       data: [{
         x: nums(s.x), y: nums(s.y), type: "scatter", mode: "lines+markers", name: t.l(s.label), line: { color: c.sto, width: 2 }, marker: { size: 7 },
         error_y: s.y_err ? { type: "data", array: nums(s.y_err) as number[], visible: true, color: c.sto, thickness: 1.2, width: 4 } : undefined,
-        hovertemplate: `${s.x_label} = %{x:.4g} ${s.x_unit}<br>${s.y_label} = %{y:.4g} ${s.y_unit === "1" ? "" : s.y_unit}<extra></extra>`,
+        hovertemplate: `${subs(s.x_label)} = %{x:.4g} ${s.x_unit === "1" ? "" : s.x_unit}<br>${subs(s.y_label)} = %{y:.4g} ${s.y_unit === "1" ? "" : s.y_unit}<extra></extra>`,
       } as Data],
-      layout: { xaxis: { title: { text: `${s.x_label}${s.x_unit ? ` (${s.x_unit})` : ""}` } }, yaxis: { title: { text: `${s.y_label}${s.y_unit && s.y_unit !== "1" ? ` (${s.y_unit})` : ""}` } } } as Partial<Layout>,
+      layout: { xaxis: { title: { text: sweepAxisTitle(t, s.x_label, s.x_unit) } }, yaxis: { title: { text: sweepAxisTitle(t, s.y_label, s.y_unit) } } } as Partial<Layout>,
     };
   }, [s, c, t]);
   if (!sw.length) return null;

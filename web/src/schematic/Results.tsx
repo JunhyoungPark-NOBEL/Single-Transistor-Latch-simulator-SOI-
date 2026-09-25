@@ -11,19 +11,18 @@ import { IconX } from "../components/icons";
 import { Kpi } from "../device/KpiStrip";
 import { logRange, usePalette } from "../device/common";
 import { useT } from "../i18n";
-import type { StrKey } from "../i18n/strings";
 import { currentAxis } from "../plots/theme";
 import { describe, histogram, StatsTable, type StatsRow } from "../stats";
 import { useStore, type ResultEntry } from "../state/store";
 import { fmtDuration, fmtInt, isNum, siPrefix } from "../utils/format";
 import { splitUnit } from "../circuit/summary";
+import { AXES, circuitAxisTitle, siTicks, stackClass, type AxisKind } from "../circuit/axes";
+import { subs, withUnit } from "../plots/labels";
 import { runSchematic, type SchematicRunData } from "./run";
 import { fmtSI } from "./si";
 import { useSch } from "./store";
 import { Segmented, Switch } from "./ui";
 
-const AXES = ["voltage", "current", "charge", "state", "logic"] as const;
-type AxisKind = (typeof AXES)[number];
 export const axisOf = (s: Pick<Signal, "axis" | "unit">): AxisKind =>
   (s.axis as AxisKind) ?? (s.unit === "V" ? "voltage" : s.unit === "A" ? "current" : s.unit === "C" ? "charge" : s.unit === "1" ? "logic" : "state");
 
@@ -94,7 +93,7 @@ function WaveViewer({ res, entry, stale }: { res: CustomCircuitResult; entry: Re
     const layout: Partial<Layout> = {
       margin: { l: 70, r: 18, t: 30, b: 44 },
       hovermode: "x unified",
-      xaxis: { title: { text: `${t("c.t")} (${tu})` }, anchor: (n > 1 ? `y${n}` : "y") as never, showspikes: true, spikemode: "across", spikethickness: 1, spikecolor: c.muted, spikedash: "dot" },
+      xaxis: { title: { text: t("axis.time", { u: tu }) }, anchor: (n > 1 ? `y${n}` : "y") as never, showspikes: true, spikemode: "across", spikethickness: 1, spikecolor: c.muted, spikedash: "dot" },
       showlegend: false,
     };
     axes.forEach((ax, i) => {
@@ -149,18 +148,16 @@ function WaveViewer({ res, entry, stale }: { res: CustomCircuitResult; entry: Re
       }
       (layout as Record<string, unknown>)[yName] = {
         domain: [Math.max(0, top - h), top],
-        ...(cur ? currentAxis(log, log ? "|I| (A)" : "I (A)") : {}),
+        ...(cur ? currentAxis(log, "") : ax === "logic" ? {} : siTicks(unit)),
         ...(log ? { range: logRange(allY) } : {}),
-        title: { text: cur ? (log ? "|I| (A)" : "I (A)") : `${t(`c.axis.${ax}` as StrKey)}${unit && unit !== "1" ? ` (${unit})` : ""}`, font: { size: 11 } },
-        ...(ax === "charge" ? { tickformat: "~s", ticksuffix: "C", exponentformat: "SI" } : {}),
-        ...(ax === "voltage" || ax === "state" ? { tickformat: "~s", exponentformat: "SI" } : {}),
+        title: { text: circuitAxisTitle(t, ax, unit, logI), font: { size: 11 } },
       };
     });
     // latch events of run 0 as small markers along the top
     const evs = res.events.filter((e) => e.run === 0 && (e.kind === "latch_up" || e.kind === "latch_down")).slice(0, 80);
     layout.annotations = evs.map((e) => ({
       x: e.t * ts, xref: "x", y: 1, yref: "paper", yanchor: "bottom", showarrow: false, text: e.kind === "latch_up" ? "▲" : "▼",
-      font: { size: 9, color: e.kind === "latch_up" ? c.lrs : c.hrs }, hovertext: `${e.cell ?? ""} ${e.kind} · t = ${fmtSI(e.t, "s", 4)}${isNum(e.v_d) ? ` · V_D = ${e.v_d.toFixed(3)} V` : ""}`,
+      font: { size: 9, color: e.kind === "latch_up" ? c.lrs : c.hrs }, hovertext: `${e.cell ?? ""} ${e.kind} · t = ${fmtSI(e.t, "s", 4)}${isNum(e.v_d) ? ` · V<sub>D</sub> = ${e.v_d.toFixed(3)} V` : ""}`,
     })) as Layout["annotations"];
     return { data, layout, n };
   }, [present, res, logI, showRuns, showBand, sto, ts, tu, c, t, colorOf]);
@@ -195,7 +192,7 @@ function WaveViewer({ res, entry, stale }: { res: CustomCircuitResult; entry: Re
     return () => clearInterval(id);
   }, [hasPlot]);
 
-  const plot = present.length ? { data: base.data, layout, className: base.n > 2 ? "plot tall sch-plot" : "plot sch-plot" } : undefined;
+  const plot = present.length ? { data: base.data, layout, className: `${stackClass(base.n)} sch-plot` } : undefined;
   const t0n = typeof t0 === "number" ? t0 : 0;
   const tEn = typeof tEnd === "number" ? tEnd : 0;
   const cur = cursorT ?? tEn;
@@ -444,8 +441,8 @@ function DistributionsPanel({ res, stale }: { res: CustomCircuitResult; stale: b
     const h = histogram(xs, "fd", { minBins: Math.min(40, Math.max(8, Math.ceil(Math.sqrt(n) * 1.5))), maxBins: 60 });
     const centers = h.counts.map((_, i) => (h.edges[i] + h.edges[i + 1]) / 2);
     return {
-      data: [{ x: centers, y: h.counts, type: "bar", width: h.width * 0.92, marker: { color: c.sto, line: { color: c.surface, width: 1 } }, opacity: 0.85, name: t.l(d.label), hovertemplate: `%{x:.4g} ${p}${d.unit === "1" ? "" : d.unit}: %{y}<extra></extra>` } as Data],
-      layout: { xaxis: { title: { text: `${t.l(d.label)}${d.unit && d.unit !== "1" ? ` (${p}${d.unit})` : ""}` } }, yaxis: { title: { text: "counts" } }, bargap: 0.02, showlegend: false } as Partial<Layout>,
+      data: [{ x: centers, y: h.counts, type: "bar", width: h.width * 0.92, marker: { color: c.sto, line: { color: c.surface, width: 1 } }, opacity: 0.85, name: subs(t.l(d.label)), hovertemplate: `%{x:.4g} ${d.unit === "1" ? "" : `${p}${d.unit}`}<br>n = %{y}<extra>${subs(t.l(d.label))}</extra>` } as Data],
+      layout: { xaxis: { title: { text: withUnit(subs(t.l(d.label)), d.unit && d.unit !== "1" ? `${p}${d.unit}` : "") } }, yaxis: { title: { text: t("axis.count") } }, bargap: 0.02, showlegend: false } as Partial<Layout>,
       className: "plot short",
     };
   }, [d, c, t]);
@@ -509,10 +506,10 @@ function TrajectoryPanel({ res, stale }: { res: CustomCircuitResult; stale: bool
     const cell = tr.cell ?? "X1";
     return {
       data: [{ x: num(tr.vd), y, type: "scatter", mode: "lines", line: { color: c.sto, width: 1.6 }, name: cell, hovertemplate: `V<sub>DS</sub> = %{x:.3f} V<br>|I<sub>D</sub>| = %{y:.3~s}A<extra>${cell}</extra>` } as Data],
-      layout: { xaxis: { title: { text: `V<sub>DS</sub> (V) · ${cell}` } }, yaxis: { ...currentAxis(true, "|I<sub>D</sub>| (A)"), range: logRange([y]) }, showlegend: false } as Partial<Layout>,
+      layout: { xaxis: { title: { text: t("axis.vdsCell", { cell }) } }, yaxis: { ...currentAxis(true, t("axis.idAbs")), range: logRange([y]) }, showlegend: false } as Partial<Layout>,
       className: "plot short",
     };
-  }, [tr, c]);
+  }, [tr, c, t]);
   if (!plot) return null;
   return <Panel id="sch-traj" title={t("schematic.res.traj")} desc={t("schematic.res.trajDesc")} topic="circuit-element" hasData stale={stale} csvName="schematic_trajectory" plot={plot} />;
 }

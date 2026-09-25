@@ -8,6 +8,7 @@ import type { Arr, BranchesResult, Cdf, HazardResult, SweepMCResult, VgCurveStoc
 import { Panel } from "../components/Panel";
 import { useT, type T } from "../i18n";
 import type { StrKey } from "../i18n/strings";
+import { SubText } from "../plots/SubText";
 import { currentAxis, HOVER_IV } from "../plots/theme";
 import { loadDesignMap, loadMeasured, runVgStochastic } from "../state/runner";
 import { useStore } from "../state/store";
@@ -160,22 +161,22 @@ export function McIvPanel() {
     if (x.length) traces.push({ x, y, type: "scatter", mode: "lines", name: `${t("iv.traces")} (${data.traces.length})`, line: { color: c.sto, width: 1 }, opacity: 0.38, hoverinfo: "skip", connectgaps: false });
     const hrs = data.centre.HRS.vd.length ? data.centre.HRS : br ? { vd: br.HRS.vd, id: br.HRS.id } : null;
     const lrs = data.centre.LRS.vd.length ? data.centre.LRS : br ? { vd: br.LRS.vd, id: br.LRS.id } : null;
-    if (hrs) traces.push({ x: nums(hrs.vd), y: log ? pos(hrs.id) : nums(hrs.id), type: "scatter", mode: "lines", name: `HRS · ${t("iv.centre")}`, line: { color: c.hrs, width: 2.2 }, hovertemplate: `${HOVER_IV}<extra>HRS</extra>` });
-    if (lrs) traces.push({ x: nums(lrs.vd), y: log ? pos(lrs.id) : nums(lrs.id), type: "scatter", mode: "lines", name: `LRS · ${t("iv.centre")}`, line: { color: c.lrs, width: 2.2 }, hovertemplate: `${HOVER_IV}<extra>LRS</extra>` });
+    if (hrs) traces.push({ x: nums(hrs.vd), y: log ? pos(hrs.id) : nums(hrs.id), type: "scatter", mode: "lines", name: t("axis.leg.centre", { b: "HRS" }), line: { color: c.hrs, width: 2.2 }, hovertemplate: `${HOVER_IV}<extra>HRS</extra>` });
+    if (lrs) traces.push({ x: nums(lrs.vd), y: log ? pos(lrs.id) : nums(lrs.id), type: "scatter", mode: "lines", name: t("axis.leg.centre", { b: "LRS" }), line: { color: c.lrs, width: 2.2 }, hovertemplate: `${HOVER_IV}<extra>LRS</extra>` });
     if (br?.latch) traces.push({ x: nums(br.unstable.vd), y: log ? pos(br.unstable.id) : nums(br.unstable.id), type: "scatter", mode: "lines", name: t("iv.unstable"), line: { color: c.unstable, width: 1.4, dash: "dash" }, hoverinfo: "skip" });
     // per-cycle rug in a bottom strip
     const lu = finite(data.V_LU);
     const ld = finite(data.V_LD);
     traces.push(
-      { x: lu, y: lu.map(() => 1), yaxis: "y2", type: "scatter", mode: "markers", name: `V<sub>LU</sub> ${t("iv.rug")}`, marker: { symbol: "line-ns-open", size: 14, color: c.sto, line: { width: 1.2 } }, opacity: 0.6, hovertemplate: "V<sub>LU</sub> = %{x:.3f} V<extra></extra>" },
-      { x: ld, y: ld.map(() => 0), yaxis: "y2", type: "scatter", mode: "markers", name: `V<sub>LD</sub> ${t("iv.rug")}`, marker: { symbol: "line-ns-open", size: 14, color: c.down, line: { width: 1.2 } }, opacity: 0.6, hovertemplate: "V<sub>LD</sub> = %{x:.3f} V<extra></extra>" },
+      { x: lu, y: lu.map(() => 1), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.rugLu"), marker: { symbol: "line-ns-open", size: 14, color: c.sto, line: { width: 1.2 } }, opacity: 0.6, hovertemplate: "V<sub>LU</sub> = %{x:.3f} V<extra></extra>" },
+      { x: ld, y: ld.map(() => 0), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.rugLd"), marker: { symbol: "line-ns-open", size: 14, color: c.down, line: { width: 1.2 } }, opacity: 0.6, hovertemplate: "V<sub>LD</sub> = %{x:.3f} V<extra></extra>" },
     );
     const shapes: Partial<Shape>[] = [];
     for (const [v, col] of [[data.stats.LU.mean, c.sto], [data.stats.LD.mean, c.down]] as const)
       if (isNum(v)) shapes.push({ type: "line", xref: "x", yref: "paper", x0: v, x1: v, y0: 0, y1: 1, line: { color: col, width: 1, dash: "dot" } });
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: "V<sub>D</sub> (V)" }, range: [0, params.sweep.vd_max_V + 0.15], anchor: "y2" },
-      yaxis: { ...currentAxis(log), domain: [0.16, 1], ...(log ? { range: logRange(traces.filter((tr) => (tr as { yaxis?: string }).yaxis !== "y2").map((tr) => (tr as { y?: (number | null)[] }).y)) } : {}) },
+      xaxis: { title: { text: t("axis.vd") }, range: [0, params.sweep.vd_max_V + 0.15], anchor: "y2" },
+      yaxis: { ...currentAxis(log, log ? t("axis.idAbs") : t("axis.id")), domain: [0.16, 1], ...(log ? { range: logRange(traces.filter((tr) => (tr as { yaxis?: string }).yaxis !== "y2").map((tr) => (tr as { y?: (number | null)[] }).y)) } : {}) },
       yaxis2: { domain: [0, 0.1], range: [-0.8, 1.8], showticklabels: false, showgrid: false, zeroline: false, ticks: "", showline: false, fixedrange: true },
       shapes,
       margin: { l: 64, r: 16, t: 16, b: 46 },
@@ -266,26 +267,30 @@ export function DistPanel() {
         const counts = histFromEdges(s.model, edges);
         const centers = counts.map((_, i) => (edges[i] + edges[i + 1]) / 2);
         const widths = counts.map((_, i) => edges[i + 1] - edges[i]);
-        traces.push({ x: centers, y: counts, width: widths, type: "bar", name: `${s.label} ${t("model")}`, marker: { color: s.color, line: { color: c.surface, width: 0.5 } }, opacity: 0.8, hovertemplate: `${s.label} %{x:.3f} V<br>n = %{y}<extra></extra>` });
+        const nm = t("axis.leg.model", { s: s.label });
+        traces.push({ x: centers, y: counts, width: widths, type: "bar", name: nm, marker: { color: s.color, line: { color: c.surface, width: 0.5 } }, opacity: 0.8, hovertemplate: `${s.label} = %{x:.3f} V<br>n = %{y}<extra>${nm}</extra>` });
         if (s.meas.length) {
           const mc = histFromEdges(s.meas, edges);
           const scale = s.model.length / s.meas.length;
-          traces.push({ x: centers, y: mc.map((v) => v * scale), type: "scatter", mode: "lines", line: { shape: "hvh", color: c.meas, width: 1.6 }, name: `${s.label} ${t("measured")}${Math.abs(scale - 1) > 1e-9 ? ` (×${scale.toFixed(2)})` : ""}`, hovertemplate: `${t("measured")} %{x:.3f} V<br>%{y:.1f}<extra></extra>` });
+          const mn = t("axis.leg.meas", { s: s.label });
+          traces.push({ x: centers, y: mc.map((v) => v * scale), type: "scatter", mode: "lines", line: { shape: "hvh", color: c.meas, width: 1.6 }, name: `${mn}${Math.abs(scale - 1) > 1e-9 ? ` (×${scale.toFixed(2)})` : ""}`, hovertemplate: `${s.label} = %{x:.3f} V<br>n = %{y:.1f}<extra>${mn}</extra>` });
         }
       } else {
         const cm = modelCdf(data.cdf?.[s.k], s.raw);
-        traces.push({ x: cm.v, y: cm.p, type: "scatter", mode: "lines", line: { shape: "hv", color: s.color, width: 2 }, name: `${s.label} ${t("model")}`, hovertemplate: `%{x:.3f} V<br>P = %{y:.3f}<extra></extra>` });
+        const nm = t("axis.leg.model", { s: s.label });
+        traces.push({ x: cm.v, y: cm.p, type: "scatter", mode: "lines", line: { shape: "hv", color: s.color, width: 2 }, name: nm, hovertemplate: `${s.label} = %{x:.3f} V<br>P = %{y:.3f}<extra>${nm}</extra>` });
         if (s.meas.length) {
           const mm = ecdf(s.meas);
-          traces.push({ x: mm.v, y: mm.p, type: "scatter", mode: "lines", line: { shape: "hv", color: c.meas, width: 1.6, dash: "dot" }, name: `${s.label} ${t("measured")}`, hovertemplate: `%{x:.3f} V<br>P = %{y:.3f}<extra></extra>` });
+          const mn = t("axis.leg.meas", { s: s.label });
+          traces.push({ x: mm.v, y: mm.p, type: "scatter", mode: "lines", line: { shape: "hv", color: c.meas, width: 1.6, dash: "dot" }, name: mn, hovertemplate: `${s.label} = %{x:.3f} V<br>P = %{y:.3f}<extra>${mn}</extra>` });
         }
       }
     }
     const layout: Partial<Layout> = {
       barmode: "overlay",
       bargap: 0,
-      xaxis: { title: { text: "V (V)" } },
-      yaxis: view === "hist" ? { title: { text: "counts" }, rangemode: "tozero" } : { title: { text: "P(V ≤ x)" }, range: [0, 1.02] },
+      xaxis: { title: { text: which === "LU" ? t("axis.vlu") : which === "LD" ? t("axis.vld") : t("axis.vSwitch") } },
+      yaxis: view === "hist" ? { title: { text: t("axis.count") }, rangemode: "tozero" } : { title: { text: t("axis.cdf") }, range: [0, 1.02] },
       margin: { l: 56, r: 16, t: 40, b: 46 },
     };
     return { data: traces, layout };
@@ -369,8 +374,8 @@ export function HazardPanel() {
     if (!data) return undefined;
     const v = nums(data.voltage);
     const traces: Data[] = [
-      { x: v, y: pos(data.hazard), type: "scatter", mode: "lines", name: "h(V<sub>D</sub>)", line: { color: c.sto, width: 2.2 }, hovertemplate: "V<sub>D</sub> = %{x:.4f} V<br>h = %{y:.3~s}/s<extra></extra>" },
-      { x: v, y: nums(data.survival), type: "scatter", mode: "lines", name: "S(V<sub>D</sub>)", yaxis: "y2", line: { color: c.det, width: 2.2 }, hovertemplate: "V<sub>D</sub> = %{x:.4f} V<br>S = %{y:.4f}<extra></extra>" },
+      { x: v, y: pos(data.hazard), type: "scatter", mode: "lines", name: t("axis.leg.h"), line: { color: c.sto, width: 2.2 }, hovertemplate: "V<sub>D</sub> = %{x:.4f} V<br>h = %{y:.3g} 1/s<extra></extra>" },
+      { x: v, y: nums(data.survival), type: "scatter", mode: "lines", name: t("axis.leg.S"), yaxis: "y2", line: { color: c.det, width: 2.2 }, hovertemplate: "V<sub>D</sub> = %{x:.4f} V<br>S = %{y:.4f}<extra></extra>" },
     ];
     const shapes: Partial<Shape>[] = [];
     const ann: NonNullable<Partial<Layout>["annotations"]> = [];
@@ -383,16 +388,19 @@ export function HazardPanel() {
       shapes.push({ type: "line", xref: "x", yref: "y2", x0: st.mean, x1: st.mean, y0: 0, y1: 1, line: { color: c.sto, width: 1, dash: "dot" } });
       ann.push({ x: st.mean, y: 0.5, xref: "x", yref: "y2", text: `⟨V<sub>LU</sub>⟩ = ${st.mean.toFixed(3)} V<br>σ = ${isNum(st.sd) ? (st.sd * 1e3).toFixed(1) : "—"} mV`, showarrow: false, xanchor: "right", xshift: -6, align: "right", font: { size: 11, color: c.text2 } });
     }
+    // sweep rate: bottom-left of the survival strip (S = 1 there, below the fold)
+    if (isNum(data.rate_V_per_s))
+      ann.push({ x: 0.01, y: 0.04, xref: "paper", yref: "y2", xanchor: "left", yanchor: "bottom", text: t("axis.ann.rate", { r: data.rate_V_per_s }), showarrow: false, font: { size: 11, color: c.muted } });
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: `V<sub>D</sub> (V) — ${data.rate_V_per_s} V/s` }, anchor: "y2" },
-      yaxis: { type: "log", title: { text: "h (1/s)" }, domain: [0.46, 1], exponentformat: "power", range: logRange([pos(data.hazard)], 0, 10) },
-      yaxis2: { domain: [0, 0.38], title: { text: "S" }, range: [-0.03, 1.05] },
+      xaxis: { title: { text: t("axis.vd") }, anchor: "y2" },
+      yaxis: { type: "log", title: { text: t("axis.s.h") }, domain: [0.46, 1], exponentformat: "power", range: logRange([pos(data.hazard)], 0, 10) },
+      yaxis2: { domain: [0, 0.38], title: { text: t("axis.s.S") }, range: [-0.03, 1.05] },
       shapes,
       annotations: ann,
       margin: { l: 58, r: 16, t: 40, b: 46 },
     };
     return { data: traces, layout, className: "plot tall" };
-  }, [data, c]);
+  }, [data, c, t]);
   return (
     <Panel id="hazard" title={t("p.hazard")} desc={t("p.hazard.desc")} topic="first-passage" entry={entry} hasData={!!data} currentKey={key} csvName="hazard" plot={plot} warnings={data?.warnings} />
   );
@@ -417,36 +425,36 @@ export function VgStochPanel() {
     const traces: Data[] = [
       { x: vg, y: lo, type: "scatter", mode: "lines", line: { width: 0 }, hoverinfo: "skip", showlegend: false },
       { x: vg, y: up, type: "scatter", mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: c.stoSoft, name: "± σ", hoverinfo: "skip" },
-      { x: vg, y: mean, type: "scatter", mode: "lines+markers", name: t("vgs.mean"), line: { color: c.sto, width: 2.2 }, marker: { size: 6 }, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra></extra>" },
-      { x: vg, y: nums(data.fold_centre_V), type: "scatter", mode: "lines", name: t("vgs.fold"), line: { color: c.hrs, width: 1.4, dash: "dash" }, hovertemplate: "fold %{y:.3f} V<extra></extra>" },
-      { x: vg, y: nums(data.VLD_fold_V), type: "scatter", mode: "lines", name: "V<sub>LD</sub> fold", line: { color: c.lrs, width: 1.4, dash: "dot" }, hovertemplate: "V<sub>LD</sub> %{y:.3f} V<extra></extra>" },
-      { x: vg, y: nums(data.sd_VLU_mV), type: "scatter", mode: "lines+markers", name: t("vgs.sd"), yaxis: "y2", line: { color: c.sto, width: 2 }, marker: { size: 5 }, hovertemplate: "σ<sub>LU</sub> = %{y:.1f} mV<extra></extra>" },
-      { x: vg, y: nums(data.state_sd_mV), type: "scatter", mode: "lines", name: t("vgs.state"), yaxis: "y2", line: { color: c.categorical[1], width: 1.5, dash: "dash" }, hovertemplate: "state %{y:.1f} mV<extra></extra>" },
-      { x: vg, y: nums(data.noise_sd_mV), type: "scatter", mode: "lines", name: t("vgs.noise"), yaxis: "y2", line: { color: c.categorical[2], width: 1.5, dash: "dot" }, hovertemplate: "noise %{y:.1f} mV<extra></extra>" },
+      { x: vg, y: mean, type: "scatter", mode: "lines+markers", name: t("axis.leg.vluMean"), line: { color: c.sto, width: 2.2 }, marker: { size: 6 }, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra></extra>" },
+      { x: vg, y: nums(data.fold_centre_V), type: "scatter", mode: "lines", name: t("vgs.fold"), line: { color: c.hrs, width: 1.4, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>V<sub>LU</sub> = %{y:.3f} V<extra>${t("vgs.fold")}</extra>` },
+      { x: vg, y: nums(data.VLD_fold_V), type: "scatter", mode: "lines", name: t("axis.leg.vldFold"), line: { color: c.lrs, width: 1.4, dash: "dot" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>V<sub>LD</sub> = %{y:.3f} V<extra>${t("axis.leg.vldFold")}</extra>` },
+      { x: vg, y: nums(data.sd_VLU_mV), type: "scatter", mode: "lines+markers", name: t("axis.leg.sdTotal"), yaxis: "y2", line: { color: c.sto, width: 2 }, marker: { size: 5 }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("axis.leg.sdTotal")}</extra>` },
+      { x: vg, y: nums(data.state_sd_mV), type: "scatter", mode: "lines", name: t("vgs.state"), yaxis: "y2", line: { color: c.categorical[1], width: 1.5, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.state")}</extra>` },
+      { x: vg, y: nums(data.noise_sd_mV), type: "scatter", mode: "lines", name: t("vgs.noise"), yaxis: "y2", line: { color: c.categorical[2], width: 1.5, dash: "dot" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.noise")}</extra>` },
     ];
     if (data.measured?.length) {
       traces.push(
-        { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.mean_V), error_y: { type: "data", array: data.measured.map((m) => m.sd_mV / 1e3), visible: true, color: c.meas, thickness: 1.2, width: 4 }, type: "scatter", mode: "markers", name: t("measured"), marker: { color: c.meas, size: 8, symbol: "square" }, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>%{y:.3f} V<extra>measured</extra>" },
-        { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.sd_mV), yaxis: "y2", type: "scatter", mode: "markers", name: `σ ${t("measured")}`, marker: { color: c.meas, size: 8, symbol: "square-open" }, hovertemplate: "σ = %{y:.1f} mV<extra>measured</extra>" },
+        { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.mean_V), error_y: { type: "data", array: data.measured.map((m) => m.sd_mV / 1e3), visible: true, color: c.meas, thickness: 1.2, width: 4 }, type: "scatter", mode: "markers", name: t("axis.leg.meanMeas"), marker: { color: c.meas, size: 8, symbol: "square" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("measured")}</extra>` },
+        { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.sd_mV), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.sdMeas"), marker: { color: c.meas, size: 8, symbol: "square-open" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("measured")}</extra>` },
       );
     }
     // censoring at the sweep maximum (engines fix): stacked bars on a right-hand % axis of the σ strip
     const cens = censoredShares(data);
     if (cens) {
       traces.push(
-        { x: vg, y: cens.noLatch.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("stats.vgs.noLatch"), marker: { color: c.unstable }, opacity: 0.35, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>${t("stats.vgs.noLatch")}: %{y:.1f} %<extra></extra>` },
-        { x: vg, y: cens.beyond.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("stats.vgs.beyond", { v: cens.vdMax }), marker: { color: c.warn }, opacity: 0.35, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>${t("stats.vgs.beyond", { v: cens.vdMax })}: %{y:.1f} %<extra></extra>` },
+        { x: vg, y: cens.noLatch.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("axis.leg.noLatch"), marker: { color: c.unstable }, opacity: 0.35, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>%{y:.1f} %<extra>${t("axis.leg.noLatch")}</extra>` },
+        { x: vg, y: cens.beyond.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("axis.leg.beyond", { v: cens.vdMax }), marker: { color: c.warn }, opacity: 0.35, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>%{y:.1f} %<extra>${t("axis.leg.beyond", { v: cens.vdMax })}</extra>` },
       );
     }
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: "V<sub>G</sub> (V)" }, anchor: "y2" },
-      yaxis: { title: { text: "V<sub>LU</sub> (V)" }, domain: [0.45, 1] },
-      yaxis2: { title: { text: "σ (mV)" }, domain: [0, 0.37], rangemode: "tozero" },
+      xaxis: { title: { text: t("axis.vg") }, anchor: "y2" },
+      yaxis: { title: { text: t("axis.s.vluMean") }, domain: [0.45, 1] },
+      yaxis2: { title: { text: t("axis.s.sigmaLu") }, domain: [0, 0.37], rangemode: "tozero" },
       margin: { l: 58, r: cens ? 50 : 16, t: 58, b: 46 },
-      legend: { font: { size: 10.5 } },
+      legend: { font: { size: 10.5 }, traceorder: "normal" },
     };
     if (cens) {
-      layout.yaxis3 = { title: { text: t("stats.vgs.axis"), font: { size: 11 } }, overlaying: "y2", side: "right", range: [0, 100], showgrid: false, zeroline: false, ticksuffix: "", fixedrange: true };
+      layout.yaxis3 = { title: { text: t("axis.s.censored"), font: { size: 11 } }, overlaying: "y2", side: "right", range: [0, 100], showgrid: false, zeroline: false, ticksuffix: "", fixedrange: true };
       layout.barmode = "stack";
       layout.bargap = 0.35;
     }
@@ -521,19 +529,19 @@ export function CyclePanel() {
     const unit = ax?.unit ?? "V";
     const toDisp = (v: number | null) => (v == null ? null : unit === "V" ? v * 1e3 : v);
     const traces: Data[] = [
-      { x: idx, y: nums(data.V_LU), type: "scatter", mode: "lines+markers", name: "V<sub>LU</sub>", line: { color: c.sto, width: 1 }, marker: { size: 4 }, hovertemplate: "cycle %{x}<br>V<sub>LU</sub> = %{y:.3f} V<extra></extra>" },
-      { x: idx, y: nums(data.V_LD), type: "scatter", mode: "lines+markers", name: "V<sub>LD</sub>", line: { color: c.down, width: 1 }, marker: { size: 4 }, hovertemplate: "cycle %{x}<br>V<sub>LD</sub> = %{y:.3f} V<extra></extra>" },
+      { x: idx, y: nums(data.V_LU), type: "scatter", mode: "lines+markers", name: "V<sub>LU</sub>", line: { color: c.sto, width: 1 }, marker: { size: 4 }, hovertemplate: `${t("axis.h.cycle")}<br>V<sub>LU</sub> = %{y:.3f} V<extra></extra>` },
+      { x: idx, y: nums(data.V_LD), type: "scatter", mode: "lines+markers", name: "V<sub>LD</sub>", line: { color: c.down, width: 1 }, marker: { size: 4 }, hovertemplate: `${t("axis.h.cycle")}<br>V<sub>LD</sub> = %{y:.3f} V<extra></extra>` },
     ];
     const cs = nums(data.cycle_state);
     const hasState = cs.some((v) => v != null && v !== 0);
     if (hasState)
-      traces.push({ x: idx, y: cs.map(toDisp), yaxis: "y2", type: "scatter", mode: "lines", name: t("cyc.state"), line: { color: c.categorical[2], width: 1.4 }, hovertemplate: `cycle %{x}<br>δ = %{y:.3g} ${unit === "V" ? "mV" : unit}<extra></extra>` });
+      traces.push({ x: idx, y: cs.map(toDisp), yaxis: "y2", type: "scatter", mode: "lines", name: t("cyc.state"), line: { color: c.categorical[2], width: 1.4 }, hovertemplate: `${t("axis.h.cycle")}<br>δ = %{y:.3g} ${unit === "V" ? "mV" : unit}<extra>${t("cyc.state")}</extra>` });
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: "cycle" }, anchor: hasState ? "y2" : "y" },
-      yaxis: { title: { text: "V (V)" }, domain: hasState ? [0.42, 1] : [0, 1] },
+      xaxis: { title: { text: t("axis.cycle") }, anchor: hasState ? "y2" : "y" },
+      yaxis: { title: { text: hasState ? t("axis.s.vSwitch") : t("axis.vSwitch") }, domain: hasState ? [0.42, 1] : [0, 1] },
       margin: { l: 58, r: 16, t: 40, b: 46 },
     };
-    if (hasState) layout.yaxis2 = { domain: [0, 0.32], title: { text: `δ (${unit === "V" ? "mV" : unit})` }, zeroline: true };
+    if (hasState) layout.yaxis2 = { domain: [0, 0.32], title: { text: t("axis.s.delta", { u: unit === "V" ? "mV" : unit }) }, zeroline: true };
     return { data: traces, layout };
   }, [data, c, t]);
   const ax = data?.state_axis;
@@ -551,6 +559,36 @@ export function CyclePanel() {
 // ---------------------------------------------------------------- (f) design map
 const DMAP_FIELDS = ["sigma_VLU_mV", "sigma_phi_mV", "latched_fraction", "sigma_VLU_sweep5p2V_mV", "expected_trap_count"] as const;
 const DMAP_UNIT: Record<string, string> = { sigma_VLU_mV: "mV", sigma_phi_mV: "mV", latched_fraction: "", sigma_VLU_sweep5p2V_mV: "mV", expected_trap_count: "" };
+/** Hover symbol of each design-map quantity (the colorbar title names it). */
+const DMAP_SYM: Record<string, string> = { sigma_VLU_mV: "σ<sub>LU</sub>", sigma_phi_mV: "σ<sub>φ</sub>", latched_fraction: "f<sub>latch</sub>", sigma_VLU_sweep5p2V_mV: "σ<sub>LU</sub>", expected_trap_count: "⟨N⟩" };
+
+/** 1e12 → "10<sup>12</sup>", 3e11 → "3×10<sup>11</sup>" (Plotly HTML). */
+function pow10(v: number): string {
+  const [m, e] = v.toExponential(0).split("e");
+  const ex = String(Number(e)).replace("-", "−");
+  return m === "1" ? `10<sup>${ex}</sup>` : `${m}×10<sup>${ex}</sup>`;
+}
+
+/** Colorbar ticks for a log₁₀ colour scale, labelled with the values themselves (1, 2, 5, 10 …). */
+function logColorTicks(values: number[]): { tickvals: number[]; ticktext: string[] } {
+  const pos = values.filter((v) => v > 0 && Number.isFinite(v));
+  if (!pos.length) return { tickvals: [], ticktext: [] };
+  const lo = Math.log10(Math.min(...pos));
+  const hi = Math.log10(Math.max(...pos));
+  const span = hi - lo;
+  const mant = span >= 3 ? [1] : span >= 1 ? [1, 2, 5] : [1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9];
+  const tickvals: number[] = [];
+  const ticktext: string[] = [];
+  for (let d = Math.floor(lo); d <= Math.ceil(hi); d++)
+    for (const m of mant) {
+      const v = m * 10 ** d;
+      const lv = Math.log10(v);
+      if (lv < lo - 1e-9 || lv > hi + 1e-9) continue;
+      tickvals.push(lv);
+      ticktext.push(String(Number(v.toPrecision(2))));
+    }
+  return { tickvals, ticktext };
+}
 
 export function DesignMapPanel() {
   const t = useT();
@@ -565,14 +603,19 @@ export function DesignMapPanel() {
   const d = dm.data;
   const plot = useMemo(() => {
     if (!d || !d.fields[field]) return undefined;
-    const z = d.fields[field].map((row) => row.map((v) => (v == null || !Number.isFinite(v) ? null : logc ? (v > 0 ? Math.log10(v) : null) : v)));
+    const raw = d.fields[field];
+    const z = raw.map((row) => row.map((v) => (v == null || !Number.isFinite(v) ? null : logc ? (v > 0 ? Math.log10(v) : null) : v)));
     const unit = DMAP_UNIT[field] ?? "";
+    const sym = DMAP_SYM[field] ?? "";
+    // hover shows the value itself (also with the log colour scale); the colorbar ticks too
+    const text = raw.map((row) => row.map((v) => (v == null || !Number.isFinite(v) ? "—" : String(Number(v.toPrecision(3))))));
+    const ticks = logc ? logColorTicks(raw.flat().filter((v): v is number => typeof v === "number")) : null;
     const traces: Data[] = [
       {
-        type: "heatmap", x: d.length_nm, y: d.depth_fraction, z: z as never, colorscale: c.sequential.map((col, i, a) => [i / (a.length - 1), col]) as never,
+        type: "heatmap", x: d.length_nm, y: d.depth_fraction, z: z as never, text: text as never, colorscale: c.sequential.map((col, i, a) => [i / (a.length - 1), col]) as never,
         reversescale: field === "latched_fraction",
-        colorbar: { title: { text: `${logc ? "log₁₀ " : ""}${t(`dmap.${field}` as StrKey)}${unit ? ` (${unit})` : ""}`, side: "right", font: { size: 11 } }, thickness: 12, outlinewidth: 0, tickfont: { size: 10.5, color: c.muted } } as never,
-        hovertemplate: `L = %{x:.1f} nm<br>depth = %{y:.2f}<br>${logc ? "log₁₀ " : ""}%{z:.3g}<extra></extra>`,
+        colorbar: { title: { text: t(`axis.dmap.${field}` as StrKey), side: "right", font: { size: 11 } }, thickness: 12, outlinewidth: 0, tickfont: { size: 10.5, color: c.muted }, ...(ticks ? { tickmode: "array", tickvals: ticks.tickvals, ticktext: ticks.ticktext } : {}) } as never,
+        hovertemplate: `L = %{x:.1f} nm<br>d = %{y:.2f}<br>${sym} = %{text}${unit ? ` ${unit}` : ""}<extra></extra>`,
         zsmooth: "best",
       } as Data,
     ];
@@ -580,7 +623,7 @@ export function DesignMapPanel() {
       traces.push({
         type: "contour", x: d.length_nm, y: d.depth_fraction, z: z as never, showscale: false, hoverinfo: "skip",
         contours: { coloring: "none", start: logc ? Math.log10(d.scalars.device_sigma_phi_mV) : d.scalars.device_sigma_phi_mV, end: logc ? Math.log10(d.scalars.device_sigma_phi_mV) : d.scalars.device_sigma_phi_mV, size: 1, showlabels: false },
-        line: { color: c.lrs, width: 2 }, name: `σ_φ = ${d.scalars.device_sigma_phi_mV.toFixed(1)} mV (device)`, showlegend: true,
+        line: { color: c.lrs, width: 2 }, name: t("axis.leg.deviceSigmaPhi", { v: d.scalars.device_sigma_phi_mV.toFixed(1) }), showlegend: true,
       } as Data);
     }
     const shapes: Partial<Shape>[] = [];
@@ -590,14 +633,14 @@ export function DesignMapPanel() {
         const L0 = d.lines!.L0_device[i];
         if (!isNum(L0)) return;
         shapes.push({ type: "line", xref: "x", yref: "paper", x0: L0, x1: L0, y0: 0, y1: 1, line: { color: c.lrs, width: 1.2, dash: "dash" } });
-        ann.push({ x: Math.log10(L0), y: 1, xref: "x", yref: "paper", yanchor: "bottom", text: `N<sub>t</sub>=${nt.toExponential(0).replace("e+", "e")}`, showarrow: false, font: { size: 10, color: c.lrs }, textangle: "-30" as never });
+        ann.push({ x: Math.log10(L0), y: 1, xref: "x", yref: "paper", yanchor: "bottom", text: pow10(nt), showarrow: false, font: { size: 10, color: c.lrs }, textangle: "-45" as never, xanchor: "left", xshift: -3 });
         const L50 = d.lines!.L0_50[i];
         if (isNum(L50)) shapes.push({ type: "line", xref: "x", yref: "paper", x0: L50, x1: L50, y0: 0, y1: 1, line: { color: c.text2, width: 1, dash: "dot" } });
       });
     }
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: "local-region size L (nm)" }, type: "log" },
-      yaxis: { title: { text: "depth fraction" } },
+      xaxis: { title: { text: t("axis.dmap.L") }, type: "log" },
+      yaxis: { title: { text: t("axis.dmap.d") } },
       shapes,
       annotations: ann,
       margin: { l: 58, r: 16, t: 52, b: 46 },
@@ -632,7 +675,8 @@ export function DesignMapPanel() {
       {d?.lines && lines && (
         <div className="panel-foot small muted">
           <span>
-            <span style={{ color: "var(--lrs)", fontWeight: 700 }}>╌╌</span> L₀ (σ_φ = device {isNum(d.scalars.device_sigma_phi_mV) ? d.scalars.device_sigma_phi_mV.toFixed(0) : "?"} mV) · <span style={{ fontWeight: 700 }}>┈┈</span> L₀ ({isNum(d.scalars.phi_50mV) ? d.scalars.phi_50mV.toFixed(1) : "?"} mV) — N<sub>t</sub> {t("dmap.lines")}
+            <span style={{ color: "var(--lrs)", fontWeight: 700 }}>╌╌</span> <SubText text={t("axis.dmap.footDevice", { v: isNum(d.scalars.device_sigma_phi_mV) ? d.scalars.device_sigma_phi_mV.toFixed(1) : "?" })} /> · <span style={{ fontWeight: 700 }}>┈┈</span>{" "}
+            <SubText text={t("axis.dmap.foot50", { v: isNum(d.scalars.phi_50mV) ? d.scalars.phi_50mV.toFixed(1) : "?" })} /> — <SubText text={t("axis.dmap.footNt")} />
           </span>
         </div>
       )}

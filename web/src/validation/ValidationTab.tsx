@@ -6,6 +6,7 @@ import type { BranchesResult, SweepMCResult, ValidationResult, VgCurveStochastic
 import { Panel, Progress } from "../components/Panel";
 import { IconPlay, IconStop } from "../components/icons";
 import { useT } from "../i18n";
+import { signed } from "../plots/labels";
 import { currentAxis, HOVER_IV } from "../plots/theme";
 import { cancelActive, cancelKey, loadMeasured, runValidation, runValidationIV, runValidationPhoto, runValidationVg } from "../state/runner";
 import { useStore } from "../state/store";
@@ -70,11 +71,11 @@ function PaperIvFigure() {
     if (!data) return undefined;
     const traces: Data[] = [...measuredIvTraces(t, c, measured.data, "paper", 0)];
     traces.push(
-      { x: nums(data.double_sweep.up.vd), y: pos(data.double_sweep.up.id), type: "scatter", mode: "lines", name: `${t("model")} ${t("iv.up")}`, line: { color: c.up, width: 2 }, hovertemplate: `${HOVER_IV}<extra>${t("model")} ↑</extra>` },
-      { x: nums(data.double_sweep.down.vd), y: pos(data.double_sweep.down.id), type: "scatter", mode: "lines", name: `${t("model")} ${t("iv.down")}`, line: { color: c.down, width: 2 }, hovertemplate: `${HOVER_IV}<extra>${t("model")} ↓</extra>` },
+      { x: nums(data.double_sweep.up.vd), y: pos(data.double_sweep.up.id), type: "scatter", mode: "lines", name: t("axis.leg.modelUp"), line: { color: c.up, width: 2 }, hovertemplate: `${HOVER_IV}<extra>${t("model")} ↑</extra>` },
+      { x: nums(data.double_sweep.down.vd), y: pos(data.double_sweep.down.id), type: "scatter", mode: "lines", name: t("axis.leg.modelDown"), line: { color: c.down, width: 2 }, hovertemplate: `${HOVER_IV}<extra>${t("model")} ↓</extra>` },
       { x: nums(data.unstable.vd), y: pos(data.unstable.id), type: "scatter", mode: "lines", name: t("iv.unstable"), line: { color: c.unstable, width: 1.2, dash: "dash" }, hoverinfo: "skip" },
     );
-    return { data: traces, layout: { xaxis: { title: { text: "V<sub>D</sub> (V)" }, range: [0, 4.1] }, yaxis: { ...currentAxis(true), range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) }, legend: insideLegend(c, "tl") } as Partial<Layout> };
+    return { data: traces, layout: { xaxis: { title: { text: t("axis.vd") }, range: [0, 4.1] }, yaxis: { ...currentAxis(true, t("axis.idAbs")), range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) }, legend: insideLegend(c, "tl") } as Partial<Layout> };
   }, [data, measured.data, c, t]);
   return <Panel id="val-iv" title={t("v.fig.iv")} desc={t("v.fig.iv.desc")} topic="validation" entry={entry} hasData={!!data} csvName="validation_reference_iv" plot={plot} error={measured.status === "error" ? measured.error : null} />;
 }
@@ -101,8 +102,8 @@ function PhotoFigure() {
       const col = gi === 0 ? c.sto : c.categorical[1];
       const mm = m.filter((x) => Math.abs(x.vg - vg) < 1e-6).sort((a, b) => a.power_mW - b.power_mW);
       traces.push(
-        { x: mm.map((x) => x.power_mW), y: mm.map((x) => x.mean_V), type: "scatter", mode: "markers", name: `${t("measured")} V<sub>G</sub>=${vg} V`, marker: { color: c.meas, size: 9, symbol: gi === 0 ? "square" : "diamond" }, hovertemplate: `P = %{x:.2f} mW<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("measured")}</extra>` },
-        { x: mm.map((x) => x.power_mW), y: mm.map((x) => x.sd_mV), yaxis: "y2", type: "scatter", mode: "markers", showlegend: false, marker: { color: c.meas, size: 9, symbol: gi === 0 ? "square-open" : "diamond-open" }, hovertemplate: `σ = %{y:.1f} mV<extra>${t("measured")}</extra>` },
+        { x: mm.map((x) => x.power_mW), y: mm.map((x) => x.mean_V), type: "scatter", mode: "markers", name: t("axis.leg.measVg", { vg: signed(vg, 1) }), marker: { color: c.meas, size: 9, symbol: gi === 0 ? "square" : "diamond" }, hovertemplate: `P = %{x:.2f} mW<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("measured")}</extra>` },
+        { x: mm.map((x) => x.power_mW), y: mm.map((x) => x.sd_mV), yaxis: "y2", type: "scatter", mode: "markers", showlegend: false, marker: { color: c.meas, size: 9, symbol: gi === 0 ? "square-open" : "diamond-open" }, hovertemplate: `P = %{x:.2f} mW<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("measured")}</extra>` },
       );
       const model = conds
         .map((cd, k) => ({ cd, r: results[`val_photo_${k}`]?.data as SweepMCResult | undefined }))
@@ -110,15 +111,15 @@ function PhotoFigure() {
         .sort((a, b) => a.cd.power_mW - b.cd.power_mW);
       if (model.length) {
         traces.push(
-          { x: model.map((x) => x.cd.power_mW), y: model.map((x) => x.r!.stats.LU.mean), type: "scatter", mode: "lines+markers", name: `${t("model")} V<sub>G</sub>=${vg} V`, line: { color: col, width: 2 }, marker: { size: 7 }, hovertemplate: `P = %{x:.2f} mW<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("model")}</extra>` },
-          { x: model.map((x) => x.cd.power_mW), y: model.map((x) => (x.r!.stats.LU.sd ?? NaN) * 1e3), yaxis: "y2", type: "scatter", mode: "lines+markers", showlegend: false, line: { color: col, width: 2, dash: "dash" }, marker: { size: 7 }, hovertemplate: `σ = %{y:.1f} mV<extra>${t("model")}</extra>` },
+          { x: model.map((x) => x.cd.power_mW), y: model.map((x) => x.r!.stats.LU.mean), type: "scatter", mode: "lines+markers", name: t("axis.leg.modelVg", { vg: signed(vg, 1) }), line: { color: col, width: 2 }, marker: { size: 7 }, hovertemplate: `P = %{x:.2f} mW<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("model")}</extra>` },
+          { x: model.map((x) => x.cd.power_mW), y: model.map((x) => (x.r!.stats.LU.sd ?? NaN) * 1e3), yaxis: "y2", type: "scatter", mode: "lines+markers", showlegend: false, line: { color: col, width: 2, dash: "dash" }, marker: { size: 7 }, hovertemplate: `P = %{x:.2f} mW<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("model")}</extra>` },
         );
       }
     });
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: t("v.power") }, anchor: "y2" },
-      yaxis: { title: { text: "⟨V<sub>LU</sub>⟩ (V)" }, domain: [0.5, 1] },
-      yaxis2: { title: { text: "σ<sub>LU</sub> (mV)" }, domain: [0, 0.42], rangemode: "tozero" },
+      xaxis: { title: { text: t("axis.power") }, anchor: "y2" },
+      yaxis: { title: { text: t("axis.s.vluMean") }, domain: [0.5, 1] },
+      yaxis2: { title: { text: t("axis.s.sigmaLu") }, domain: [0, 0.42], rangemode: "tozero" },
       margin: { l: 58, r: 16, t: 46, b: 46 },
     };
     return { data: traces, layout, className: "plot tall" };
@@ -160,20 +161,20 @@ function VgFigure() {
     if (!data) return undefined;
     const vg = nums(data.vg);
     const traces: Data[] = [
-      { x: vg, y: nums(data.mean_VLU), type: "scatter", mode: "lines+markers", name: t("vgs.mean"), line: { color: c.sto, width: 2 }, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>%{y:.3f} V<extra></extra>" },
-      { x: vg, y: nums(data.fold_centre_V), type: "scatter", mode: "lines", name: t("vgs.fold"), line: { color: c.hrs, width: 1.3, dash: "dash" } },
-      { x: vg, y: nums(data.sd_VLU_mV), yaxis: "y2", type: "scatter", mode: "lines+markers", name: t("vgs.sd"), line: { color: c.sto, width: 2 }, hovertemplate: "σ = %{y:.1f} mV<extra></extra>" },
-      { x: vg, y: nums(data.state_sd_mV), yaxis: "y2", type: "scatter", mode: "lines", name: t("vgs.state"), line: { color: c.categorical[1], width: 1.4, dash: "dash" } },
-      { x: vg, y: nums(data.noise_sd_mV), yaxis: "y2", type: "scatter", mode: "lines", name: t("vgs.noise"), line: { color: c.categorical[2], width: 1.4, dash: "dot" } },
-      { x: [-1.1], y: [4.354], type: "scatter", mode: "markers", name: t("brand.v.refMeanPeak"), marker: { color: c.meas, symbol: "star", size: 11 } },
-      { x: [-1.25], y: [129.8], yaxis: "y2", type: "scatter", mode: "markers", name: t("brand.v.refSdPeak"), marker: { color: c.meas, symbol: "star-open", size: 11 } },
+      { x: vg, y: nums(data.mean_VLU), type: "scatter", mode: "lines+markers", name: t("axis.leg.vluMean"), line: { color: c.sto, width: 2 }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("axis.leg.vluMean")}</extra>` },
+      { x: vg, y: nums(data.fold_centre_V), type: "scatter", mode: "lines", name: t("vgs.fold"), line: { color: c.hrs, width: 1.3, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>V<sub>LU</sub> = %{y:.3f} V<extra>${t("vgs.fold")}</extra>` },
+      { x: vg, y: nums(data.sd_VLU_mV), yaxis: "y2", type: "scatter", mode: "lines+markers", name: t("axis.leg.sdTotal"), line: { color: c.sto, width: 2 }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("axis.leg.sdTotal")}</extra>` },
+      { x: vg, y: nums(data.state_sd_mV), yaxis: "y2", type: "scatter", mode: "lines", name: t("vgs.state"), line: { color: c.categorical[1], width: 1.4, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.state")}</extra>` },
+      { x: vg, y: nums(data.noise_sd_mV), yaxis: "y2", type: "scatter", mode: "lines", name: t("vgs.noise"), line: { color: c.categorical[2], width: 1.4, dash: "dot" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.noise")}</extra>` },
+      { x: [-1.1], y: [4.354], type: "scatter", mode: "markers", name: t("brand.v.refMeanPeak"), marker: { color: c.meas, symbol: "star", size: 11 }, hovertemplate: `${t("brand.v.refMeanPeak")}<extra></extra>` },
+      { x: [-1.25], y: [129.8], yaxis: "y2", type: "scatter", mode: "markers", name: t("brand.v.refSdPeak"), marker: { color: c.meas, symbol: "star-open", size: 11 }, hovertemplate: `${t("brand.v.refSdPeak")}<extra></extra>` },
     ];
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: "V<sub>G</sub> (V)" }, anchor: "y2" },
-      yaxis: { title: { text: "⟨V<sub>LU</sub>⟩ (V)" }, domain: [0.5, 1] },
-      yaxis2: { title: { text: "σ<sub>LU</sub> (mV)" }, domain: [0, 0.42], rangemode: "tozero" },
+      xaxis: { title: { text: t("axis.vg") }, anchor: "y2" },
+      yaxis: { title: { text: t("axis.s.vluMean") }, domain: [0.5, 1] },
+      yaxis2: { title: { text: t("axis.s.sigmaLu") }, domain: [0, 0.42], rangemode: "tozero" },
       margin: { l: 58, r: 16, t: 58, b: 46 },
-      legend: { font: { size: 10.5 } },
+      legend: { font: { size: 10.5 }, traceorder: "normal" },
     };
     return { data: traces, layout, className: "plot tall" };
   }, [data, c, t]);

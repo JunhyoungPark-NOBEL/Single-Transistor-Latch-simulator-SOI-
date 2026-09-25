@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { useStore } from "../state/store";
 import { IconX } from "./icons";
-import { Logo } from "./Logo";
+import { BiristorGlyph, Logo } from "./Logo";
 
 function Sub({ text }: { text: string }) {
   // "L_g 500 nm · T_Si 50 nm" → subscripts for the X_y tokens
@@ -105,6 +105,8 @@ function About({ anchor, onClose }: { anchor: HTMLElement | null; onClose: (refo
       <p className="about-body">{t("brand.about.body")}</p>
       <div className="about-device">
         <div className="about-device-head">
+          {/* the device's equivalent symbol (floating-base NPN), small and monochrome in the brand colour */}
+          <BiristorGlyph size={20} title={t("brand.about.glyph")} className="about-glyph" style={{ color: "var(--logo-b)", flex: "none" }} />
           <span className="tech-chip">{t("brand.tech")}</span>
           <span className="about-device-geom">
             <Sub text={t("brand.about.device.value").replace(/^FDSOI · /, "")} />
