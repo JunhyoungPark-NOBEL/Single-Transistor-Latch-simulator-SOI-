@@ -26,3 +26,9 @@ export const IconAlert = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><pa
 export const IconGrip = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M21 15 15 21M21 9 9 21" /></svg>);
 export const IconSpark = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M3 17c3 0 4-10 7-10s3 8 5 8 3-5 6-5" /></svg>);
 export const IconChart = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M4 4v16h16" /><path d="m7 15 4-5 3 3 5-7" /></svg>);
+/** ⋯ (panel "more" menu trigger). */
+export const IconMore = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg>);
+/** ⚙ settings as three sliders (range popovers, e.g. the V_G curve range). */
+export const IconSliders = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1" /><circle cx="15" cy="6" r="2" /><circle cx="9" cy="12" r="2" /><circle cx="17" cy="18" r="2" /></svg>);
+export const IconArrowUp = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M12 19V5m0 0-6 6m6-6 6 6" /></svg>);
+export const IconArrowDown = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M12 5v14m0 0-6-6m6 6 6-6" /></svg>);

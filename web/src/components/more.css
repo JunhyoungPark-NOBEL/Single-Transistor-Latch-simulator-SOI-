@@ -1,0 +1,74 @@
+/* Shared UX building blocks (imported by MoreCard.tsx, which Panel.tsx imports for MoreCardContext):
+   FocusLayout grid, MoreCard tabs + status dots, LayoutToggle, and the Panel additions (embedded mode,
+   ⋯ menu, footnote). Existing :root tokens only — no new colours; light and dark follow the tokens. */
+
+/* ------------------------------------------------------------------ FocusLayout (간단히) */
+.focus-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); align-items: start; }
+@media (min-width: 1280px) {
+  .focus-grid.side:not(.no-hero) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ------------------------------------------------------------------ MoreCard */
+.more-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r3); box-shadow: var(--shadow-1); display: flex; flex-direction: column; min-width: 0; }
+.more-head { display: flex; align-items: flex-end; gap: var(--s2); padding: 4px 10px 0; border-bottom: 1px solid var(--border); min-width: 0; }
+.more-tabs { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.more-tabs::-webkit-scrollbar { display: none; }
+.more-tab {
+  position: relative; flex: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 10px 9px; border: 0; border-radius: 7px 7px 0 0; background: transparent;
+  font-size: 13px; font-weight: 600; color: var(--text-2); white-space: nowrap;
+  transition: color .15s, background .15s;
+}
+.more-tab:hover { color: var(--text); background: var(--surface-2); }
+.more-tab[aria-selected="true"] { color: var(--text); }
+.more-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px; background: var(--accent); }
+.more-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.more-dot.running { background: var(--accent); animation: morePulse 1.2s infinite; }
+.more-dot.error { background: var(--err); }
+.more-dot.stale { background: var(--warn); }
+@keyframes morePulse { 50% { opacity: .3; } }
+.more-select { width: auto; max-width: 100%; margin: 6px 0 8px; font-weight: 600; text-align: left; }
+.more-body { min-width: 0; }
+@media (max-width: 760px) {
+  .more-select { width: 100%; }
+}
+
+/* ------------------------------------------------------------------ LayoutToggle (segmented, .seg look) */
+.layout-toggle { flex: none; }
+
+/* ------------------------------------------------------------------ Panel additions */
+/* inside a MoreCard tab: the card is the frame; the tab label is the title (the h3 stays for a11y) */
+.panel.embedded { border: 0; border-radius: 0 0 var(--r3) var(--r3); box-shadow: none; background: transparent; }
+.panel.embedded .panel-head { padding-top: 8px; }
+.panel-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 22px; }
+/* footnote: one muted line of run metadata under the plot */
+.panel-footnote { padding: 0 14px 10px; font-size: 11.5px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.panel-footnote .mono, .panel-footnote .num { font-size: 11px; }
+
+/* ⋯ menu (minimal; checkbox / radio items under 보기, actions under 내보내기) */
+.pmenu-wrap { position: relative; display: inline-flex; }
+.pmenu-wrap .icon-btn.xs[aria-expanded="true"] { border-color: var(--border); background: var(--surface-2); color: var(--text); }
+.pmenu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 30;
+  min-width: 200px; max-width: min(300px, calc(100vw - 24px));
+  padding: 4px; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r2); box-shadow: var(--shadow-2);
+}
+.pmenu-sec + .pmenu-sec { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
+.pmenu-title, .pmenu-group { padding: 4px 8px 2px; font-size: 11px; font-weight: 700; color: var(--muted); }
+.pmenu-group { font-weight: 600; color: var(--faint); }
+.pmenu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; border: 0; border-radius: 6px; background: transparent;
+  font-size: 12.5px; color: var(--text); text-align: left; white-space: nowrap;
+}
+.pmenu-item:hover:not(:disabled), .pmenu-item:focus-visible { background: var(--surface-3); }
+.pmenu-item:disabled { opacity: .5; cursor: not-allowed; }
+.pmenu-mark { width: 14px; height: 14px; flex: none; display: inline-grid; place-items: center; color: var(--accent-strong); }
+.pmenu-mark.pm-box { border: 1.5px solid var(--border-strong); border-radius: 4px; }
+.pmenu-mark.pm-box.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.pmenu-mark.pm-radio { border: 1.5px solid var(--border-strong); border-radius: 50%; }
+.pmenu-mark.pm-radio.is-on { border-color: var(--accent); }
+.pmenu-mark.pm-radio.is-on::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.pmenu-mark.pm-icon { color: var(--muted); }
