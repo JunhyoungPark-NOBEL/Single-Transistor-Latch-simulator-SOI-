@@ -1,53 +1,76 @@
 // Validation tab: `validation` kind (fast/full) check table + comparisons with the measured records
 // (reference-calibration I–V, 8 illumination conditions, V_G dependence of V_LU and σ_LU).
+// The answer comes first: "모델이 측정과 맞나요?" with a big "n / n 통과" status, a 4-column table (항목 · 계산값 ·
+// 기대값 ± 허용오차 · 통과; failures first and expanded; "숫자 모두 보기" adds id, seconds and notes), then the
+// figures in one tabbed card (간단히) or all three in a grid (모두 보기).
 import type { Data, Layout } from "plotly.js";
-import { useEffect, useMemo } from "react";
-import type { BranchesResult, SweepMCResult, ValidationResult, VgCurveStochasticResult } from "../api/types";
+import { useEffect, useMemo, useState } from "react";
+import type { BranchesResult, SweepMCResult, ValidationCheck, ValidationResult, VgCurveStochasticResult } from "../api/types";
+import { LayoutToggle } from "../components/LayoutToggle";
+import { entryStatus, FocusLayout, mergeStatus, type MoreTab, type TabStatus } from "../components/MoreCard";
 import { Panel, Progress } from "../components/Panel";
 import { IconPlay, IconStop } from "../components/icons";
 import { useT } from "../i18n";
 import { signed } from "../plots/labels";
 import { currentAxis, HOVER_IV } from "../plots/theme";
 import { cancelActive, cancelKey, loadMeasured, runValidation, runValidationIV, runValidationPhoto, runValidationVg } from "../state/runner";
+import { useIsAll } from "../state/layout";
 import { useStore } from "../state/store";
 import { fmtDuration } from "../utils/format";
 import { logRange, nums, pos, useEntry, usePalette } from "../device/common";
 import { insideLegend, measuredIvTraces } from "../device/DetPanels";
 import { PhotoConditionsStats } from "./PhotoStats";
 
-function ChecksTable({ res }: { res: ValidationResult }) {
+const passMark = (c: ValidationCheck) => (
+  <span className={`pass ${c.pass === true ? "yes" : c.pass === false ? "no" : "na"}`} aria-label={c.pass === true ? "pass" : c.pass === false ? "fail" : "not run"}>
+    {c.pass === true ? "✓" : c.pass === false ? "✗" : "—"}
+  </span>
+);
+
+/** "±1 mV" → "1 mV": the column header already says "± 허용오차". */
+const tol = (s: string) => s.replace(/^\s*±\s*/, "");
+
+/** Compact check table: failures first (with their id and note), 4 columns; `wide` adds id, seconds and notes. */
+function ChecksTable({ res, wide }: { res: ValidationResult; wide: boolean }) {
   const t = useT();
+  // failures first, then the passed checks, then the ones not run at this level (stable within each group)
+  const rank = (c: ValidationCheck) => (c.pass === false ? 0 : c.pass === true ? 1 : 2);
+  const rows = res.checks.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i);
   return (
-    <div className="table-wrap" style={{ margin: "0 14px 14px" }}>
-      <table className="table" data-testid="validation-table">
+    <div className="table-wrap val-table-wrap">
+      <table className={`table val-table${wide ? " wide" : ""}`} data-testid="validation-table">
         <thead>
           <tr>
             <th>{t("v.check")}</th>
-            <th>{t("v.expected")}</th>
+            {wide && <th>{t("v.id")}</th>}
             <th>{t("v.computed")}</th>
-            <th>{t("v.tol")}</th>
-            <th style={{ textAlign: "center" }}>{t("v.pass")}</th>
-            <th className="num">{t("v.sec")}</th>
-            <th>{t("v.note")}</th>
+            <th>{t("v.expectedTol")}</th>
+            <th className="center">{t("v.pass")}</th>
+            {wide && <th className="num">{t("v.sec")}</th>}
+            {wide && <th>{t("v.note")}</th>}
           </tr>
         </thead>
         <tbody>
-          {res.checks.map((c) => (
-            <tr key={c.id}>
-              <td>
-                <div style={{ fontWeight: 600 }}>{t.l(c.label)}</div>
-                <div className="small muted mono">{c.id}</div>
+          {rows.map(({ c }) => (
+            <tr key={c.id} className={c.pass === false ? "fail" : c.pass === null ? "na" : undefined} data-check={c.id}>
+              <td title={c.id}>
+                <div className="val-label">{t.l(c.label)}</div>
+                {!wide && c.pass === false && (
+                  <div className="val-detail small mono">
+                    {c.id}
+                    {c.note ? ` · ${c.note}` : ""} · {c.seconds.toFixed(2)} s
+                  </div>
+                )}
               </td>
-              <td className="mono small">{c.expected}</td>
-              <td className="mono small">{c.computed}</td>
-              <td className="mono small muted">{c.tolerance}</td>
-              <td style={{ textAlign: "center" }}>
-                <span className={`pass ${c.pass === true ? "yes" : c.pass === false ? "no" : "na"}`} aria-label={c.pass === true ? "pass" : c.pass === false ? "fail" : "not run"}>
-                  {c.pass === true ? "✓" : c.pass === false ? "✗" : "—"}
-                </span>
+              {wide && <td className="mono small muted">{c.id}</td>}
+              <td className="mono small" data-label={t("v.computed")}>{c.computed}</td>
+              <td className="mono small" data-label={t("v.expectedTol")}>
+                {c.expected}
+                {c.tolerance && <span className="val-tol"> ± {tol(c.tolerance)}</span>}
               </td>
-              <td className="num small">{c.seconds.toFixed(2)}</td>
-              <td className="small muted">{c.note ?? ""}</td>
+              <td className="center val-pass">{passMark(c)}</td>
+              {wide && <td className="num small">{c.seconds.toFixed(2)}</td>}
+              {wide && <td className="small muted">{c.note ?? ""}</td>}
             </tr>
           ))}
         </tbody>
@@ -208,63 +231,105 @@ function VgFigure() {
 
 export function ValidationTab() {
   const t = useT();
+  const all = useIsAll();
   const { entry, data } = useEntry<ValidationResult>("validation");
   const running = entry?.status === "running" || entry?.status === "queued";
   const pass = data?.checks.filter((c) => c.pass === true).length ?? 0;
   const total = data?.checks.filter((c) => c.pass !== null).length ?? 0;
+  const failed = total - pass;
+  const [wideCols, setWideCols] = useState<boolean | null>(null);
+  const wide = wideCols ?? all;
   return (
     <>
-      <section className="panel wide" data-testid="validation">
-        <header className="panel-head">
-          <div style={{ flex: 1 }}>
-            <h2 className="panel-title" style={{ margin: 0, fontSize: 16 }}>
-              {t("v.title")}
-              {data && <span className={`badge ${pass === total ? "ok" : "err"}`}>{t("v.summary", { pass, total })}</span>}
-              {entry?.mock && data && <span className="badge demo">{t("demo")}</span>}
-            </h2>
-            <div className="panel-desc">{t("v.desc")}</div>
-          </div>
+      <section className="panel wide val-card" data-testid="validation" aria-labelledby="val-title">
+        <header className="val-head">
+          <h2 id="val-title" className="val-title">{t("v.question")}</h2>
+          <LayoutToggle />
         </header>
-        <div className="panel-toolbar">
-          <button type="button" className="btn primary" onClick={() => void runValidation("fast")} disabled={running} data-testid="val-fast">
-            <IconPlay size={12} /> {t("v.fast")}
-          </button>
-          <button type="button" className="btn" onClick={() => void runValidation("full")} disabled={running} data-testid="val-full">
-            <IconPlay size={12} /> {t("v.full")}
-          </button>
-          {running && (
-            <>
+        <div className="val-status-row">
+          {data ? (
+            <div className={`val-status ${failed ? "bad" : "good"}`} data-testid="val-status" role="status">
+              {failed ? t("v.failed", { n: failed }) : t("v.passedAll", { pass, total })}
+              {!failed && <span aria-hidden> ✓</span>}
+            </div>
+          ) : (
+            <div className="val-status idle" data-testid="val-status">{running ? t("loading") : t("v.notYet")}</div>
+          )}
+          <div className="val-actions">
+            <button type="button" className="btn primary" onClick={() => void runValidation("fast")} disabled={running} data-testid="val-fast">
+              <IconPlay size={12} /> {t("v.fast")}
+            </button>
+            <button type="button" className="btn" onClick={() => void runValidation("full")} disabled={running} data-testid="val-full">
+              <IconPlay size={12} /> {t("v.full")}
+            </button>
+            {running && (
               <button type="button" className="btn danger" onClick={() => cancelKey("validation")}>
                 <IconStop size={11} /> {t("run.cancel")}
               </button>
-              <div style={{ width: 200 }}>
-                <Progress value={entry?.progress ?? 0} indeterminate={(entry?.progress ?? 0) < 0.01} />
-              </div>
-              <span className="small muted mono">{entry?.message}</span>
-            </>
-          )}
-          {data && !running && <span className="small muted mono">{fmtDuration(data.runtime_s)}</span>}
+            )}
+            {data && !running && <span className="small muted mono">{fmtDuration(data.runtime_s)}</span>}
+            {entry?.mock && data && all && <span className="badge demo">{t("demo")}</span>}
+          </div>
         </div>
+        {running && (
+          <div className="val-progress">
+            <Progress value={entry?.progress ?? 0} indeterminate={(entry?.progress ?? 0) < 0.01} />
+            <span className="small muted mono">{entry?.message}</span>
+          </div>
+        )}
         {entry?.status === "error" && (
           <div className="panel-foot">
             <div className="err-box" role="alert">{entry.error}</div>
           </div>
         )}
-        {data ? <ChecksTable res={data} /> : !running && <div className="panel-foot"><div className="empty" style={{ height: 120 }}>{t("v.fast")} ▶</div></div>}
+        {data ? (
+          <>
+            <ChecksTable res={data} wide={wide} />
+            <div className="val-foot">
+              <span className="small muted">{t("v.desc")}</span>
+              <button type="button" className="link-btn" aria-pressed={wide} onClick={() => setWideCols(!wide)} data-testid="val-cols-all">
+                {wide ? t("v.colsFew") : t("v.colsAll")}
+              </button>
+            </div>
+          </>
+        ) : (
+          !running && <p className="val-empty small muted">{t("v.emptyHint")}</p>
+        )}
         {data?.warnings && data.warnings.length > 0 && (
           <div className="panel-foot">
             <details className="notices"><summary>{t("warnings")} · {data.warnings.length}</summary><ul>{data.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul></details>
           </div>
         )}
       </section>
-      <div className="section-title">
-        <h2>{t("v.figs")}</h2>
-      </div>
-      <div className="grid">
-        <PaperIvFigure />
-        <PhotoFigure />
-        <VgFigure />
-      </div>
+      {all ? (
+        <>
+          <div className="section-title">
+            <h2>{t("v.figs")}</h2>
+          </div>
+          <div className="grid">
+            <PaperIvFigure />
+            <PhotoFigure />
+            <VgFigure />
+          </div>
+        </>
+      ) : (
+        <ValidationFigures />
+      )}
     </>
   );
+}
+
+/** 간단히: the three comparisons as tabs of one card (기준 I–V first). */
+function ValidationFigures() {
+  const t = useT();
+  const iv = useStore((s) => s.results.val_branches_paper);
+  const vgs = useStore((s) => s.results.val_vgs);
+  // a primitive selector result (a new array would re-render forever)
+  const photoStatus = useStore((s): TabStatus | null => mergeStatus(...Object.entries(s.results).filter(([k]) => k.startsWith("val_photo_")).map(([, e]) => entryStatus(e))));
+  const tabs: MoreTab[] = [
+    { id: "val-iv", label: t("v.tab.iv"), panel: <PaperIvFigure />, status: entryStatus(iv), title: t("v.fig.iv") },
+    { id: "val-photo", label: t("v.tab.photo"), panel: <PhotoFigure />, status: photoStatus, title: t("v.fig.photo") },
+    { id: "val-vg", label: t("v.tab.vg"), panel: <VgFigure />, status: entryStatus(vgs), title: t("v.fig.vg") },
+  ];
+  return <FocusLayout testId="val-figures" scope="validation" tabs={tabs} defaultTab="val-iv" />;
 }

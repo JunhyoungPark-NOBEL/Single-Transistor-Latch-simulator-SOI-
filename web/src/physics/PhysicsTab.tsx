@@ -1,12 +1,17 @@
 // Physics tab: all topics (TOPIC_ORDER) as one long document with a sticky TOC and a search filter,
-// rendered with the same TopicBody as the Details window.
+// rendered with the same TopicBody as the Details window. The "parameters" topic starts with the
+// parameter guide (ParamGuideList, filtered by the same search); a chip at the top jumps to it.
 import { useEffect, useMemo, useState } from "react";
 import { PHYSICS_TOPICS, TOPIC_ORDER, type PhysicsTopic, type TopicId } from "../content/physics";
 import { IconSearch } from "../components/icons";
 import { RichText } from "../components/RichText";
 import { useT } from "../i18n";
+import { GUIDE } from "../i18n/strings.guide";
 import { useStore } from "../state/store";
+import { matchGuideKeys, ParamGuideList } from "./ParamGuideList";
 import { TopicBody } from "./TopicBody";
+
+const GUIDE_TOPIC: TopicId = "parameters";
 
 function topicText(t: PhysicsTopic): string {
   const parts: string[] = [t.id, t.title.ko, t.title.en, t.summary.ko, t.summary.en, ...(t.tags ?? [])];
@@ -25,10 +30,23 @@ export function PhysicsTab() {
   const [q, setQ] = useState("");
   const [active, setActive] = useState<TopicId>(TOPIC_ORDER[0]);
   const index = useMemo(() => new Map(TOPIC_ORDER.map((id) => [id, topicText(PHYSICS_TOPICS[id])])), []);
+  const guideHits = useMemo(() => matchGuideKeys(q).size, [q]);
   const shown = useMemo(() => {
     const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return TOPIC_ORDER.filter((id) => terms.every((w) => index.get(id)?.includes(w)));
-  }, [q, index]);
+    return TOPIC_ORDER.filter((id) => terms.every((w) => index.get(id)?.includes(w)) || (id === GUIDE_TOPIC && guideHits > 0));
+  }, [q, index, guideHits]);
+
+  const jumpToGuide = () => {
+    if (!shown.includes(GUIDE_TOPIC)) setQ("");
+    setTimeout(() => {
+      const el = document.getElementById("guide-list");
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setActive(GUIDE_TOPIC);
+      // the TOC observer fires while the smooth scroll passes earlier topics: settle on the target
+      setTimeout(() => setActive(GUIDE_TOPIC), 900);
+    }, 30);
+  };
 
   const scrollTo = (id: TopicId, flash = false) => {
     const el = document.getElementById(`topic-${id}`);
@@ -87,6 +105,12 @@ export function PhysicsTab() {
         </ol>
       </aside>
       <div className="doc">
+        <div className="guide-jump">
+          <button type="button" className="chip" onClick={jumpToGuide} data-testid="guide-jump">
+            {t.l(GUIDE["guide.list.jump"])} →
+          </button>
+          <span className="hint">{t.l(GUIDE["guide.list.jump.hint"])}</span>
+        </div>
         {shown.length === 0 && <div className="empty" style={{ height: 200 }}>{t("ph.noresult")}</div>}
         {shown.map((id) => {
           const tp = PHYSICS_TOPICS[id];
@@ -103,6 +127,7 @@ export function PhysicsTab() {
                   ))}
                 </div>
               )}
+              {id === GUIDE_TOPIC && <ParamGuideList query={q} />}
               <RichText text={t.l(tp.summary)} className="topic-summary" />
               <TopicBody topic={tp} idPrefix={`doc-${id}`} showSummary={false} onRelated={(r) => scrollTo(r, true)} />
             </article>

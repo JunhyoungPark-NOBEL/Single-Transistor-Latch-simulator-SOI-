@@ -1,27 +1,31 @@
 // LTspice-style waveform viewer for the schematic run: traces picked by clicking the schematic (chips to
 // remove), shared time axis with voltage / current / charge / state subplots, log |I|, stochastic runs
-// overlay + mean ± SD band from `envelopes`, a draggable time cursor with a slider and a readout, summary
-// cards, per-STL event statistics, per-run distributions (shared stats module) and solver information.
+// overlay + mean ± SD band from `envelopes`, a draggable time cursor with a slider and a readout, the result
+// summary, per-STL event statistics, per-run distributions (shared stats module) and solver information.
+// 간단히 layout: ≤ 4 summary cells, the waveform hero, one analysis card (I–V 궤적 | 분포·통계 | 비교기 …; the
+// comparator tab first when there is one), events folded for a single STL. 모두 보기: every panel in a grid.
 import type { Data, Layout } from "plotly.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { iKey, parseProbe, valueAt, type CustomCircuitResult, type Envelope } from "../api/circuitCustom";
 import type { Arr, Signal } from "../api/types";
-import { Notices, Panel } from "../components/Panel";
+import { FocusLayout, type MoreTab, type TabStatus } from "../components/MoreCard";
+import { Notices, Panel, type PanelMenuItem } from "../components/Panel";
 import { IconX } from "../components/icons";
-import { Kpi } from "../device/KpiStrip";
 import { logRange, usePalette } from "../device/common";
 import { useT } from "../i18n";
 import { currentAxis } from "../plots/theme";
 import { describe, histogram, StatsTable, type StatsRow } from "../stats";
+import { useIsAll } from "../state/layout";
 import { useStore, type ResultEntry } from "../state/store";
 import { fmtDuration, fmtInt, isNum, siPrefix } from "../utils/format";
-import { splitUnit } from "../circuit/summary";
+import { SummaryStrip } from "../circuit/SummaryStrip";
 import { AXES, circuitAxisTitle, siTicks, stackClass, type AxisKind } from "../circuit/axes";
 import { subs, withUnit } from "../plots/labels";
 import { runSchematic, type SchematicRunData } from "./run";
 import { fmtSI } from "./si";
 import { useSch } from "./store";
-import { ComparatorPanels } from "./CmpPanel";
+import { CmpPlot, ComparatorPanels } from "./CmpPanel";
+import { SCH_MORE_SCOPE } from "./Toolbar";
 import { Segmented, Switch } from "./ui";
 
 export const axisOf = (s: Pick<Signal, "axis" | "unit">): AxisKind =>
@@ -72,6 +76,7 @@ function WaveViewer({ res, entry, stale }: { res: CustomCircuitResult; entry: Re
   const showBand = useSch((s) => s.showBand);
   const cursorT = useSch((s) => s.cursorT);
   const set = useSch((s) => s.set);
+  const all = useIsAll();
   const sto = res.mode === "stochastic";
   const t0 = res.runs[0]?.t[0] ?? 0;
   const tEnd = res.runs[0]?.t[res.runs[0].t.length - 1] ?? 0;
@@ -193,7 +198,16 @@ function WaveViewer({ res, entry, stale }: { res: CustomCircuitResult; entry: Re
     return () => clearInterval(id);
   }, [hasPlot]);
 
-  const plot = present.length ? { data: base.data, layout, className: `${stackClass(base.n)} sch-plot` } : undefined;
+  // 간단히: the hero is taller, so two subplots (e.g. the oscillator's sawtooth V(out) over I(X1.d)) read clearly
+  const cls = !all && base.n <= 2 ? "plot tall" : stackClass(base.n);
+  const plot = present.length ? { data: base.data, layout, className: `${cls} sch-plot` } : undefined;
+  const menu: PanelMenuItem[] | undefined =
+    !all && sto
+      ? [
+          { kind: "check", id: "runs", label: t("schematic.res.runs"), checked: showRuns, onChange: (v) => set({ showRuns: v }), testId: "toggle-runs" },
+          { kind: "check", id: "band", label: t("schematic.res.band"), checked: showBand, onChange: (v) => set({ showBand: v }), testId: "toggle-band" },
+        ]
+      : undefined;
   const t0n = typeof t0 === "number" ? t0 : 0;
   const tEn = typeof tEnd === "number" ? tEnd : 0;
   const cur = cursorT ?? tEn;
@@ -202,6 +216,7 @@ function WaveViewer({ res, entry, stale }: { res: CustomCircuitResult; entry: Re
     <Panel
       id="sch-waves"
       wide
+      primary
       title={t("schematic.res.title")}
       desc={t("schematic.res.desc")}
       topic="circuit-element"
@@ -209,6 +224,7 @@ function WaveViewer({ res, entry, stale }: { res: CustomCircuitResult; entry: Re
       hasData
       stale={stale}
       csvName="schematic_waveforms"
+      menu={menu}
       badges={
         <>
           <span className={`badge ${sto ? "sto" : "det"}`}>{sto ? t("schematic.res.mode.sto") : t("schematic.res.mode.det")}{sto ? ` · ${t("schematic.res.nRuns", { n: res.runs.length })}` : ""}</span>
@@ -248,7 +264,7 @@ function WaveViewer({ res, entry, stale }: { res: CustomCircuitResult; entry: Re
             <Switch on={logI} onChange={(v) => set({ logI: v })} label={t("schematic.res.logI")} testId="toggle-logi" />
             {t("schematic.res.logI")}
           </label>
-          {sto && (
+          {sto && all && (
             <>
               <label className="tb-toggle">
                 <Switch on={showRuns} onChange={(v) => set({ showRuns: v })} label={t("schematic.res.runs")} />
@@ -330,18 +346,9 @@ function hexA(hex: string, a: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
-function SummaryCards({ res, stale }: { res: CustomCircuitResult; stale: boolean }) {
-  const t = useT();
-  if (!res.summary.length) return null;
-  return (
-    <div className={`kpis wrap${stale ? " stale" : ""}`} data-testid="sch-summary">
-      {res.summary.map((s, i) => {
-        const v = splitUnit(s.value, s.unit);
-        const sp = isNum(s.spread) ? splitUnit(s.spread, s.unit, s.unit === "V" ? "mV" : undefined) : null;
-        return <Kpi key={s.key} id={`sch-${s.key}`} label={t.l(s.label)} value={v.value} unit={v.unit} sub={sp ? `± ${sp.value} ${sp.unit}` : undefined} color={i === 0 ? "var(--accent)" : "var(--border-strong)"} />;
-      })}
-    </div>
-  );
+/** Summary cells of the schematic results (per the first STL), in this order when present. */
+function schPriority(sto: boolean): string[] {
+  return ["n_latch_up", "*.p_fire", "f_osc", "vd_first_lu", sto ? "p_any_lu" : "t_first_lu", "final_state", sto ? "p_latched_end" : "latched_end"];
 }
 
 interface CellStats {
@@ -518,6 +525,7 @@ function TrajectoryPanel({ res, stale }: { res: CustomCircuitResult; stale: bool
 export function Results({ entry, stale, cells }: { entry: ResultEntry | undefined; stale: boolean; cells: string[] }) {
   const t = useT();
   const mode = useStore((s) => s.mode);
+  const all = useIsAll();
   const data = entry?.data as SchematicRunData | undefined;
   const res = data?.result;
   if (!res) {
@@ -525,6 +533,7 @@ export function Results({ entry, stale, cells }: { entry: ResultEntry | undefine
       <Panel
         id="sch-waves"
         wide
+        primary
         title={t("schematic.res.title")}
         desc={t("schematic.res.desc")}
         topic="circuit-element"
@@ -544,26 +553,63 @@ export function Results({ entry, stale, cells }: { entry: ResultEntry | undefine
   }
   const nRuns = res.mode === "stochastic" ? Math.max(res.runs.length, ...res.events.map((e) => e.run + 1), data?.request.stochastic?.n_runs ?? 0) : 1;
   const ss = res.solver_stats;
-  return (
+  const sto = res.mode === "stochastic";
+  const summary = <SummaryStrip items={res.summary} priority={schPriority(sto)} testId="sch-summary" prefix="sch-" moreTestId="sch-summary-more" firstOf={cells[0]} stale={stale} />;
+  const demo = data?.demoFallback && (
+    <div className="callout warn" role="status" data-testid="sch-demo-fallback">
+      {t("schematic.run.demoFallback")}
+    </div>
+  );
+  const footer = (
     <>
-      <SummaryCards res={res} stale={stale} />
-      {data?.demoFallback && (
-        <div className="callout warn" role="status" data-testid="sch-demo-fallback">
-          {t("schematic.run.demoFallback")}
-        </div>
-      )}
-      <WaveViewer res={res} entry={entry} stale={stale} />
-      <div className="grid">
-        <EventsTable res={res} nRuns={nRuns} cells={cells} stale={stale} />
-        <TrajectoryPanel res={res} stale={stale} />
-        <ComparatorPanels res={res} stale={stale} />
-        {res.mode === "stochastic" && <DistributionsPanel res={res} stale={stale} />}
-      </div>
       <div className="sch-solver small muted mono" data-testid="sch-solver">
         {t("schematic.res.solver", { steps: fmtInt(ss?.steps), rej: fmtInt(ss?.rejected), newton: fmtInt(ss?.newton_iters), time: fmtDuration(ss?.runtime_s ?? res.runtime_s) })}
         {mode !== res.mode && <span className="badge stale">{res.mode}</span>}
       </div>
       {res.warnings?.length > 0 && <Notices items={res.warnings} />}
+    </>
+  );
+  if (all) {
+    return (
+      <>
+        {summary}
+        {demo}
+        <WaveViewer res={res} entry={entry} stale={stale} />
+        <div className="grid">
+          <EventsTable res={res} nRuns={nRuns} cells={cells} stale={stale} />
+          <TrajectoryPanel res={res} stale={stale} />
+          <ComparatorPanels res={res} stale={stale} />
+          {sto && <DistributionsPanel res={res} stale={stale} />}
+        </div>
+        {footer}
+      </>
+    );
+  }
+  const running = entry?.status === "running" || entry?.status === "queued";
+  const status: TabStatus | null = running ? "running" : entry?.status === "error" ? "error" : stale ? "stale" : null;
+  const cmps = res.comparators ?? [];
+  const hasDist = sto && (res.distributions ?? []).some((d) => d.values.some((v) => isNum(v)));
+  const tr = res.trajectory as { vd?: Arr } | undefined;
+  const tabs: MoreTab[] = [
+    ...cmps.map((c) => ({ id: `sch-cmp-${c.name}`, label: `${t("schematic.res.cmpTab")} ${c.name}`, panel: <CmpPlot cmp={c} stale={stale} />, status })),
+    { id: "sch-dist", label: t("schematic.res.distTab"), panel: <DistributionsPanel res={res} stale={stale} />, status, hidden: !hasDist },
+    { id: "sch-traj", label: t("schematic.res.traj"), panel: <TrajectoryPanel res={res} stale={stale} />, status, hidden: !tr?.vd?.length },
+  ];
+  const defaultTab = cmps.length ? `sch-cmp-${cmps[0].name}` : hasDist ? "sch-dist" : "sch-traj";
+  return (
+    <>
+      {summary}
+      {demo}
+      <FocusLayout testId="sch-panels" scope={SCH_MORE_SCOPE} hero={<WaveViewer res={res} entry={entry} stale={stale} />} tabs={tabs} defaultTab={defaultTab} />
+      {cells.length === 1 ? (
+        <details className="sch-events-fold">
+          <summary data-testid="sch-events-toggle">{t("schematic.res.eventsN", { n: cells.length })}</summary>
+          <EventsTable res={res} nRuns={nRuns} cells={cells} stale={stale} />
+        </details>
+      ) : (
+        <EventsTable res={res} nRuns={nRuns} cells={cells} stale={stale} />
+      )}
+      {footer}
     </>
   );
 }

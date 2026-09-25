@@ -1,0 +1,66 @@
+/* Simplified sidebar: one-line group heads, main fields with the inline guide, "고급 항목 n개" and
+   "고급 설정" disclosures, the one-row Run bar. Overrides app.css with more specific selectors
+   (.sidebar …); only :root tokens. */
+
+/* ------------------------------------------------------------------ group head (one line) */
+.sidebar .group-head { align-items: center; gap: 4px; padding: 5px 6px 5px 8px; min-height: 38px; }
+.sidebar .group-toggle { align-items: center; gap: 6px; min-width: 0; overflow: hidden; padding: 4px 0; border-radius: 7px; }
+.sidebar .group-toggle .chev { margin-top: 0; }
+.sidebar .group-title { flex: 0 1 auto; min-width: 0; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13.5px; }
+.sidebar .group-sum { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; color: var(--muted); font-weight: 500; }
+.sidebar .group-sum::before { content: "· "; }
+.sidebar .chg-count { flex: none; white-space: nowrap; line-height: 17px; }
+.sidebar .group-actions { flex-direction: row; align-items: center; gap: 4px; }
+.sidebar .group-actions .link-btn { padding: 2px 2px; }
+/* stochastic-only groups: a 3 px --sto rule on the left instead of a text badge */
+.sidebar .group.sto-only { border-color: var(--border); box-shadow: inset 3px 0 0 var(--sto), var(--shadow-1); }
+.sidebar .group-body { gap: 12px; padding: 0 12px 12px; }
+.sidebar .group.adv:not(.open) { box-shadow: none; background: var(--surface); }
+
+/* ------------------------------------------------------------------ main field: inline guide */
+.guide-inline { display: flex; flex-direction: column; gap: 3px; margin: 1px 0 1px; cursor: pointer; border-radius: 6px; }
+.guide-inline:hover .gi-text { color: var(--text-2); }
+.gi-text {
+  margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--muted);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.guide-inline .gchips { row-gap: 3px; }
+.sidebar .field:has(.guide-inline) + .field { padding-top: 10px; border-top: 1px dashed var(--border); }
+
+/* ------------------------------------------------------------------ "고급 항목 n개 ▸" (per basic group) */
+.field-adv {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
+  border: 0; border-top: 1px dashed var(--border); background: none;
+  padding: 8px 2px 0; margin-top: -2px; text-align: left; font-size: 11.5px; color: var(--text-2);
+}
+.field-adv .chev { flex: none; color: var(--muted); transform: rotate(-90deg); transition: transform .15s; }
+.field-adv[aria-expanded="true"] .chev { transform: none; }
+.field-adv .fa-count { flex: none; font-weight: 650; }
+.field-adv .fa-names { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.field-adv:hover .fa-count { color: var(--accent-strong); }
+.field-adv-body { display: flex; flex-direction: column; gap: 10px; }
+.field-adv-body[hidden] { display: none; }
+
+/* ------------------------------------------------------------------ "고급 설정" disclosure */
+.adv-groups { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
+.adv-head {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
+  padding: 8px 8px 8px 10px; border-radius: var(--r2);
+  border: 1px dashed var(--border-strong); background: transparent;
+  font-size: 12.5px; color: var(--text-2); text-align: left;
+}
+.adv-head:hover { background: var(--surface); border-style: solid; }
+.adv-head .chev { flex: none; color: var(--muted); transform: rotate(-90deg); transition: transform .15s; }
+.adv-head[aria-expanded="true"] .chev { transform: none; }
+.adv-title { flex: none; font-weight: 700; color: var(--text); }
+.adv-names { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11.5px; }
+.adv-body { display: flex; flex-direction: column; gap: 8px; }
+
+/* ------------------------------------------------------------------ run bar (one row: Run + 자동 실행) */
+.sidebar .runbar { padding: 10px 12px; gap: 6px; }
+.sidebar .runbar-main { gap: 8px; }
+.sidebar .run-btn { min-width: 0; overflow: hidden; }
+.sidebar .run-btn svg { flex: none; }
+.runbar .autorun { flex: none; gap: 6px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.rb-progress.failed .progress > span { background: var(--err); }
+.runbar-status .msg.err { color: var(--err); }

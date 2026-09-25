@@ -19,6 +19,8 @@ export interface Persisted {
   lang: Lang;
   theme: Theme;
   autoRun: boolean;
+  /** The user has set the auto-run switch at least once (until then auto-run defaults to on). */
+  autoRunChosen?: boolean;
   preset: PresetId;
   params: ParamRoot;
   vgRange: VgRange;
@@ -52,6 +54,7 @@ export function parsePersisted(raw: string | null | undefined): Partial<Persiste
   if (oneOf(v.tab, TABS)) out.tab = v.tab;
   if (oneOf(v.preset, PRESETS)) out.preset = v.preset;
   if (typeof v.autoRun === "boolean") out.autoRun = v.autoRun;
+  if (typeof v.autoRunChosen === "boolean") out.autoRunChosen = v.autoRunChosen;
   if (isPlainObject(v.params)) out.params = v.params as unknown as ParamRoot;
   if (isPlainObject(v.vgRange)) out.vgRange = v.vgRange as unknown as VgRange;
   if (isPlainObject(v.vgsRange)) out.vgsRange = v.vgsRange as unknown as VgRange;
@@ -110,6 +113,15 @@ export function restoreRange(def: VgRange, stored: unknown, maxN = 61): VgRange 
   return { min: r.min, max: r.max, n: clampN(r.n, def.n, maxN) };
 }
 const clampN = (n: number, d: number, maxN: number) => (Number.isFinite(n) ? Math.max(2, Math.min(maxN, Math.round(n))) : d);
+
+/**
+ * Auto-run at start-up: on by default (Device · deterministic re-runs on every change) until the user has set
+ * the switch; then the stored choice. Older stored states (autoRun false = the old default, no choice
+ * recorded) therefore start with auto-run on.
+ */
+export function initialAutoRun(p: Partial<Persisted>): boolean {
+  return p.autoRunChosen ? (p.autoRun ?? true) : true;
+}
 
 /** Group open/closed map (sidebar cards). */
 export function parseOpenState(raw: string | null | undefined): Record<string, boolean> {

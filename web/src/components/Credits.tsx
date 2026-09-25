@@ -1,5 +1,5 @@
-// Credits corner + About popover. The credits sit at the right end of the sticky mode strip (never over
-// plots or the Run bar); the text shortens with the viewport width (full / mid / short, CSS). Clicking
+// Credits corner + About popover. The credits sit at the right end of the sticky context strip (never over
+// plots or the Run bar): the full attribution at ≥ 1280 px, "KAIST · NOBEL Lab ⓘ" below (CSS). Clicking
 // opens a small non-modal About card anchored under it: logo, description, device + model scope, lab /
 // advisor / institution / developer, and the app/engine version from GET /api/health.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -152,7 +152,6 @@ export function Credits() {
         data-testid="credits-chip"
       >
         <span className="credits-text full">{t("brand.credits.full")}</span>
-        <span className="credits-text mid">{t("brand.credits.mid")}</span>
         <span className="credits-text short">{t("brand.credits.short")}</span>
         <svg className="credits-i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden focusable="false">
           <circle cx="12" cy="12" r="9" />

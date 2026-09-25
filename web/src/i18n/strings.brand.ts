@@ -12,10 +12,9 @@ export const BRAND_STRINGS = {
     en: "Technology: FDSOI · L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm (PDSOI and bulk coming later)",
   },
 
-  // credits corner (mode strip, right end); full / compact variants are chosen by width in CSS
+  // credits corner (context strip, right end): full text at ≥ 1280 px, the short form below (CSS)
   "brand.credits.full": { ko: "KAIST 전기및전자공학부 · NOBEL 연구실 (지도교수 최양규) · 개발 박준형", en: "NOBEL Lab · Prof. Yang-Kyu Choi · School of Electrical Engineering, KAIST · Developed by Junhyoung Park" },
-  "brand.credits.mid": { ko: "KAIST · NOBEL 연구실 (최양규 교수) · 개발 박준형", en: "NOBEL Lab (Prof. Yang-Kyu Choi), KAIST · by Junhyoung Park" },
-  "brand.credits.short": { ko: "KAIST · NOBEL 연구실", en: "NOBEL Lab · KAIST" },
+  "brand.credits.short": { ko: "KAIST · NOBEL 연구실", en: "KAIST · NOBEL Lab" },
   "brand.credits.aria": { ko: "STL Simulator 정보와 만든 사람 보기", en: "About STL Simulator and credits" },
 
   // About popover

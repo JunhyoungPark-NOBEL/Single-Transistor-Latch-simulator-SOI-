@@ -1,0 +1,138 @@
+/* Device tab (DeviceTab, KpiStrip, GettingStarted, StatsPanel line, FocusLayout plot heights). Existing :root
+   tokens only, so light and dark follow the theme. Colour marks the quantity: V_LU --hrs, V_LD --lrs. */
+
+/* ------------------------------------------------------------------ first-visit hint */
+.getting-started {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 5px 6px 5px 12px; border-radius: var(--r2);
+  background: var(--info-soft); border: 1px solid color-mix(in srgb, var(--hrs) 18%, transparent);
+  font-size: 12.5px; color: var(--text-2);
+}
+.gs-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; margin: 0; padding: 0; list-style: none; flex: 1; min-width: 0; }
+.gs-steps li { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.gs-text { min-width: 0; }
+.gs-text sub { font-size: .75em; line-height: 0; }
+.gs-n {
+  display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; flex: none;
+  font-size: 10.5px; font-weight: 700; color: var(--hrs); border: 1.5px solid currentColor;
+}
+.gs-ok { flex: none; color: var(--hrs); }
+
+/* ------------------------------------------------------------------ answer bar (3 cells in one card) */
+.answer-row { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.answer-bar {
+  position: relative; flex: 1 1 auto; min-width: 0;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r3); box-shadow: var(--shadow-1);
+}
+.ans-cell { min-width: 0; padding: 9px 16px 10px; display: flex; flex-direction: column; gap: 1px; }
+.ans-cell + .ans-cell { border-left: 1px solid var(--border); }
+.ans-label { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ans-label .ans-sym { color: var(--text-2); font-weight: 600; font-style: italic; }
+.ans-label sub { font-style: normal; font-size: .75em; }
+.ans-value { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 4px; min-width: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.ans-num { font-size: 24px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.25; color: var(--ans-color, var(--text)); white-space: nowrap; }
+.ans-value .u { font-size: 13px; color: var(--muted); font-weight: 500; }
+.ans-pm { font-size: 13px; color: var(--text-2); font-weight: 500; white-space: nowrap; }
+.ans-nolatch { font-family: var(--font); font-size: 18px; letter-spacing: 0; color: var(--text-2); }
+.ans-sub { font-size: 11.5px; line-height: 18px; min-height: 18px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ans-meaning { color: var(--muted); }
+.ans-hint { color: var(--warn); }
+.ans-delta { display: inline-flex; align-items: baseline; gap: 5px; font-size: 11.5px; color: var(--muted); max-width: 100%; }
+.ans-delta-num {
+  padding: 0 6px; border-radius: 999px; font-family: var(--mono); font-weight: 650; font-size: 11.5px;
+  color: var(--text); background: var(--surface-3); white-space: nowrap;
+}
+.ans-delta-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ans-delta.flat { font-weight: 500; color: var(--muted); }
+.answer-bar.stale .ans-num, .answer-bar.stale .ans-pm { opacity: .45; }
+.ans-badge { position: absolute; top: 8px; right: 10px; }
+.ans-cell.loading .ans-num { color: transparent; background: var(--surface-3); border-radius: 6px; min-width: 90px; }
+.answer-layout { flex: none; }
+
+/* ------------------------------------------------------------------ statistics line (stochastic) */
+.stats-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r3); box-shadow: var(--shadow-1); min-width: 0; }
+.stats-line { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 4px 8px 4px 14px; min-width: 0; }
+.stats-line-title { margin: 0; font-size: 13.5px; font-weight: 700; flex: none; }
+.stats-card .stats-meta {
+  flex: 1 1 auto; min-width: 0; margin: 0; padding: 0; display: block;
+  font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.stats-card .stats-meta .warn { color: var(--warn); font-weight: 600; }
+.stats-card .stats-meta .sep { color: var(--faint); }
+.stats-line-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.stats-expand .chev { transition: transform .15s; }
+.stats-expand .chev.up { transform: rotate(180deg); }
+.stats-line-actions .details-btn {
+  width: 26px; height: 26px; padding: 0; justify-content: center; gap: 0; font-size: 0;
+  border-color: transparent; background: transparent; color: var(--muted); border-radius: 7px;
+}
+.stats-line-actions .details-btn:hover { border-color: var(--border); background: var(--surface-2); color: var(--text); }
+.stats-card.open .stats-line { border-bottom: 1px solid var(--border); }
+.stats-body { padding-top: 10px; }
+.stats-body .stats-block { padding: 0 14px 8px; }
+.stats-detail { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 14px 6px; }
+.stats-detail .warn { color: var(--warn); }
+.stats-body .stats-foot { padding: 0 14px 12px; margin: 0; }
+
+/* ------------------------------------------------------------------ result panels (device) */
+.device-tab { display: flex; flex-direction: column; gap: var(--s4); min-width: 0; }
+.panel-footnote .sep { color: var(--faint); }
+.panel-footnote .foot-action { white-space: nowrap; }
+.linkish { border: 0; padding: 0; background: none; color: var(--accent-strong); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.tool-field { display: inline-flex; align-items: center; gap: 6px; }
+.range-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-items: end; }
+.range-form label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--muted); min-width: 0; }
+.range-form .input { width: 100%; height: 28px; font-size: 12.5px; padding: 0 6px; }
+.range-form .range-run { grid-column: 1 / -1; justify-self: end; }
+
+/* I–V click → "이 V_D에서 전하 균형 보기" (fixed, under the sticky header) */
+.cb-offer {
+  position: fixed; z-index: 40; display: flex; align-items: center; gap: 8px;
+  padding: 5px 5px 5px 10px; border-radius: var(--r2);
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-2);
+  font-size: 12px; color: var(--text-2);
+}
+.cb-offer-v { font-family: var(--mono); white-space: nowrap; }
+
+/* FocusLayout (간단히): one plot height for the hero and the card. ≥ 1280 px they sit side by side with
+   440 px plots (the card plot is shorter by its toolbar row, so both cards end on one line); narrower they
+   stack at 360 px; phones 300 px. The 모두 보기 grid keeps the app.css heights (340 / 420 px). */
+.device-tab .focus-grid .plot, .device-tab .focus-grid .plot.tall,
+.device-tab .focus-grid .skeleton-plot, .device-tab .focus-grid .empty { height: 360px; }
+.device-tab .focus-grid .empty.quiet { min-height: 0; }
+@media (min-width: 1280px) {
+  .device-tab .focus-grid.side .panel.primary .plot, .device-tab .focus-grid.side .panel.primary .skeleton-plot,
+  .device-tab .focus-grid.side .panel.primary .empty { height: 440px; }
+  .device-tab .focus-grid.side .more-card .panel.has-tools .plot, .device-tab .focus-grid.side .more-card .panel.has-tools .skeleton-plot,
+  .device-tab .focus-grid.side .more-card .panel.has-tools .empty { height: 396px; }
+  .device-tab .focus-grid.side .more-card .panel:not(.has-tools) .plot, .device-tab .focus-grid.side .more-card .panel:not(.has-tools) .skeleton-plot,
+  .device-tab .focus-grid.side .more-card .panel:not(.has-tools) .empty { height: 434px; }
+}
+
+/* ------------------------------------------------------------------ narrow screens */
+@media (max-width: 1100px) {
+  .ans-cell { padding: 8px 12px 9px; }
+  .ans-num { font-size: 21px; }
+}
+@media (max-width: 760px) {
+  .answer-row { flex-wrap: wrap; gap: 8px; }
+  .answer-bar { flex-basis: 100%; }
+  .answer-layout { margin-left: auto; }
+  .ans-cell { padding: 7px 8px 8px; }
+  .ans-label { white-space: normal; line-height: 1.3; font-size: 11px; }
+  .ans-num { font-size: 17px; }
+  .ans-value .u, .ans-pm { font-size: 11px; }
+  .ans-sub { white-space: normal; line-height: 1.35; font-size: 10.5px; }
+  .ans-delta { font-size: 10.5px; flex-wrap: wrap; row-gap: 0; }
+  .ans-delta-num { font-size: 10.5px; padding: 0 5px; }
+  .ans-badge { position: static; justify-self: start; grid-column: 1 / -1; margin: 0 8px 8px; }
+  .getting-started { align-items: flex-start; }
+  .gs-steps li { white-space: normal; }
+  .stats-line { flex-wrap: wrap; row-gap: 2px; padding: 6px 8px 6px 12px; }
+  .stats-card .stats-meta { white-space: normal; order: 3; flex-basis: 100%; line-height: 1.45; }
+  .stats-line-actions { margin-left: auto; }
+  .device-tab .focus-grid .plot, .device-tab .focus-grid .plot.tall,
+  .device-tab .focus-grid .skeleton-plot, .device-tab .focus-grid .empty { height: 300px; }
+  .range-form { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

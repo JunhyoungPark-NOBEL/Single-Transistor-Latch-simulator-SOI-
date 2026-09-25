@@ -1,6 +1,6 @@
 // Schematic editor view (lazy chunk): toolbar, canvas + properties panel, ERC bar, results (waveforms,
-// time cursor, statistics) and the read-only netlist. The sidebar shows the device library and the
-// simulation settings (./SchematicSidebar.tsx); Run / Ctrl+Enter run this circuit.
+// time cursor, statistics) and the read-only netlist (folded in 간단히). The sidebar shows the device library
+// and the simulation settings (./SchematicSidebar.tsx); Run / Ctrl+Enter run this circuit.
 import { useEffect, useMemo, useState } from "react";
 import { Panel } from "../components/Panel";
 import { IconCopy } from "../components/icons";
@@ -8,6 +8,7 @@ import { isStale, useEntry } from "../device/common";
 import { Modal } from "../devices/Modal";
 import { useT } from "../i18n";
 import type { StrKey } from "../i18n/strings";
+import { useIsAll } from "../state/layout";
 import { useStore } from "../state/store";
 import { fmtDuration, fmtInt } from "../utils/format";
 import { Canvas } from "./Canvas";
@@ -119,6 +120,19 @@ function NetlistPanel({ conn }: { conn: Connectivity }) {
   );
 }
 
+/** 간단히: the netlist behind "넷리스트 (SPICE · JSON) ▸" (the text stays in the DOM); 모두 보기: the open panel. */
+function NetlistBlock({ conn }: { conn: Connectivity }) {
+  const t = useT();
+  const all = useIsAll();
+  if (all) return <NetlistPanel conn={conn} />;
+  return (
+    <details className="sch-fold sch-netlist-fold">
+      <summary data-testid="netlist-toggle">{t("schematic.netlist.toggle")}</summary>
+      <NetlistPanel conn={conn} />
+    </details>
+  );
+}
+
 function ConfirmRun() {
   const t = useT();
   const confirm = useSch((s) => s.confirm);
@@ -188,18 +202,21 @@ export default function SchematicView() {
   useEffect(() => {
     if (method !== doc.tran.method) setParam(["circuit", "solver", "method"], doc.tran.method);
   }, [doc.tran.method, method, setParam]);
+  const all = useIsAll();
   const [tall, setTall] = useState(() => (typeof window !== "undefined" ? window.innerHeight > 860 : true));
   useEffect(() => {
     const on = () => setTall(window.innerHeight > 860);
     window.addEventListener("resize", on);
     return () => window.removeEventListener("resize", on);
   }, []);
+  const canvasH = tall ? (all ? 540 : 470) : 440;
   return (
     <div className="sch-view" onKeyDown={handleEditorKey} data-testid="schematic-view">
       <section className="panel wide sch-editor" aria-label="schematic editor">
         <Toolbar />
-        <div className="sch-body">
-          <Canvas conn={conn} erc={erc} ann={ann} height={tall ? 540 : 440} />
+        {/* 간단히: a slightly shorter canvas keeps the result summary above the fold at 1440 × 900 */}
+        <div className="sch-body" style={{ "--sch-h": `${canvasH}px` } as React.CSSProperties}>
+          <Canvas conn={conn} erc={erc} ann={ann} height={canvasH} />
           <aside className="sch-side">
             <Inspector conn={conn} />
           </aside>
@@ -207,7 +224,7 @@ export default function SchematicView() {
         <ErcBar erc={erc} hasResult={!!res} stale={stale} />
       </section>
       <Results entry={entry} stale={stale} cells={cells} />
-      <NetlistPanel conn={conn} />
+      <NetlistBlock conn={conn} />
       <ConfirmRun />
       <Toast />
     </div>

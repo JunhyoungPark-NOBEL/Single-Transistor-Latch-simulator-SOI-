@@ -38,7 +38,19 @@ const device = (p: ParamRoot): DeviceBlock => clone(p.device);
 
 export const branchesPayload = (p: ParamRoot) => ({ device: device(p), sweep: clone(p.sweep) });
 export const chargeBalancePayload = (p: ParamRoot, vd: number) => ({ device: device(p), vd: round(vd, 6) });
-export const vgCurvePayload = (p: ParamRoot, r: VgRange) => ({ device: device(p), vg_min: r.min, vg_max: r.max, n: Math.round(r.n) });
+/**
+ * V_G assumed in the device block of a V_G-curve request. The server sets `vg` at every grid point itself, so
+ * the curve does not depend on the sidebar V_G: a fixed value keeps the cache/staleness key unchanged when only
+ * V_G moves (no re-run, no "parameters changed" badge; only the "현재 V_G" marker moves). −2 V is the reference
+ * preset's V_G, so its snapshot key stays the same.
+ */
+export const VG_CURVE_CANONICAL_VG = -2;
+
+export const vgCurvePayload = (p: ParamRoot, r: VgRange) => {
+  const d = device(p);
+  d.vg = VG_CURVE_CANONICAL_VG;
+  return { device: d, vg_min: r.min, vg_max: r.max, n: Math.round(r.n) };
+};
 export const hazardPayload = (p: ParamRoot) => ({ device: device(p), sweep: clone(p.sweep) });
 export const sweepMcPayload = (p: ParamRoot) => ({ device: device(p), sweep: clone(p.sweep), stochastic: clone(p.stochastic) });
 export const vgStochPayload = (p: ParamRoot, r: VgRange) => ({

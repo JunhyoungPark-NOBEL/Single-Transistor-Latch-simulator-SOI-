@@ -58,6 +58,16 @@
 .sch-menu-row { display: flex; align-items: center; gap: 4px; }
 .sch-menu-form { display: flex; gap: 6px; padding: 6px 6px 8px; }
 .sch-menu-form .input { text-align: left; font-family: var(--font); }
+/* "편집 ▾" menu (간단히): icon · label · shortcut rows in three groups */
+.sch-menu-group + .sch-menu-group { border-top: 1px solid var(--border); margin-top: 3px; padding-top: 3px; }
+.sch-menu-item.sch-menu-action { flex-direction: row; align-items: center; gap: 10px; padding: 6px 10px; }
+.sch-menu-action strong { flex: 1; font-weight: 550; font-size: 13px; }
+.sch-menu-action kbd { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.sch-menu-action:disabled { opacity: .4; cursor: default; }
+.sch-menu-action:disabled:hover { background: transparent; }
+.sch-menu-action:disabled:hover strong { color: inherit; }
+.sch-mi-icon { display: inline-grid; place-items: center; width: 18px; color: var(--text-2); }
+.sch-mi-icon svg { width: 16px; height: 16px; }
 
 /* ---- canvas */
 .sch-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-height: 0; }
@@ -114,6 +124,8 @@
 
 .sch-empty { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 6px; pointer-events: none; color: var(--muted); font-size: 13px; }
 .sch-empty strong { font-size: 15px; color: var(--text-2); }
+.sch-empty-tpl { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin: 4px 16px; pointer-events: auto; }
+.sch-empty-tpl > span { font-size: 12.5px; font-weight: 650; color: var(--text-2); margin-right: 2px; }
 .sch-hint { position: absolute; left: 10px; bottom: 8px; right: 10px; font-size: 11.5px; color: var(--muted); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 4px var(--sch-bg), 0 0 8px var(--sch-bg); }
 .sch-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 150px; max-width: 280px; padding: 7px 9px; border-radius: 9px; background: color-mix(in srgb, var(--surface) 96%, transparent); border: 1px solid var(--border-strong); box-shadow: var(--shadow-2); font-size: 11.5px; }
 .sch-tip-title { font-weight: 700; margin-bottom: 3px; font-family: var(--mono); }
@@ -121,7 +133,7 @@
 .sch-tip-row .mono { color: var(--text); }
 
 /* ---- inspector */
-.sch-side { background: var(--surface); overflow-y: auto; max-height: 540px; }
+.sch-side { background: var(--surface); overflow-y: auto; max-height: var(--sch-h, 540px); }
 .insp { padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 10px; font-size: 12.5px; }
 .insp-head { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .insp-icon { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-strong); }
@@ -180,6 +192,8 @@
 .tb-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); white-space: nowrap; }
 
 /* ---- results */
+/* the waveform hero's trace bar is a whole row under the title (it grows with every probed trace) */
+[data-testid="panel-sch-waves"] .panel-head .panel-tools { flex: 1 1 100%; justify-content: flex-start; }
 .trace-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
 .trace-bar .spacer { flex: 1; }
 .trace-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 4px 0 9px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--chip, var(--border)) 45%, var(--border)); background: color-mix(in srgb, var(--chip, var(--surface-3)) 9%, var(--surface)); font-size: 12px; }
@@ -202,10 +216,28 @@
 .signs p { margin: 6px 0 0; font-size: 12px; color: var(--text-2); line-height: 1.55; }
 .sch-notraces { font-size: 12.5px; color: var(--muted); padding: 18px; text-align: center; border: 1px dashed var(--border); border-radius: 10px; }
 .sch-solver { display: flex; align-items: center; gap: 8px; }
+/* 간단히: folded blocks under the results (events of a single STL, the netlist); the content stays in the DOM */
+.sch-fold, .sch-events-fold { border: 1px solid var(--border); border-radius: var(--r3); background: var(--surface); box-shadow: var(--shadow-1); }
+.sch-fold > summary, .sch-events-fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 13px; font-weight: 650; color: var(--text-2); user-select: none; }
+.sch-fold > summary::-webkit-details-marker, .sch-events-fold > summary::-webkit-details-marker { display: none; }
+.sch-fold > summary::before, .sch-events-fold > summary::before { content: "▸"; font-size: 10px; color: var(--muted); transition: transform .15s; }
+.sch-fold[open] > summary::before, .sch-events-fold[open] > summary::before { transform: rotate(90deg); }
+.sch-fold > summary:hover, .sch-events-fold > summary:hover { color: var(--text); }
+.sch-fold > .panel, .sch-events-fold > .panel { border: 0; box-shadow: none; border-top: 1px solid var(--border); border-radius: 0 0 var(--r3) var(--r3); }
 .netlist { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font-family: var(--mono); font-size: 12px; line-height: 1.55; overflow: auto; max-height: 320px; white-space: pre; color: var(--text); }
 
 /* ---- sidebar cards */
 .sch-card .group-body { gap: 8px; }
+/* "고급 항목 n개 ▸" (closed in 간단히, open in 모두 보기) */
+.sch-adv { border-top: 1px dashed var(--border); padding-top: 6px; }
+.sch-adv > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--text-2); user-select: none; min-width: 0; }
+.sch-adv > summary::-webkit-details-marker { display: none; }
+.sch-adv > summary::before { content: "▸"; font-size: 10px; color: var(--muted); transition: transform .15s; }
+.sch-adv[open] > summary::before { transform: rotate(90deg); }
+.sch-adv > summary:hover .sch-adv-n { color: var(--text); }
+.sch-adv-n { font-weight: 650; white-space: nowrap; }
+.sch-adv-list { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sch-adv-body { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
 .group.sto-only { border-color: color-mix(in srgb, var(--sto) 35%, var(--border)); }
 .lib-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .lib-item { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 6px 6px 8px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); }
@@ -237,6 +269,9 @@
 
 @media (max-width: 1280px) {
   .sch-body { grid-template-columns: minmax(0, 1fr) 270px; }
+}
+@media (max-width: 760px) {
+  .sch-tgroup { flex-wrap: wrap; }
 }
 @media (max-width: 900px) {
   .sch-body { grid-template-columns: minmax(0, 1fr); }

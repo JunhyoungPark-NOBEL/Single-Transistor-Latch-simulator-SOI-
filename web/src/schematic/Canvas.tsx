@@ -4,7 +4,9 @@
 // time-cursor annotations (node voltages, element currents with direction arrows).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPE, type ReactNode } from "react";
 import { useT } from "../i18n";
+import type { StrKey } from "../i18n/strings";
 import { iKey, vKey } from "../api/circuitCustom";
+import { useIsAll } from "../state/layout";
 import type { ErcItem } from "./erc";
 import { addWires, docBounds, lPath, moveItems } from "./edit";
 import { DEFAULT_CMP, distToSeg, elementBox, GRID, newId, nextName, onWireInterior, pinPositions, rotatePt, snap, type Pt, type SchematicDoc, type SElement, type Wire } from "./model";
@@ -13,6 +15,8 @@ import { pinId } from "./nets";
 import { fmtSI } from "./si";
 import { useSch, stlRefFor } from "./store";
 import { ElementView } from "./Symbols";
+import type { TemplateId } from "./templates";
+import { loadTemplate } from "./Toolbar";
 import { defaultWave } from "./waves";
 
 export interface Annotations {
@@ -100,8 +104,12 @@ function nearestPin(el: SElement, p: Pt): string | undefined {
   return best;
 }
 
+/** Examples offered on an empty canvas (the same loader as the Examples menu). */
+const EMPTY_TEMPLATES: TemplateId[] = ["load_line", "pulse", "pbit", "oscillator"];
+
 export function Canvas({ conn, erc, ann, height }: { conn: Connectivity; erc: ErcItem[]; ann: Annotations | null; height: number }) {
   const t = useT();
+  const all = useIsAll();
   const doc = useSch((s) => s.doc);
   const selection = useSch((s) => s.selection);
   const tool = useSch((s) => s.tool);
@@ -466,16 +474,28 @@ export function Canvas({ conn, erc, ann, height }: { conn: Connectivity; erc: Er
           )}
         </g>
       </svg>
-      {doc.elements.length === 0 && (
-        <div className="sch-empty" aria-hidden>
+      {/* empty canvas: examples to start from (hidden while a tool is active, so the centre stays placeable) */}
+      {doc.elements.length === 0 && tool.kind === "select" && (
+        <div className="sch-empty">
           <strong>{t("schematic.empty.title")}</strong>
-          <span>{t("schematic.empty.body")}</span>
+          <div className="sch-empty-tpl" role="group" aria-label={t("schematic.empty.start")}>
+            <span>{t("schematic.empty.start")}</span>
+            {EMPTY_TEMPLATES.map((id) => (
+              <button key={id} type="button" className="btn sm" onClick={() => loadTemplate(id, t)} data-testid={`empty-tpl-${id}`}>
+                {t(`schematic.tpl.${id}.short` as StrKey)}
+              </button>
+            ))}
+          </div>
+          <span>{t("schematic.empty.orDraw")}</span>
         </div>
       )}
       <HoverTip hover={hover} net={hoverNet} conn={conn} ann={ann} mouse={mouse} />
-      <div className="sch-hint" aria-live="polite">
-        {hint}
-      </div>
+      {/* 간단히: the generic select-tool line only until the first part is placed; tool help stays */}
+      {(all || tool.kind !== "select" || doc.elements.length === 0) && (
+        <div className="sch-hint" aria-live="polite">
+          {hint}
+        </div>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 // rows, switch, segmented control and a compact card (sidebar style).
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { useT } from "../i18n";
+import { useIsAll } from "../state/layout";
 import { fmtSI, parseSI, toSpice } from "./si";
 
 export function SIInput({
@@ -157,20 +158,21 @@ export function TextInput({ value, onCommit, testId, ariaLabel, id, placeholder,
   );
 }
 
-/** Sidebar-style collapsible card (matches the parameter groups). */
-export function Card({ title, desc, children, testId, defaultOpen = true, actions, className }: { title: ReactNode; desc?: ReactNode; children: ReactNode; testId?: string; defaultOpen?: boolean; actions?: ReactNode; className?: string }) {
+/** Sidebar-style collapsible card (matches the parameter groups). In 간단히 the description is the head's tooltip. */
+export function Card({ title, desc, children, testId, defaultOpen = true, actions, className }: { title: ReactNode; desc?: string; children: ReactNode; testId?: string; defaultOpen?: boolean; actions?: ReactNode; className?: string }) {
   const [open, setOpen] = useState(defaultOpen);
   const id = useId();
+  const all = useIsAll();
   return (
     <section className={`group sch-card${className ? ` ${className}` : ""}`} data-testid={testId}>
       <div className="group-head">
-        <button type="button" className="group-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+        <button type="button" className="group-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} title={all ? undefined : desc}>
           <svg className="chev" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
             <path d="m6 9 6 6 6-6" />
           </svg>
           <span>
             <span className="group-title">{title}</span>
-            {desc && <span className="group-desc" style={{ display: "block" }}>{desc}</span>}
+            {desc && all && <span className="group-desc" style={{ display: "block" }}>{desc}</span>}
           </span>
         </button>
         {actions && <div className="group-actions">{actions}</div>}

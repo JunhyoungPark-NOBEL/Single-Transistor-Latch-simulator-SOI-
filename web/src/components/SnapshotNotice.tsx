@@ -1,5 +1,5 @@
 // Static snapshot mode (api/snapshot.ts): per-panel notices ("nearest precomputed V_G" / "not in the snapshot →
-// example data") and the global banner. Everything renders nothing outside snapshot mode.
+// example data") and the details behind the context-strip pill. Everything renders nothing outside snapshot mode.
 import { snapshotApprox, type SnapshotApprox } from "../api/snapshot";
 import type { Health } from "../api/types";
 import { useT, type T } from "../i18n";
@@ -45,31 +45,33 @@ export function SnapshotMissNotice({ show, data }: { show: boolean; data?: unkno
   );
 }
 
-/** Global banner in snapshot mode; adds a line while results on screen are approximate or example data. */
-export function SnapshotBanner() {
-  const t = useT();
+/** Snapshot-mode flags for the status pill: results on screen that are the nearest precomputed V_G, or example data. */
+export function useSnapshotState(): { snapshot: boolean; anyMiss: boolean; anyNear: boolean } {
   const snapshot = useStore((s) => s.backend === "snapshot");
-  const anyMiss = useStore((s) => Object.values(s.results).some((r) => r.status === "done" && r.mock));
-  const anyNear = useStore((s) => Object.values(s.results).some((r) => r.status === "done" && !!snapshotApprox(r.data)));
-  if (!snapshot) return null;
+  const anyMiss = useStore((s) => s.backend === "snapshot" && Object.values(s.results).some((r) => r.status === "done" && r.mock));
+  const anyNear = useStore((s) => s.backend === "snapshot" && Object.values(s.results).some((r) => r.status === "done" && !!snapshotApprox(r.data)));
+  return { snapshot, anyMiss, anyNear };
+}
+
+/** What the static snapshot is (the popover of the context-strip pill), plus a line while results are approximate. */
+export function SnapshotDetails() {
+  const t = useT();
+  const { anyMiss, anyNear } = useSnapshotState();
   return (
-    <div className="banner snapshot" role="status" data-testid="snapshot-banner">
-      <span className="dot snapshot" aria-hidden />
-      <span>
-        <strong>{t("snapshot.banner.title")}</strong> — {t("snapshot.banner")}
-        {anyNear && (
-          <>
-            {" "}
-            <em className="near" data-testid="snapshot-banner-near">{t("snapshot.banner.near")}</em>
-          </>
-        )}
-        {anyMiss && (
-          <>
-            {" "}
-            <em data-testid="snapshot-banner-some">{t("snapshot.banner.some")}</em>
-          </>
-        )}
-      </span>
-    </div>
+    <>
+      <p>
+        {t("snapshot.banner.title")} — {t("snapshot.banner")}
+      </p>
+      {anyNear && (
+        <p className="near" data-testid="snapshot-banner-near">
+          {t("snapshot.banner.near")}
+        </p>
+      )}
+      {anyMiss && (
+        <p className="some" data-testid="snapshot-banner-some">
+          {t("snapshot.banner.some")}
+        </p>
+      )}
+    </>
   );
 }

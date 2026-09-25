@@ -1,12 +1,24 @@
-// One parameter field: label with KaTeX symbol, ⓘ tooltip (symbol, meaning, code index, default),
-// changed-from-default dot, numeric input with range validation (+ slider), toggle, select, segmented.
-import { useEffect, useId, useState } from "react";
-import { InfoTip } from "../components/Tooltip";
+// One parameter field: label with KaTeX symbol, ⓘ guide popover (plain explanation + V_LU/V_LD effect first,
+// then symbol, meaning, code index, default), changed-from-default dot, numeric input with range validation
+// (+ slider), toggle, select, segmented. Main fields also show the inline guide line under the input row.
+import { useEffect, useId, useRef, useState } from "react";
+import { openDetails } from "../components/DetailsButton";
+import { GuidePopover, GuideText } from "../components/GuidePopover";
 import { Tex } from "../components/Tex";
+import type { TopicId } from "../content/physics/types";
 import { useT, type T } from "../i18n";
 import type { StrKey } from "../i18n/strings";
+import { guideFor, guideVerb } from "../params/guideUi";
 import { scaleOf, unitOf, type Ctx, type FieldDef, type Option } from "../params/schema";
 import { nearlyEqual, parseNumber, toInputString } from "../utils/format";
+import { GuideInline } from "./GuideInline";
+
+/** Where the field sits: its group's Details topic and visible keys (for "물리 자세히 보기 →"). */
+export interface FieldGroupCtx {
+  topic: TopicId;
+  group: string;
+  keys: string[];
+}
 
 export interface FieldProps {
   f: FieldDef;
@@ -14,6 +26,11 @@ export interface FieldProps {
   value: unknown;
   def: unknown;
   onChange: (v: unknown) => void;
+  /** Main field: inline guide line (+ slider in the 간단히 layout). */
+  main?: boolean;
+  /** Draw the slider (when the field has one). Default: true. */
+  slider?: boolean;
+  group?: FieldGroupCtx;
 }
 
 const optLabel = (t: T, o: Option) => (typeof o.label === "string" ? t(o.label as StrKey) : t.l(o.label));
@@ -37,17 +54,14 @@ function fmtDefault(t: T, f: FieldDef, ctx: Ctx, def: unknown): string {
   return String(def ?? "—");
 }
 
-function TipContent({ f, ctx, def }: { f: FieldDef; ctx: Ctx; def: unknown }) {
+/** Technical block of the popover: today's help, code index, default and range. */
+function TechContent({ f, ctx, def }: { f: FieldDef; ctx: Ctx; def: unknown }) {
   const t = useT();
   return (
     <>
-      <div className="tip-head">
-        {f.sym && <Tex tex={f.sym} />}
-        <span>{t.l(f.label)}</span>
-        {f.code && <span className="tip-code">{f.code}</span>}
-      </div>
-      <div>{t.l(f.help)}</div>
-      <div className="tip-def">
+      <p className="gp-tech-help">{t.l(f.help)}</p>
+      <div className="gp-tech-meta">
+        {f.code && <code className="code-chip">{f.code}</code>}
         {t("default")}: {fmtDefault(t, f, ctx, def)}
         {f.min !== undefined && f.max !== undefined && f.type !== "toggle" && !f.options ? ` · ${t("range", { min: toInputString(f.min, 4), max: toInputString(f.max, 4) })}` : ""}
       </div>
@@ -55,20 +69,46 @@ function TipContent({ f, ctx, def }: { f: FieldDef; ctx: Ctx; def: unknown }) {
   );
 }
 
-function Label({ f, ctx, def, changed, htmlFor }: { f: FieldDef; ctx: Ctx; def: unknown; changed: boolean; htmlFor?: string }) {
+interface GuideHooks {
+  trigger: React.RefObject<HTMLButtonElement | null>;
+  group?: FieldGroupCtx;
+}
+
+function Label({ f, ctx, def, changed, htmlFor, hooks }: { f: FieldDef; ctx: Ctx; def: unknown; changed: boolean; htmlFor?: string; hooks: GuideHooks }) {
   const t = useT();
+  const label = t.l(f.label);
+  const g = hooks.group;
   return (
     <div className="field-label">
       {changed && <span className="field-changed" title={t("changed")} aria-label={t("changed")} role="img" />}
       {f.sym && <Tex tex={f.sym} className="sym" />}
-      <label htmlFor={htmlFor} className="lbl" title={t.l(f.label)}>
-        {t.l(f.label)}
+      <label htmlFor={htmlFor} className="lbl" title={label}>
+        <GuideText text={label} plain />
       </label>
       {f.experimental && <span className="exp" title={t("experimental")}>{t("experimental.short")}</span>}
-      <InfoTip label={`${t.l(f.label)} — ${t.l(f.help)}`} content={<TipContent f={f} ctx={ctx} def={def} />} testId={`tip-${f.key}`} />
+      <GuidePopover
+        id={f.key}
+        ariaLabel={`${label} — ${t.l(f.help)}`}
+        testId={`tip-${f.key}`}
+        sym={f.sym ? <Tex tex={f.sym} /> : undefined}
+        label={label}
+        guide={guideFor(f.key)}
+        verb={guideVerb(f)}
+        technical={<TechContent f={f} ctx={ctx} def={def} />}
+        onMore={g ? () => openDetails(g.topic, hooks.trigger.current, { params: g.keys, focus: f.key, group: g.group }) : undefined}
+        triggerRef={hooks.trigger}
+      />
     </div>
   );
 }
+
+/** Inline guide of a main field (nothing for fields without a guide entry, e.g. bench_*). */
+function Inline({ f, id, main, hooks }: { f: FieldDef; id: string; main?: boolean; hooks: GuideHooks }) {
+  const guide = main ? guideFor(f.key) : undefined;
+  if (!guide) return null;
+  return <GuideInline id={id} fieldKey={f.key} guide={guide} verb={guideVerb(f)} trigger={() => hooks.trigger.current} />;
+}
+const describedBy = (...ids: (string | false | null | undefined)[]) => ids.filter(Boolean).join(" ") || undefined;
 
 function toSlider(v: number, f: FieldDef): number {
   if (f.slider === "log") return Math.log10(Math.max(v, f.min && f.min > 0 ? f.min : 1e-30));
@@ -83,9 +123,12 @@ function fromSlider(s: number, f: FieldDef): number {
   return s;
 }
 
-function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
+function NumberField({ f, ctx, value, def, onChange, main, slider = true, group }: FieldProps) {
   const t = useT();
   const id = useId();
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const hooks: GuideHooks = { trigger, group };
+  const guideId = main && guideFor(f.key) ? `${id}-guide` : null;
   const scale = scaleOf(f, ctx);
   const unit = unitOf(f, ctx);
   const isAuto = value === null && !!f.auto;
@@ -127,7 +170,7 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
   return (
     <div className="field" data-testid={`field-${f.key}`}>
       <div className="field-row">
-        <Label f={f} ctx={ctx} def={def} changed={changed} htmlFor={id} />
+        <Label f={f} ctx={ctx} def={def} changed={changed} htmlFor={id} hooks={hooks} />
         <div className="input-wrap">
           <input
             id={id}
@@ -138,7 +181,7 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
             autoComplete="off"
             value={text}
             aria-invalid={!!error}
-            aria-describedby={error ? `${id}-err` : undefined}
+            aria-describedby={describedBy(error && `${id}-err`, guideId)}
             onFocus={() => setEditing(true)}
             placeholder={f.auto ? t("auto") : undefined}
             onChange={(e) => {
@@ -164,7 +207,7 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
                 stepBy(e.key === "ArrowUp" ? 1 : -1, e.shiftKey);
               }
             }}
-            style={unit ? { paddingRight: `${Math.min(64, 12 + unit.length * 6.5)}px` } : { paddingRight: 8 }}
+            style={unit ? { paddingRight: `${Math.min(70, 18 + unit.length * 6.6)}px` } : { paddingRight: 8 }}
           />
           {unit && <span className="unit">{unit}</span>}
         </div>
@@ -182,7 +225,8 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
           {error}
         </div>
       )}
-      {f.slider && !isAuto && (
+      {guideId && <Inline f={f} id={guideId} main={main} hooks={hooks} />}
+      {f.slider && slider && !isAuto && (
         <div className="field-slider">
           <input
             type="range"
@@ -191,6 +235,7 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
             step={sStep}
             value={Math.min(sMax, Math.max(sMin, toSlider(disp, f)))}
             aria-label={`${t.l(f.label)} (${unit})`}
+            aria-describedby={guideId ?? undefined}
             onChange={(e) => commit(fromSlider(Number(e.target.value), f))}
           />
         </div>
@@ -199,29 +244,37 @@ function NumberField({ f, ctx, value, def, onChange }: FieldProps) {
   );
 }
 
-function ToggleField({ f, ctx, value, def, onChange }: FieldProps) {
+function ToggleField({ f, ctx, value, def, onChange, main, group }: FieldProps) {
   const id = useId();
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const hooks: GuideHooks = { trigger, group };
+  const guideId = main && guideFor(f.key) ? `${id}-guide` : null;
   const on = !!value;
   return (
     <div className="field" data-testid={`field-${f.key}`}>
       <div className="toggle-row">
-        <Label f={f} ctx={ctx} def={def} changed={typeof def === "boolean" && def !== on} htmlFor={id} />
-        <button id={id} type="button" role="switch" aria-checked={on} className="switch" onClick={() => onChange(!on)} />
+        <Label f={f} ctx={ctx} def={def} changed={typeof def === "boolean" && def !== on} htmlFor={id} hooks={hooks} />
+        <button id={id} type="button" role="switch" aria-checked={on} className="switch" onClick={() => onChange(!on)} aria-describedby={guideId ?? undefined} />
       </div>
+      {guideId && <Inline f={f} id={guideId} main={main} hooks={hooks} />}
     </div>
   );
 }
 
-function SelectField({ f, ctx, value, def, onChange }: FieldProps) {
+function SelectField({ f, ctx, value, def, onChange, main, group }: FieldProps) {
   const t = useT();
   const id = useId();
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const hooks: GuideHooks = { trigger, group };
+  const guideId = main && guideFor(f.key) ? `${id}-guide` : null;
   const opts = f.options ?? [];
   return (
     <div className="field" data-testid={`field-${f.key}`}>
       <div className="field-stack">
-        <Label f={f} ctx={ctx} def={def} changed={def !== undefined && def !== value} htmlFor={id} />
+        <Label f={f} ctx={ctx} def={def} changed={def !== undefined && def !== value} htmlFor={id} hooks={hooks} />
         <select
           id={id}
+          aria-describedby={guideId ?? undefined}
           className="select"
           value={String(value)}
           onChange={(e) => {
@@ -238,30 +291,38 @@ function SelectField({ f, ctx, value, def, onChange }: FieldProps) {
           ))}
         </select>
       </div>
+      {guideId && <Inline f={f} id={guideId} main={main} hooks={hooks} />}
     </div>
   );
 }
 
-function SegmentedField({ f, ctx, value, def, onChange }: FieldProps) {
+function SegmentedField({ f, ctx, value, def, onChange, main, group }: FieldProps) {
   const t = useT();
+  const id = useId();
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const hooks: GuideHooks = { trigger, group };
+  const guideId = main && guideFor(f.key) ? `${id}-guide` : null;
   const opts = f.options ?? [];
   return (
     <div className="field" data-testid={`field-${f.key}`}>
-      <Label f={f} ctx={ctx} def={def} changed={def !== undefined && def !== value} />
-      <div className="seg full" role="radiogroup" aria-label={t.l(f.label)}>
+      <Label f={f} ctx={ctx} def={def} changed={def !== undefined && def !== value} hooks={hooks} />
+      <div className="seg full" role="radiogroup" aria-label={t.l(f.label)} aria-describedby={guideId ?? undefined}>
         {opts.map((o) => (
           <button key={String(o.value)} type="button" role="radio" aria-checked={o.value === value} onClick={() => onChange(o.value)}>
             {optLabel(t, o).replace(/\s*\(.*\)$/, "")}
           </button>
         ))}
       </div>
+      {guideId && <Inline f={f} id={guideId} main={main} hooks={hooks} />}
     </div>
   );
 }
 
-function ListField({ f, ctx, value, def, onChange }: FieldProps) {
+function ListField({ f, ctx, value, def, onChange, group }: FieldProps) {
   const t = useT();
   const id = useId();
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const hooks: GuideHooks = { trigger, group };
   const scale = scaleOf(f, ctx);
   const unit = unitOf(f, ctx);
   const arr = Array.isArray(value) ? (value as number[]) : [];
@@ -283,7 +344,7 @@ function ListField({ f, ctx, value, def, onChange }: FieldProps) {
   return (
     <div className="field" data-testid={`field-${f.key}`}>
       <div className="field-stack">
-        <Label f={f} ctx={ctx} def={def} changed={changed} htmlFor={id} />
+        <Label f={f} ctx={ctx} def={def} changed={changed} htmlFor={id} hooks={hooks} />
         <div className="input-wrap">
           <input
             id={id}

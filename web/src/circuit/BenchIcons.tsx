@@ -1,4 +1,5 @@
-// Mini schematics for the bench selector cards (200 × 70 viewBox, currentColor strokes).
+// Mini schematics for the bench selector cards (200 × 70 viewBox, currentColor strokes), and 20 px glyphs for
+// the compact bench chips (24 × 24 viewBox): ramp, pulse train, comparator, coupled pair.
 import type { BenchId } from "../api/types";
 
 const S = { fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -84,4 +85,23 @@ export function BenchIcon({ bench }: { bench: BenchId }) {
         </svg>
       );
   }
+}
+
+const G = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+
+/** 20 px glyph of a bench (compact chips): what drives the STL, at a glance. */
+export function BenchGlyph({ bench, size = 20 }: { bench: BenchId; size?: number }) {
+  const d =
+    bench === "load_line"
+      ? "M3 19 L12 5 L21 19 M2 20 H22" // triangle ramp 0 → V_max → 0
+      : bench === "pulse"
+        ? "M2 18 H5 V7 H9 V18 H13 V7 H17 V18 H22" // pulse train
+        : bench === "pbit"
+          ? "M4 5 L16 12 L4 19 Z M16 12 H18 V8 H21 M8 10 V14 M6 12 H10" // comparator → bit
+          : "M4 9 H19 M15 5 L19 9 L15 13 M20 15 H5 M9 11 L5 15 L9 19"; // coupled pair ⇄
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden focusable="false" className="bench-glyph">
+      <path d={d} {...G} />
+    </svg>
+  );
 }

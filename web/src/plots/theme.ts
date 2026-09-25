@@ -6,6 +6,10 @@ export interface PlotPalette {
   text: string; text2: string; muted: string; grid: string; axis: string; zero: string; surface: string; border: string;
   hrs: string; lrs: string; unstable: string; meas: string; measBand: string; det: string; sto: string; stoSoft: string;
   detSoft: string; up: string; down: string; warn: string; categorical: string[]; sequential: string[];
+  /** Translucent fills of the V_LU (HRS) / V_LD (LRS) colours and a neutral one (window shading, ± σ bands). */
+  hrsSoft: string; lrsSoft: string; neutralSoft: string;
+  /** Grey of the "이전" (previous run) ghost curve. */
+  ghost: string;
 }
 
 const LIGHT: PlotPalette = {
@@ -14,6 +18,7 @@ const LIGHT: PlotPalette = {
   det: "#0d9488", sto: "#7c3aed", stoSoft: "rgba(124,58,237,0.16)", detSoft: "rgba(13,148,136,0.14)", up: "#0d9488", down: "#b45309", warn: "#b45309",
   categorical: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
   sequential: ["#f0f5fd", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"],
+  hrsSoft: "rgba(37,99,235,0.14)", lrsSoft: "rgba(220,38,38,0.12)", neutralSoft: "rgba(100,116,139,0.10)", ghost: "#8b95a5",
 };
 const DARK: PlotPalette = {
   text: "#e7eaf0", text2: "#b7bfcc", muted: "#8a93a3", grid: "#232833", axis: "#3a4250", zero: "#2f3642", surface: "#161920", border: "#2a303b",
@@ -21,6 +26,7 @@ const DARK: PlotPalette = {
   det: "#2dd4bf", sto: "#a78bfa", stoSoft: "rgba(167,139,250,0.18)", detSoft: "rgba(45,212,191,0.16)", up: "#2dd4bf", down: "#fbbf24", warn: "#fbbf24",
   categorical: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#2f9e2f", "#9085e9", "#e66767"],
   sequential: ["#161f33", "#0d366b", "#184f95", "#256abf", "#3987e5", "#6da7ec", "#9ec5f4", "#cde2fb"],
+  hrsSoft: "rgba(96,165,250,0.18)", lrsSoft: "rgba(248,113,113,0.16)", neutralSoft: "rgba(148,163,184,0.12)", ghost: "#6b7587",
 };
 
 export const palette = (theme: Theme): PlotPalette => (theme === "dark" ? DARK : LIGHT);

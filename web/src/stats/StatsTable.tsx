@@ -7,10 +7,14 @@
 // Rows are quantities, columns are grouped (centre · spread · tails · shape · sequence · counts · vs measured).
 // Levels print in the base unit (V), spreads with their own prefix (mV); every header explains itself on
 // hover/focus. The table scrolls horizontally inside its card on narrow screens (sticky label column).
+//
+// Compact mode (the 간단히 layout's default): 6 columns — mean, SD, p5, p95, Δmeasured, KS p — in one header
+// row; [모든 통계 열 (n)] (`<testId>-all-cols`) restores the grouped table. The CSV always has every column.
 import { Fragment, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { IconCheck, IconCopy, IconDownload } from "../components/icons";
 import { useT } from "../i18n";
 import type { StrKey } from "../i18n/strings";
+import { useIsAll } from "../state/layout";
 import { downloadText } from "../utils/csv";
 import { fmtInt, isNum } from "../utils/format";
 import type { Num } from "./describe";
@@ -18,11 +22,12 @@ import { DASH, fmtCoef, fmtLevel, fmtP, fmtPct, fmtShare, fmtSpread, levelDecima
 import { HoverTip } from "./HoverTip";
 import "./stats.css";
 import {
-  ALL_COLUMNS, cellValue, COLUMN_GROUP, COLUMN_KIND, computeRows, statsCsv,
+  ALL_COLUMNS, cellValue, COLUMN_GROUP, COLUMN_KIND, COMPACT_COLUMNS, computeRows, statsCsv, visibleColumns,
   type ComputedRow, type StatsColumn, type StatsGroup, type StatsRow,
 } from "./table";
 
 export type { StatsColumn, StatsGroup, StatsRow } from "./table";
+export { COMPACT_COLUMNS } from "./table";
 
 export interface StatsTableProps {
   rows: StatsRow[];
@@ -44,6 +49,14 @@ export interface StatsTableProps {
    * a toggle in the action bar shows them again (the table then scrolls). They are always in the CSV.
    */
   optional?: StatsColumn[];
+  /**
+   * Columns of the compact view. Default: COMPACT_COLUMNS in the 간단히 layout when `columns` is not given,
+   * none in 모두 보기; `null` = no compact view.
+   */
+  compactColumns?: StatsColumn[] | null;
+  /** Controlled "all columns" state (default: uncontrolled, on in 모두 보기, off in 간단히). */
+  allColumns?: boolean;
+  onAllColumnsChange?: (all: boolean) => void;
 }
 
 function rowPlan(rows: ComputedRow[]): UnitPlan {
@@ -61,18 +74,33 @@ function rowPlan(rows: ComputedRow[]): UnitPlan {
 
 const DEFAULT_OPTIONAL: StatsColumn[] = ["min", "max"];
 
-export function StatsTable({ rows, measured, measuredLayout = "rows", columns, csvName = "statistics", testId = "stats-table", caption, actions = true, optional = DEFAULT_OPTIONAL }: StatsTableProps) {
+export function StatsTable({
+  rows, measured, measuredLayout = "rows", columns, csvName = "statistics", testId = "stats-table", caption, actions = true, optional = DEFAULT_OPTIONAL,
+  compactColumns, allColumns, onAllColumnsChange,
+}: StatsTableProps) {
   const t = useT();
+  const isAll = useIsAll();
   const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
-  const computed = useMemo(() => computeRows(rows, measured), [rows, measured]);
+  const [allUser, setAllUser] = useState<boolean | null>(null);
+  const compactSet = compactColumns === undefined ? (columns || isAll ? null : COMPACT_COLUMNS) : compactColumns && compactColumns.length ? compactColumns : null;
+  const showAll = !compactSet || (allColumns ?? allUser ?? isAll);
+  const compact = !showAll;
+  const setShowAll = (v: boolean) => {
+    setAllUser(v);
+    onAllColumnsChange?.(v);
+  };
+  const csvRows = useMemo(() => computeRows(rows, measured), [rows, measured]);
+  // rows marked fullOnly (e.g. the analytic hazard row) appear with all columns only; the CSV keeps them
+  const computed = useMemo(() => (compact ? csvRows.filter((r) => !r.spec.fullOnly) : csvRows), [compact, csvRows]);
   const anyMeas = computed.some((r) => r.m);
-  const allCols = useMemo(() => {
+  const fullCols = useMemo(() => {
     let c = (columns ?? ALL_COLUMNS).filter((k) => anyMeas || COLUMN_GROUP[k] !== "compare");
     if (measuredLayout === "rows") c = c.filter((k) => k !== "m_mean" && k !== "m_sd");
     return c;
   }, [columns, anyMeas, measuredLayout]);
-  // optional columns: auto-hidden when the full table overflows its card, or as the user chose
-  const optCols = useMemo(() => optional.filter((c) => allCols.includes(c)), [optional, allCols]);
+  const allCols = useMemo(() => visibleColumns(fullCols, compact ? compactSet : null, computed), [fullCols, compact, compactSet, computed]);
+  // optional columns (full view): auto-hidden when the full table overflows its card, or as the user chose
+  const optCols = useMemo(() => (compact ? [] : optional.filter((c) => allCols.includes(c))), [compact, optional, allCols]);
   const [userShow, setUserShow] = useState<boolean | null>(null);
   const [fits, setFits] = useState(true);
   const needW = useRef(0);
@@ -151,7 +179,7 @@ export function StatsTable({ rows, measured, measuredLayout = "rows", columns, c
     }
   };
 
-  const csv = () => statsCsv(computed, { model: t("stats.row.model"), measured: t("stats.row.measured") });
+  const csv = () => statsCsv(csvRows, { model: t("stats.row.model"), measured: t("stats.row.measured") });
   const copy = async () => {
     const text = csv();
     let ok = false;
@@ -180,7 +208,14 @@ export function StatsTable({ rows, measured, measuredLayout = "rows", columns, c
     ? t("stats.units", { level: tablePlan.levelUnit, spread: tablePlan.spreadUnit })
     : null;
 
-  const colTitle = (c: StatsColumn) => t(`stats.c.${c}` as StrKey);
+  const colTitle = (c: StatsColumn) => {
+    if (compact) {
+      const k = `stats.cc.${c}` as StrKey;
+      const v = t(k);
+      if (v !== k) return v;
+    }
+    return t(`stats.c.${c}` as StrKey);
+  };
   const colTip = (c: StatsColumn) => t(`stats.tip.${c}` as StrKey);
 
   return (
@@ -192,6 +227,11 @@ export function StatsTable({ rows, measured, measuredLayout = "rows", columns, c
             {caption && unitHint ? " · " : null}
             {unitHint}
           </div>
+          {compactSet && (
+            <button type="button" className="btn sm ghost stats-allcols" aria-pressed={showAll} onClick={() => setShowAll(!showAll)} data-testid={`${testId}-all-cols`}>
+              {showAll ? t("stats.cols.fewer") : t("stats.cols.all", { n: fullCols.length })}
+            </button>
+          )}
           {optCols.length > 0 && (!fits || userShow !== null) && (
             <button type="button" className="btn sm ghost stats-opt" aria-pressed={showOpt} onClick={() => setUserShow(!showOpt)} data-testid={`${testId}-optional`}>
               {t(showOpt ? "stats.opt.hide" : "stats.opt.show", { cols: optCols.map((c) => t(`stats.c.${c}` as StrKey)).join("·") })}
@@ -210,22 +250,29 @@ export function StatsTable({ rows, measured, measuredLayout = "rows", columns, c
           )}
         </div>
       )}
-      <div className="stats-scroll" ref={scrollRef} tabIndex={0} role="region" aria-label={t("stats.aria.table")}>
-        <table className="stats-table" ref={tableRef} data-testid={testId}>
+      <div className={`stats-scroll${compact ? " compact" : ""}`} ref={scrollRef} tabIndex={0} role="region" aria-label={t("stats.aria.table")}>
+        <table className={`stats-table${compact ? " compact" : ""}`} ref={tableRef} data-testid={testId}>
           <thead>
-            <tr className="stats-groups">
-              <th rowSpan={2} className="stats-label-col" scope="col">
-                {t("stats.quantity")}
-              </th>
-              {groups.map((g) => (
-                <th key={g.g} colSpan={g.span} scope="colgroup" className="g-start">
-                  {t(`stats.g.${g.g}` as StrKey)}
+            {compact ? null : (
+              <tr className="stats-groups">
+                <th rowSpan={2} className="stats-label-col" scope="col">
+                  {t("stats.quantity")}
                 </th>
-              ))}
-            </tr>
+                {groups.map((g) => (
+                  <th key={g.g} colSpan={g.span} scope="colgroup" className="g-start">
+                    {t(`stats.g.${g.g}` as StrKey)}
+                  </th>
+                ))}
+              </tr>
+            )}
             <tr>
+              {compact && (
+                <th className="stats-label-col" scope="col">
+                  {t("stats.quantity")}
+                </th>
+              )}
               {cols.map((c) => (
-                <th key={c} scope="col" className={`num${groupStart.has(c) ? " g-start" : ""}`} data-col={c}>
+                <th key={c} scope="col" className={`num${groupStart.has(c) && !compact ? " g-start" : ""}`} data-col={c}>
                   <HoverTip tip={colTip(c)}>{colTitle(c)}</HoverTip>
                   {homogeneous && <span className="stats-unit">{unitOf(c, tablePlan) || " "}</span>}
                 </th>
@@ -256,7 +303,7 @@ export function StatsTable({ rows, measured, measuredLayout = "rows", columns, c
                       )}
                     </th>
                     {cols.map((c) => (
-                      <td key={c} className={`num${groupStart.has(c) ? " g-start" : ""}${COLUMN_GROUP[c] === "compare" ? " cmp" : ""}`} data-col={c}>
+                      <td key={c} className={`num${groupStart.has(c) && !compact ? " g-start" : ""}${COLUMN_GROUP[c] === "compare" ? " cmp" : ""}`} data-col={c} title={r.spec.cellTips?.[c]}>
                         {fmt(r, c, "model", plan)}
                       </td>
                     ))}
@@ -270,7 +317,7 @@ export function StatsTable({ rows, measured, measuredLayout = "rows", columns, c
                         </div>
                       </th>
                       {cols.map((c) => (
-                        <td key={c} className={`num${groupStart.has(c) ? " g-start" : ""}${COLUMN_GROUP[c] === "compare" ? " cmp" : ""}`} data-col={c}>
+                        <td key={c} className={`num${groupStart.has(c) && !compact ? " g-start" : ""}${COLUMN_GROUP[c] === "compare" ? " cmp" : ""}`} data-col={c}>
                           {COLUMN_GROUP[c] === "compare" ? "" : fmt(r, c, "measured", plan)}
                         </td>
                       ))}

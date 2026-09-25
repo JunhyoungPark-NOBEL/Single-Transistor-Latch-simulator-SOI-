@@ -116,6 +116,7 @@ export interface RunResult<T> {
 export async function runKey<T = unknown>(key: string, kind: Kind, payload: unknown): Promise<RunResult<T>> {
   await backendReady;
   const st = useStore.getState();
+  logJob(key);
   const token = ++tokenSeq;
   tokens.set(key, token);
   const payloadKey = canonical({ kind, payload });
@@ -162,6 +163,25 @@ export async function runKey<T = unknown>(key: string, kind: Kind, payload: unkn
     useStore.getState().patchResult(key, { status: "error", error: msg, progress: 0, message: "" });
     return { ok: false };
   }
+}
+
+/** Dev builds only: every submitted job key in `window.__stlJobs` (the e2e specs check what a change re-runs). */
+function logJob(key: string) {
+  try {
+    if (import.meta.env?.DEV && typeof window !== "undefined") ((window as unknown as { __stlJobs?: string[] }).__stlJobs ??= []).push(key);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Like runKey, but keeps a completed result whose payload is the one requested (no job, no progress overlay).
+ * Used for the V_G curve, whose payload does not change with V_G (utils/payload.ts, VG_CURVE_CANONICAL_VG).
+ */
+export async function runKeyIfChanged<T = unknown>(key: string, kind: Kind, payload: unknown): Promise<RunResult<T>> {
+  const e = useStore.getState().results[key];
+  if (e && e.status === "done" && e.data !== undefined && e.dataKey === canonical({ kind, payload })) return { ok: true, data: e.data as T };
+  return runKey<T>(key, kind, payload);
 }
 
 export function cancelKey(key: string) {
@@ -212,7 +232,8 @@ export async function runDeterministic() {
       }
       return undefined;
     }),
-    runKey("vg_curve", "vg_curve", vgCurvePayload(p, s.vgRange)),
+    // the V_G curve does not depend on the sidebar V_G: keep it when only V_G changed
+    runKeyIfChanged("vg_curve", "vg_curve", vgCurvePayload(p, s.vgRange)),
   ];
   if (cbFixed != null) jobs.push(runKey("charge_balance", "charge_balance", chargeBalancePayload(p, cbFixed)));
   await Promise.all(jobs);
@@ -333,14 +354,38 @@ export async function loadDesignMap(force = false) {
 }
 
 // ---------------------------------------------------------------- auto-run (deterministic, device tab)
+/** Device · deterministic with auto-run on and no I–V result yet (nor one on its way). */
+function needsFirstRun(s: ReturnType<typeof useStore.getState>): boolean {
+  if (!s.autoRun || s.tab !== "device" || s.mode !== "deterministic") return false;
+  const b = s.results.branches;
+  return !b || (b.data === undefined && b.status !== "running" && b.status !== "queued");
+}
+let firstLoadRun = false;
+
+/**
+ * Auto-run (Device · deterministic; stochastic runs are never started automatically): re-runs 700 ms after a
+ * device/sweep change, when the switch is turned on, and once when the page opens on Device · deterministic
+ * (after the backend probe) or switches there without an I–V result.
+ */
 export function startAutoRun(debounceMs = 700): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const unsub = useStore.subscribe((s, prev) => {
     if (!s.autoRun || s.mode !== "deterministic" || s.tab !== "device") return;
     const changed = s.params.device !== prev.params.device || s.params.sweep !== prev.params.sweep || (s.autoRun && !prev.autoRun);
-    if (!changed) return;
+    const entered = (s.tab !== prev.tab || s.mode !== prev.mode) && firstLoadRun && needsFirstRun(s);
+    if (!changed && !entered) return;
     clearTimeout(timer);
-    timer = setTimeout(() => void runDeterministic(), debounceMs);
+    timer = setTimeout(() => {
+      // the user may have left Device · deterministic (or switched auto-run off) during the debounce
+      const now = useStore.getState();
+      if (now.autoRun && now.mode === "deterministic" && now.tab === "device") void runDeterministic();
+    }, entered && !changed ? 0 : debounceMs);
+  });
+  // first load: one run as soon as the backend is chosen (StrictMode mounts twice — run once)
+  void backendReady.then(() => {
+    if (firstLoadRun) return;
+    firstLoadRun = true;
+    if (needsFirstRun(useStore.getState())) void runDeterministic();
   });
   return () => {
     clearTimeout(timer);

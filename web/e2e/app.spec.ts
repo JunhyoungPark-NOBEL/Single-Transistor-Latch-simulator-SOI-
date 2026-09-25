@@ -1,8 +1,9 @@
 // Mock-mode end-to-end checks (no backend needed): rendering, mode toggle, Details window (KaTeX, drag,
-// Esc, focus return), language toggle, presets, circuit and physics tabs, screenshots.
+// Esc, focus return), language toggle, presets, circuit and physics tabs, screenshots. These run in the
+// 모두 보기 layout (`?view=all`: every panel, table and field on screen); e2e/ux-*.spec.ts cover the default.
 import { expect, test, type Page } from "@playwright/test";
 
-const SHOTS = "e2e/screenshots";
+const SHOTS = "e2e/screenshots/all";
 
 async function fresh(page: Page, hash = "#tab=device&mode=deterministic") {
   await page.addInitScript(() => {
@@ -15,8 +16,9 @@ async function fresh(page: Page, hash = "#tab=device&mode=deterministic") {
       /* ignore */
     }
   });
-  await page.goto(`/?mock=1${hash}`);
-  await expect(page.getByTestId("mode-toggle")).toBeVisible();
+  await page.goto(`/?mock=1&view=all${hash}`);
+  // the mode toggle is hidden on Validation and Physics: wait for the tabs instead
+  await expect(page.getByTestId("tab-device")).toBeVisible();
 }
 
 test.describe("STL simulator (mock mode)", () => {
@@ -189,14 +191,20 @@ test.describe("STL simulator (mock mode)", () => {
     await page.screenshot({ path: `${SHOTS}/dark-stochastic.png` });
   });
 
-  test("narrow screen: sidebar becomes a drawer; empty panels still offer Run", async ({ page }) => {
+  test("narrow screen: sidebar becomes a drawer; the first load runs by itself; empty panels still offer Run", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await fresh(page);
     const toggle = page.getByRole("button", { name: /파라미터 패널|Parameter panel/ });
     await expect(toggle).toBeVisible();
-    await page.screenshot({ path: `${SHOTS}/tablet-1024.png` });
-    await page.getByTestId("empty-run-iv").click();
+    // Device · deterministic with auto-run on: the first load computes without a click
     await expect(page.getByTestId("kpi-vlu-value")).toContainText("3.70", { timeout: 15_000 });
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: `${SHOTS}/tablet-1024.png` });
+    // stochastic never runs by itself: the hero offers the Run button
+    await page.getByTestId("mode-stochastic").click();
+    await expect(page.getByTestId("empty-run-mc-iv")).toBeVisible();
+    await page.getByTestId("empty-run-mc-iv").click();
+    await expect(page.getByTestId("kpi-vlu-value")).toContainText("±", { timeout: 20_000 });
   });
 });
 
@@ -292,6 +300,10 @@ test.describe("UX regressions", () => {
 
   test("run bar reports only runs of the current tab/mode; KPIs dim when parameters change", async ({ page }) => {
     await fresh(page);
+    // auto-run is on by default: switch it off so the V_G change below leaves the results stale
+    await expect(page.getByTestId("autorun")).toHaveAttribute("aria-checked", "true");
+    await page.getByTestId("autorun").click();
+    await expect(page.getByTestId("autorun")).toHaveAttribute("aria-checked", "false");
     await page.getByTestId("run-button").click();
     await expect(page.getByTestId("kpi-vlu-value")).toContainText("3.70", { timeout: 15_000 });
     await expect(page.getByTestId("run-status")).toContainText("완료");

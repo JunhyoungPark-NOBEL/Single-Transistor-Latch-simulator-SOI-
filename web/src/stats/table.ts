@@ -66,6 +66,25 @@ export interface StatsRow {
   tip?: string;
   /** de-emphasised (e.g. an auxiliary analytic row) */
   secondary?: boolean;
+  /** shown only with all columns (StatsTable compact mode leaves it out; the CSV always has it) */
+  fullOnly?: boolean;
+  /** tooltip per cell of this row (e.g. the 95 % CI on the mean cell in compact mode) */
+  cellTips?: Partial<Record<StatsColumn, string>>;
+}
+
+/** Columns of the compact statistics table: where (mean), how wide (SD, p5, p95), does it match the measurement. */
+export const COMPACT_COLUMNS: StatsColumn[] = ["mean", "sd", "p05", "p95", "dmean", "ks_p"];
+
+/**
+ * Columns to show: compact (the given set, the comparison ones only with measured data, plus `censored` when a
+ * row has censored values so a lost run never goes unnoticed) or all (today's grouped set).
+ */
+export function visibleColumns(all: StatsColumn[], compact: StatsColumn[] | null, rows: readonly ComputedRow[]): StatsColumn[] {
+  if (!compact) return all;
+  const cols = compact.filter((c) => all.includes(c));
+  const anyCensored = rows.some((r) => Number.isFinite(r.d.censored) && r.d.censored > 0);
+  if (anyCensored && all.includes("censored") && !cols.includes("censored")) cols.push("censored");
+  return cols;
 }
 
 export interface Comparison {

@@ -1,17 +1,24 @@
-// Left sidebar: Device card (technology, geometry, calibration preset, saved devices), grouped parameter
-// cards, sticky Run bar. On the Circuit tab's schematic editor it shows the device library and the
-// simulation settings instead (lazy chunk). Collapses to a drawer < 1100 px.
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+// Left sidebar: Device card (technology, geometry, calibration preset, saved devices), the basic parameter
+// groups, the "고급 설정" disclosure with the advanced groups, and the sticky Run bar. On the Circuit tab's
+// schematic editor it shows the device library and the simulation settings instead (lazy chunk).
+// Collapses to a drawer < 1100 px.
+import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
 import { useCircuitView } from "../circuit/view";
 import { DeviceCard } from "../devices/DeviceCard";
 import { Progress } from "../components/Panel";
-import { IconPlay, IconStop, IconX } from "../components/icons";
+import { IconChevron, IconPlay, IconStop, IconX } from "../components/icons";
 import { useT } from "../i18n";
-import { GROUPS, groupVisible, type Ctx } from "../params/schema";
+import { GUIDE } from "../i18n/strings.guide";
+import { fill } from "../i18n/strings.ux";
+import { GROUPS, groupPaths, groupVisible, type Ctx, type GroupDef } from "../params/schema";
+import { useIsAll } from "../state/layout";
 import { cancelActive, runContext, runCurrent } from "../state/runner";
-import { useStore } from "../state/store";
+import { presetDefaults, useStore } from "../state/store";
 import { fmtDuration } from "../utils/format";
+import { deepEqual, getPath } from "../utils/object";
 import { ParamGroup } from "./ParamGroup";
+import { useSidebarUi } from "./sidebarState";
+import "./sidebar.css";
 
 const SchematicSidebar = lazy(() => import("../schematic/SchematicSidebar"));
 
@@ -54,6 +61,7 @@ export function RunBar() {
   else if (cancelled) status = t("run.cancelled");
   else status = t("run.done", { t: fmtDuration(elapsed) });
 
+  const showProgress = running || failed > 0;
   return (
     <div className="runbar" data-testid="runbar">
       <div className="runbar-main">
@@ -65,22 +73,66 @@ export function RunBar() {
             <IconStop size={12} /> {t("run.cancel")}
           </button>
         )}
+        {tab === "device" && mode === "deterministic" && (
+          <label className="autorun" title={t("run.auto.hint")}>
+            <button type="button" role="switch" aria-checked={autoRun} className="switch" onClick={() => setAutoRun(!autoRun)} aria-label={t("run.auto")} data-testid="autorun" />
+            {!running && (
+              <span className="autorun-label" aria-hidden>
+                {t("run.auto")}
+              </span>
+            )}
+          </label>
+        )}
       </div>
-      {(running || active) && <Progress value={running ? progress : failed ? 0 : 1} indeterminate={running && progress < 0.01} />}
+      {showProgress && (
+        <div className={`rb-progress${!running && failed ? " failed" : ""}`}>
+          <Progress value={running ? progress : entries.length ? (entries.length - failed) / entries.length : 0} indeterminate={running && progress < 0.01} />
+        </div>
+      )}
       <div className="runbar-status" aria-live="polite">
-        <span className="msg" data-testid="run-status" title={status}>
+        <span className={`msg${failed && !running ? " err" : ""}`} data-testid="run-status" title={status}>
           {status}
         </span>
         {running && <span className="mono">{t("run.elapsed", { t: fmtDuration(elapsed) })}</span>}
       </div>
-      {tab === "device" && mode === "deterministic" && (
-        <div className="autorun">
-          <button type="button" role="switch" aria-checked={autoRun} className="switch" onClick={() => setAutoRun(!autoRun)} aria-label={t("run.auto")} data-testid="autorun" />
-          <span title={t("run.auto.hint")}>{t("run.auto")}</span>
-          <span className="small muted" style={{ marginLeft: "auto" }}>Ctrl/⌘ + Enter</span>
+    </div>
+  );
+}
+
+const ADV_SHORT: Record<string, keyof typeof GUIDE> = { state: "adv.short.state", calib: "adv.short.calib", ext: "adv.short.ext", numerics: "adv.short.numerics", solver: "adv.short.solver" };
+
+/** "고급 설정 ▸ 국소 상태 · 보정 · 확장 · 수치 · 2개 수정" + the advanced groups (closed heads) when open. */
+function AdvancedGroups({ groups, ctx }: { groups: GroupDef[]; ctx: Ctx }) {
+  const t = useT();
+  const all = useIsAll();
+  const open = useSidebarUi((s) => (all ? s.advOpenAll : s.advOpen));
+  const setOpen = useSidebarUi((s) => s.setAdvOpen);
+  const bench = useStore((s) => s.params.circuit.bench);
+  const changed = useStore((s) => {
+    const d = presetDefaults(s);
+    let n = 0;
+    for (const g of groups) for (const p of g.id === "bench" ? [["circuit", "bench_params", bench]] : groupPaths(g)) if (!deepEqual(getPath(s.params, p), getPath(d, p))) n++;
+    return n;
+  });
+  const bodyId = useId();
+  if (!groups.length) return null;
+  const names = groups.map((g) => (ADV_SHORT[g.id] ? t.l(GUIDE[ADV_SHORT[g.id]]) : t(g.title))).join("\u2009·\u2009");
+  return (
+    <section className={`adv-groups${open ? " open" : ""}`} data-testid="adv-groups" aria-label={t.l(GUIDE["adv.title"])}>
+      <button type="button" className="adv-head" aria-expanded={open} aria-controls={bodyId} onClick={() => setOpen(!open, all)}>
+        <IconChevron size={14} className="chev" />
+        <span className="adv-title">{t.l(GUIDE["adv.title"])}</span>
+        {changed > 0 && <span className="chg-count">{fill(t.l(GUIDE["adv.changed"]), { n: changed })}</span>}
+        <span className="adv-names">{names}</span>
+      </button>
+      {open && (
+        <div className="adv-body" id={bodyId}>
+          {groups.map((g) => (
+            <ParamGroup key={g.id} g={g} ctx={ctx} />
+          ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -97,6 +149,8 @@ export function Sidebar() {
   // groups specific to the current tab (e.g. bench/solver on the circuit tab) come first
   const circuitFirst = (g: (typeof GROUPS)[number]) => Number(tab === "circuit" && g.tabs.length === 1 && g.tabs[0] === "circuit");
   const groups = GROUPS.filter((g) => groupVisible(g, ctx)).sort((a, b) => circuitFirst(b) - circuitFirst(a));
+  const basic = groups.filter((g) => !g.advanced);
+  const advanced = groups.filter((g) => g.advanced);
   return (
     <>
       {open && <div className="scrim" onClick={() => setOpen(false)} aria-hidden />}
@@ -115,9 +169,10 @@ export function Sidebar() {
           ) : (
             <>
               <DeviceCard />
-              {groups.map((g) => (
+              {basic.map((g) => (
                 <ParamGroup key={g.id} g={g} ctx={ctx} />
               ))}
+              <AdvancedGroups groups={advanced} ctx={ctx} />
             </>
           )}
         </div>

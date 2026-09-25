@@ -3,7 +3,7 @@ import { BENCHES } from "../params/benches";
 import { BUILTIN_META, PHOTO_GAMMA } from "../state/presets";
 import {
   applyChannelSeed, branchesPayload, channelSeedOf, circuitPayload, iphPA, midFold, photoConditionPayload, powerMW, presetRoot,
-  sweepMcPayload, switchLightMode, vgCurvePayload,
+  sweepMcPayload, switchLightMode, VG_CURVE_CANONICAL_VG, vgCurvePayload,
 } from "./payload";
 import { canonical, deepEqual, getPath, mergeDefaults, setPath } from "./object";
 
@@ -48,6 +48,22 @@ describe("payload builders", () => {
   });
   it("vg_curve rounds the point count", () => {
     expect(vgCurvePayload(paper(), { min: -4, max: -1, n: 12.6 }).n).toBe(13);
+  });
+  it("vg_curve uses a canonical V_G: a V_G change keeps the payload (and its cache key) unchanged", () => {
+    const r = { min: -4.5, max: -0.5, n: 41 };
+    const a = paper();
+    const b = setPath(paper(), ["device", "vg"], -1.9);
+    expect(vgCurvePayload(a, r).device.vg).toBe(VG_CURVE_CANONICAL_VG);
+    expect(VG_CURVE_CANONICAL_VG).toBe(-2); // the reference preset's V_G: its snapshot key is unchanged
+    expect(canonical(vgCurvePayload(b, r))).toBe(canonical(vgCurvePayload(a, r)));
+    expect(b.device.vg).toBe(-1.9); // the parameter root is not modified
+    // the photo preset (V_G −1.8 V) also sends −2; every other device field is passed through
+    const ph = vgCurvePayload(photo(), r).device;
+    expect(ph.vg).toBe(-2);
+    expect(ph.light).toEqual(photo().device.light);
+    // anything else still changes the key
+    const c = setPath(paper(), ["device", "light", "iph_pA"], 1);
+    expect(canonical(vgCurvePayload(c, r))).not.toBe(canonical(vgCurvePayload(a, r)));
   });
   it("circuit payload: stochastic block only in stochastic mode", () => {
     const p = paper();

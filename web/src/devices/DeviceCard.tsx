@@ -1,11 +1,18 @@
-// Compact "Device" card for the sidebar: technology chips (FDSOI active; PDSOI/Bulk coming soon), geometry,
-// calibration preset selector (loads the preset defaults), saved devices and "Save as device".
+// Compact "Device" card for the sidebar (4 rows): "소자 · FDSOI  [라이브러리]", the geometry line, the calibration
+// preset selector (loads the preset defaults), and the one-line preset state ("암조건 · V_G −2 V · 0.4 V/s", or
+// "● 기준 보정에서 수정 · 초기화") with the "기술 · 저장 ▸" disclosure (technology chips, saved devices, "Save
+// as device"; closed in 간단히, open in 모두 보기, always in the DOM).
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { PresetId } from "../api/types";
 import { useT } from "../i18n";
+import { GUIDE } from "../i18n/strings.guide";
+import { fill } from "../i18n/strings.ux";
+import { useIsAll } from "../state/layout";
 import { PRESET_IDS } from "../state/presets";
 import { presetDefaults, useStore } from "../state/store";
+import { GuideText } from "../components/GuidePopover";
 import { clone, deepEqual } from "../utils/object";
+import { iphPA } from "../utils/payload";
 import { geometryFromMeta, stochOf, TECHNOLOGIES, type Geometry, type LibDevice } from "./library";
 import { useDeviceLib } from "./store";
 import "./devices.css";
@@ -97,8 +104,22 @@ const IconLib = () => (
   </svg>
 );
 
+const num = (v: number) => String(Number(v.toPrecision(3))).replace(/^-/, "−");
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** "암조건 · V_G −2 V · 0.4 V/s" (the current condition; equals the preset while it is unmodified). */
+function useConditionLine(): string {
+  const t = useT();
+  const device = useStore((s) => s.params.device);
+  const rate = useStore((s) => s.params.sweep.rate_V_per_s);
+  const iph = iphPA(device);
+  const light = iph > 0 ? (device.light.mode === "power" ? `P ${num(device.light.power_mW)} mW` : `I_PH ${num(iph)} pA`) : cap(t.l(GUIDE["light.dark"]));
+  return `${light} · V_G ${num(device.vg)} V · ${num(rate)} V/s`;
+}
+
 export function DeviceCard() {
   const t = useT();
+  const all = useIsAll();
   const preset = useStore((s) => s.preset);
   const meta = useStore((s) => s.meta);
   const load = useStore((s) => s.loadPreset);
@@ -110,43 +131,31 @@ export function DeviceCard() {
   const [saving, setSaving] = useState(false);
   const [manage, setManage] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // "기술 · 저장": follows the layout (open in 모두 보기) until the user toggles it
+  const [moreOpen, setMoreOpen] = useState<boolean | null>(null);
+  const more = moreOpen ?? all;
+  useEffect(() => setMoreOpen(null), [all]);
   useEffect(() => {
     if (!toast) return;
     const id = setTimeout(() => setToast(null), 2600);
     return () => clearTimeout(id);
   }, [toast]);
+  const condition = useConditionLine();
   const geometry = geometryFromMeta(meta);
   const baseName = t(`preset.${preset}` as never);
+  const fullLabel = meta.presets[preset]?.label?.[t.lang] ?? preset;
   return (
-    <div className="preset-card dev-card" data-testid="preset-card">
+    <div className="preset-card dev-card compact" data-testid="preset-card">
       <div className="dev-head">
-        <span className="preset-head">{t("schematic.dev.title")}</span>
+        <span className="preset-head">{fill(t.l(GUIDE["dev.head"]), { tech: "FDSOI" })}</span>
         <button type="button" className="btn sm ghost dev-lib-btn" onClick={() => setManage(true)} aria-label={t("schematic.dev.manageAria")} title={t("schematic.dev.manageAria")} data-testid="dev-manage">
           <IconLib />
           {t("schematic.dev.manage")}
         </button>
       </div>
-      <div className="techsel" role="radiogroup" aria-label={t("schematic.dev.tech")} data-testid="tech-select">
-        {TECHNOLOGIES.map((x) => (
-          <button
-            key={x.id}
-            type="button"
-            role="radio"
-            aria-checked={x.id === "FDSOI"}
-            disabled={!x.active}
-            className="techsel-opt"
-            title={x.active ? x.id : t("schematic.dev.techSoon", { tech: x.id })}
-            data-testid={`tech-${x.id}`}
-          >
-            {x.id}
-            {!x.active && <span className="soon">{t("schematic.dev.soon")}</span>}
-          </button>
-        ))}
-      </div>
       <div className="dev-geom" title={t("schematic.dev.geometryFixed")} data-testid="dev-geometry">
         <GeometryLine g={geometry} />
       </div>
-      <div className="dev-sub">{t("schematic.dev.calibration")}</div>
       <div className="preset-options" role="radiogroup" aria-label={t("schematic.dev.calibration")}>
         {PRESET_IDS.map((id: PresetId) => (
           <button key={id} type="button" role="radio" aria-checked={preset === id && !modified} className="preset-opt" data-testid={`preset-${id}`} onClick={() => load(id)} title={meta.presets[id]?.label?.[t.lang] ?? id}>
@@ -154,53 +163,88 @@ export function DeviceCard() {
           </button>
         ))}
       </div>
-      <div className="preset-note" data-testid="preset-label" aria-live="polite">
-        {modified ? (
-          <>
-            <span className="chg" aria-hidden />
-            <span style={{ flex: 1 }}>{t("preset.modified", { base: baseName })}</span>
-            <button type="button" className="link-btn" onClick={() => load(preset)}>
-              {t("reset")}
-            </button>
-          </>
-        ) : (
-          <span className="muted">{meta.presets[preset]?.label?.[t.lang] ?? preset}</span>
-        )}
-      </div>
-      <div className="dev-row">
-        <select
-          className="select"
-          value=""
-          aria-label={t("schematic.dev.saved")}
-          data-testid="dev-load"
-          disabled={!devices.length}
-          onChange={(e) => {
-            const d = devices.find((x) => x.id === e.target.value);
-            if (d) {
-              loadDeviceIntoParams(d);
-              setToast(t("schematic.dev.loadedToast", { name: d.name }));
-            }
+      <div className={`dev-foot${more ? " more-open" : ""}`}>
+        <div className="preset-note" data-testid="preset-label" aria-live="polite" title={fullLabel}>
+          {modified ? (
+            <>
+              <span className="chg" aria-hidden />
+              <span className="pn-text">{fill(t.l(GUIDE["dev.modified"]), { base: baseName })}</span>
+              <span className="pn-sep" aria-hidden>·</span>
+              <button type="button" className="link-btn" onClick={() => load(preset)} aria-label={fill(t.l(GUIDE["dev.reset.aria"]), { base: baseName })}>
+                {t("reset")}
+              </button>
+            </>
+          ) : (
+            <span className="pn-text muted">
+              <GuideText text={condition} plain />
+            </span>
+          )}
+        </div>
+        <details
+          className="dev-more"
+          data-testid="dev-more"
+          open={more}
+          onToggle={(e) => {
+            const o = (e.currentTarget as HTMLDetailsElement).open;
+            if (o !== more) setMoreOpen(o);
           }}
         >
-          <option value="">{devices.length ? t("schematic.dev.loadSaved") : t("schematic.dev.noneSaved")}</option>
-          {devices.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
-        <button type="button" className={`btn sm${saving ? " active" : ""}`} onClick={() => setSaving(!saving)} aria-expanded={saving} data-testid="dev-save-open">
-          + {t("schematic.dev.saveAs")}
-        </button>
+          <summary title={t.l(GUIDE["dev.more.title"])}>{t.l(GUIDE["dev.more"])}</summary>
+          <div className="dev-more-body">
+            <div className="techsel" role="radiogroup" aria-label={t("schematic.dev.tech")} data-testid="tech-select">
+              {TECHNOLOGIES.map((x) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={x.id === "FDSOI"}
+                  disabled={!x.active}
+                  className="techsel-opt"
+                  title={x.active ? x.id : t("schematic.dev.techSoon", { tech: x.id })}
+                  data-testid={`tech-${x.id}`}
+                >
+                  {x.id}
+                  {!x.active && <span className="soon">{t("schematic.dev.soon")}</span>}
+                </button>
+              ))}
+            </div>
+            <div className="dev-row">
+              <select
+                className="select"
+                value=""
+                aria-label={t("schematic.dev.saved")}
+                data-testid="dev-load"
+                disabled={!devices.length}
+                onChange={(e) => {
+                  const d = devices.find((x) => x.id === e.target.value);
+                  if (d) {
+                    loadDeviceIntoParams(d);
+                    setToast(t("schematic.dev.loadedToast", { name: d.name }));
+                  }
+                }}
+              >
+                <option value="">{devices.length ? t("schematic.dev.loadSaved") : t("schematic.dev.noneSaved")}</option>
+                {devices.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className={`btn sm${saving ? " active" : ""}`} onClick={() => setSaving(!saving)} aria-expanded={saving} data-testid="dev-save-open">
+                + {t("schematic.dev.saveAs")}
+              </button>
+            </div>
+            {saving && (
+              <SaveDeviceForm
+                onDone={(d) => {
+                  setSaving(false);
+                  if (d) setToast(t("schematic.dev.savedToast", { name: d.name }));
+                }}
+              />
+            )}
+          </div>
+        </details>
       </div>
-      {saving && (
-        <SaveDeviceForm
-          onDone={(d) => {
-            setSaving(false);
-            if (d) setToast(t("schematic.dev.savedToast", { name: d.name }));
-          }}
-        />
-      )}
       {toast && (
         <div className="dev-toast" role="status" data-testid="dev-toast">
           {toast}

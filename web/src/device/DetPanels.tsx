@@ -1,17 +1,25 @@
-// Deterministic device panels: (a) I–V branches, (b) current components, (c) body-charge balance,
-// (d) V_G curve of the folds.
+// Deterministic device panels: (a) I–V curve (hero), (b) current components, (c) body-charge balance,
+// (d) V_G curve of the folds. Each panel shows at most one control; view toggles live in its ⋯ menu.
 import type { Data, Layout, Shape } from "plotly.js";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { BranchesResult, ChargeBalanceResult, MeasuredData, VgCurveResult } from "../api/types";
-import { Panel } from "../components/Panel";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import type { Arr, BranchesResult, ChargeBalanceResult, MeasuredData, VgCurveResult } from "../api/types";
+import { selectMoreTab } from "../components/MoreCard";
+import { NO_CSV, Panel, type PanelMenuItem } from "../components/Panel";
+import { ToolPopover } from "../components/PanelMenu";
 import { useT, type T } from "../i18n";
-import { signed } from "../plots/labels";
+import { DEV } from "../i18n/strings.device";
+import { fill } from "../i18n/strings.ux";
+import { signed, subs } from "../plots/labels";
+import { SubText } from "../plots/SubText";
 import { currentAxis, HOVER_IV, type PlotPalette } from "../plots/theme";
+import { useIsAll } from "../state/layout";
+import { usePrevRun } from "../state/prevRuns";
 import { loadMeasured, runChargeBalance, runVgCurve } from "../state/runner";
 import { useStore } from "../state/store";
-import { isNum } from "../utils/format";
-import { branchesPayload, chargeBalancePayload, midFold, powerMW, vgCurvePayload } from "../utils/payload";
-import { abs, arrowIndices, isPaperReference, logRange, nums, pick, pos, rangeWithin, useCurrentKey, useEntry, usePalette } from "./common";
+import { fmtSI, isNum } from "../utils/format";
+import { chargeBalancePayload, midFold, powerMW, round } from "../utils/payload";
+import { abs, arrowIndices, interpAt, isPaperReference, logRange, nums, pick, pos, rangeWithin, useCurrentKey, useDeviceKeys, useEntry, usePalette } from "./common";
 
 export function Seg<V extends string>({ value, options, onChange, label }: { value: V; options: { v: V; label: string }[]; onChange: (v: V) => void; label: string }) {
   return (
@@ -25,26 +33,46 @@ export function Seg<V extends string>({ value, options, onChange, label }: { val
   );
 }
 
-export function Check({ checked, onChange, label, testId }: { checked: boolean; onChange: (v: boolean) => void; label: string; testId?: string }) {
-  return (
-    <button type="button" className="btn sm" aria-pressed={checked} onClick={() => onChange(!checked)} data-testid={testId} style={checked ? { borderColor: "var(--accent)", color: "var(--accent-strong)", background: "var(--accent-soft)" } : undefined}>
-      <span aria-hidden style={{ width: 8, height: 8, borderRadius: 2, background: checked ? "var(--accent)" : "var(--border-strong)" }} />
-      {label}
-    </button>
-  );
+/** [로그 | 선형] segmented control of a current axis. */
+function LogSeg({ t, log, setLog }: { t: T; log: boolean; setLog: (v: boolean) => void }) {
+  return <Seg label={t.l(DEV["menu.y"])} value={log ? "log" : "lin"} onChange={(v) => setLog(v === "log")} options={[{ v: "log", label: t("log") }, { v: "lin", label: t("lin") }]} />;
 }
 
-/** Measured overlay traces for I–V panels: paper-device median + 10–90 % band, or photo light I–V curves. */
-export function measuredIvTraces(t: T, c: PlotPalette, m: MeasuredData | undefined, kind: "paper" | "photo" | null, powerNow: number): Data[] {
+/** ⋯ radio pair y-axis 로그 | 선형. */
+export function logMenu(t: T, log: boolean, setLog: (v: boolean) => void): PanelMenuItem[] {
+  const g = t.l(DEV["menu.y"]);
+  return [
+    { kind: "radio", id: "y-log", group: g, label: t("log"), checked: log, onSelect: () => setLog(true) },
+    { kind: "radio", id: "y-lin", group: g, label: t("lin"), checked: !log, onSelect: () => setLog(false) },
+  ];
+}
+
+export interface MeasuredOpts {
+  /** Draw the 10–90 % band of the reference record (default true). */
+  band?: boolean;
+  /** Legend name of the measured median / curve (default "측정 중앙값 ↑↓"). */
+  name?: string;
+  /** Legend name of the band. */
+  bandName?: string;
+}
+
+/** Measured overlay traces for I–V panels: paper-device median (+ 10–90 % band), or photo light I–V curves. */
+export function measuredIvTraces(t: T, c: PlotPalette, m: MeasuredData | undefined, kind: "paper" | "photo" | null, powerNow: number, opts: MeasuredOpts = {}): Data[] {
   if (!m || !kind) return [];
   if (kind === "paper" && m.paper_iv) {
     const p = m.paper_iv;
-    return [
-      { x: p.vd_up, y: pos(p.p10_up), type: "scatter", mode: "lines", line: { width: 0 }, hoverinfo: "skip", showlegend: false, legendgroup: "meas" },
-      { x: p.vd_up, y: pos(p.p90_up), type: "scatter", mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: c.measBand, name: t("iv.measBand"), hoverinfo: "skip", legendgroup: "meas" },
-      { x: p.vd_up, y: pos(p.median_up), type: "scatter", mode: "lines", line: { color: c.meas, width: 1.2, dash: "dot" }, name: `${t("iv.measMedian")} ↑↓`, legendgroup: "meas", hovertemplate: `${HOVER_IV}<extra>${t("measured")} ↑</extra>` },
-      { x: p.vd_down, y: pos(p.median_down), type: "scatter", mode: "lines", line: { color: c.meas, width: 1.2, dash: "dash" }, name: `${t("iv.measMedian")} ↓`, legendgroup: "meas", showlegend: false, hovertemplate: `${HOVER_IV}<extra>${t("measured")} ↓</extra>` },
-    ];
+    const name = opts.name ?? `${t("iv.measMedian")} ↑↓`;
+    const out: Data[] = [];
+    if (opts.band ?? true)
+      out.push(
+        { x: p.vd_up, y: pos(p.p10_up), type: "scatter", mode: "lines", line: { width: 0 }, hoverinfo: "skip", showlegend: false, legendgroup: "meas" },
+        { x: p.vd_up, y: pos(p.p90_up), type: "scatter", mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: c.measBand, name: opts.bandName ?? t("iv.measBand"), hoverinfo: "skip", legendgroup: "meas" },
+      );
+    out.push(
+      { x: p.vd_up, y: pos(p.median_up), type: "scatter", mode: "lines", line: { color: c.meas, width: 1.2, dash: "dot" }, name, legendgroup: "meas", hovertemplate: `${HOVER_IV}<extra>${t("measured")} ↑</extra>` },
+      { x: p.vd_down, y: pos(p.median_down), type: "scatter", mode: "lines", line: { color: c.meas, width: 1.2, dash: "dash" }, name: `${name} ↓`, legendgroup: "meas", showlegend: false, hovertemplate: `${HOVER_IV}<extra>${t("measured")} ↓</extra>` },
+    );
+    return out;
   }
   if (kind === "photo" && m.light_iv.length) {
     let best = 0;
@@ -58,7 +86,7 @@ export function measuredIvTraces(t: T, c: PlotPalette, m: MeasuredData | undefin
       mode: "lines" as const,
       line: { color: c.meas, width: i === best ? 1.6 : 0.8, dash: i === best ? ("solid" as const) : ("dot" as const) },
       opacity: i === best ? 0.9 : 0.35,
-      name: `${t("iv.light")} ${cv.label}`,
+      name: opts.name ?? `${t("iv.light")} ${cv.label}`,
       legendgroup: "meas",
       showlegend: i === best,
       hovertemplate: `${HOVER_IV}<extra>${cv.label}</extra>`,
@@ -73,16 +101,41 @@ export function insideLegend(c: PlotPalette, corner: "tl" | "br" = "br", yBottom
   return { orientation: "v", ...pos, bgcolor: c.surface.startsWith("#") ? `${c.surface}e6` : c.surface, bordercolor: c.border, borderwidth: 1, font: { size: 10.5 }, tracegroupgap: 0, itemwidth: 30 };
 }
 
-function foldAnnotations(f: BranchesResult["folds"], c: PlotPalette): Partial<Layout>["annotations"] {
-  const out: NonNullable<Partial<Layout>["annotations"]> = [];
-  if (isNum(f.V_LU) && isNum(f.I_LU))
-    out.push({ x: f.V_LU, y: Math.log10(f.I_LU), xref: "x", yref: "y", text: `V<sub>LU</sub> = ${f.V_LU.toFixed(3)} V`, showarrow: true, arrowhead: 0, arrowcolor: c.hrs, ax: -58, ay: 26, font: { color: c.hrs, size: 11.5 }, bgcolor: c.surface, bordercolor: c.hrs, borderwidth: 1, borderpad: 3 });
-  if (isNum(f.V_LD) && isNum(f.I_LD))
-    out.push({ x: f.V_LD, y: Math.log10(f.I_LD), xref: "x", yref: "y", text: `V<sub>LD</sub> = ${f.V_LD.toFixed(3)} V`, showarrow: true, arrowhead: 0, arrowcolor: c.lrs, ax: -62, ay: -28, font: { color: c.lrs, size: 11.5 }, bgcolor: c.surface, bordercolor: c.lrs, borderwidth: 1, borderpad: 3 });
+/** One horizontal legend row above the plot (at most a few entries: HRS, LRS, 측정, 이전). */
+export const ROW_LEGEND: Partial<Layout>["legend"] = { orientation: "h", x: 0, xanchor: "left", y: 1.0, yanchor: "bottom", font: { size: 11.5 }, itemwidth: 30, tracegroupgap: 0 };
+
+type Ann = NonNullable<Partial<Layout>["annotations"]>[number];
+
+function foldAnnotations(f: BranchesResult["folds"], c: PlotPalette, yv: (v: number) => number): Ann[] {
+  const out: Ann[] = [];
+  if (isNum(f.V_LU) && isNum(f.I_LU) && f.I_LU > 0)
+    out.push({ x: f.V_LU, y: yv(f.I_LU), xref: "x", yref: "y", text: `V<sub>LU</sub> ${f.V_LU.toFixed(3)} V`, showarrow: true, arrowhead: 0, arrowcolor: c.hrs, ax: -58, ay: 26, font: { color: c.hrs, size: 11.5 }, bgcolor: c.surface, bordercolor: c.hrs, borderwidth: 1, borderpad: 3 });
+  if (isNum(f.V_LD) && isNum(f.I_LD) && f.I_LD > 0)
+    out.push({ x: f.V_LD, y: yv(f.I_LD), xref: "x", yref: "y", text: `V<sub>LD</sub> ${f.V_LD.toFixed(3)} V`, showarrow: true, arrowhead: 0, arrowcolor: c.lrs, ax: -58, ay: 28, font: { color: c.lrs, size: 11.5 }, bgcolor: c.surface, bordercolor: c.lrs, borderwidth: 1, borderpad: 3 });
   return out;
 }
 
-// ---------------------------------------------------------------- (a) I–V branches
+/** Vertical jump arrow (data coordinates) from (x, from) to (x, to). */
+function jumpArrow(x: number, from: number, to: number, color: string, yv: (v: number) => number): Ann {
+  return {
+    x, y: yv(to), ax: x, ay: yv(from), xref: "x", yref: "y", axref: "x", ayref: "y", text: "", showarrow: true,
+    arrowhead: 2, arrowsize: 1.1, arrowwidth: 1.8, arrowcolor: color, standoff: 2, startstandoff: 7,
+  };
+}
+
+/** Middle point of a branch with a finite (and, on a log axis, positive) current — for its direct label. */
+function midPoint(cv: { vd: Arr; id: Arr }, log: boolean): [number, number] | null {
+  const idx: number[] = [];
+  cv.vd.forEach((x, i) => {
+    const y = cv.id[i];
+    if (typeof x === "number" && typeof y === "number" && Number.isFinite(y) && (!log || y > 0)) idx.push(i);
+  });
+  if (!idx.length) return null;
+  const i = idx[Math.floor(idx.length / 2)];
+  return [cv.vd[i] as number, cv.id[i] as number];
+}
+
+// ---------------------------------------------------------------- (a) I–V branches (hero)
 export function IvPanel() {
   const t = useT();
   const c = usePalette();
@@ -90,31 +143,59 @@ export function IvPanel() {
   const preset = useStore((s) => s.preset);
   const measured = useStore((s) => s.measured);
   const { entry, data } = useEntry<BranchesResult>("branches");
-  const key = useCurrentKey("branches", useMemo(() => branchesPayload(params), [params]));
+  const prev = usePrevRun<BranchesResult>("branches");
+  const { branches: key } = useDeviceKeys();
   const [log, setLog] = useState(true);
   const [showMeas, setShowMeas] = useState(true);
-  const [showSweep, setShowSweep] = useState(true);
+  const [showBand, setShowBand] = useState(false);
+  const [showSweep, setShowSweep] = useState(false);
+  const [showPrev, setShowPrev] = useState(true);
   const measKind = isPaperReference(params.device) ? "paper" : preset === "photo" ? "photo" : null;
   useEffect(() => {
     if (showMeas && measKind && measured.status === "idle") void loadMeasured();
   }, [showMeas, measKind, measured.status]);
+  const L = (k: keyof typeof DEV) => t.l(DEV[k]);
+  const ghost = showPrev && prev && prev.dataKey !== entry?.dataKey ? prev.data : undefined;
+  // a click on the plot background offers the charge balance at that V_D
+  const [offer, setOffer] = useState<{ vd: number; x: number; y: number } | null>(null);
+  const vmax = params.sweep.vd_max_V;
 
   const plot = useMemo(() => {
     if (!data) return undefined;
+    const Y = (a: Arr) => (log ? pos(a) : nums(a));
+    const yv = (v: number) => (log ? Math.log10(v) : v);
     const traces: Data[] = [];
-    if (showMeas) traces.push(...measuredIvTraces(t, c, measured.data, measKind, powerMW(params.device)));
+    // the previous run as a grey dotted ghost underneath (never exported: NO_CSV)
+    if (ghost) {
+      const x: (number | null)[] = [];
+      const y: (number | null)[] = [];
+      for (const cv of ghost.latch ? [ghost.HRS, ghost.LRS] : [ghost.full]) {
+        x.push(...nums(cv.vd), null);
+        y.push(...Y(cv.id), null);
+      }
+      traces.push({ x, y, type: "scatter", mode: "lines", name: L("leg.prev"), line: { color: c.ghost, width: 1.6, dash: "dot" }, meta: NO_CSV as never, connectgaps: false, hovertemplate: `${HOVER_IV}<extra>${L("leg.prev")}</extra>` });
+    }
+    if (showMeas) traces.push(...measuredIvTraces(t, c, measured.data, measKind, powerMW(params.device), { band: showBand && measKind === "paper", name: L("leg.meas"), bandName: L("leg.measBand") }));
     const br = (curve: BranchesResult["HRS"], name: string, color: string, dash: "solid" | "dash", width: number): Data => ({
-      x: nums(curve.vd), y: log ? pos(curve.id) : nums(curve.id), type: "scatter", mode: "lines", name, line: { color, width, dash }, hovertemplate: `${HOVER_IV}<extra>${name}</extra>`,
+      x: nums(curve.vd), y: Y(curve.id), type: "scatter", mode: "lines", name, line: { color, width, dash }, hovertemplate: `${HOVER_IV}<extra>${name}</extra>`,
     });
-    if (!data.latch) traces.push(br(data.full, t("branch"), c.unstable, "solid", 2));
-    traces.push(br(data.HRS, t("iv.hrs"), c.hrs, "solid", 2.4), br(data.unstable, t("iv.unstable"), c.unstable, "dash", 1.6), br(data.LRS, t("iv.lrs"), c.lrs, "solid", 2.4));
+    const ann: Ann[] = [];
+    if (!data.latch) traces.push(br(data.full, L("leg.full"), c.unstable, "solid", 2));
+    else {
+      traces.push(br(data.HRS, L("leg.hrs"), c.hrs, "solid", 2.2), br(data.LRS, L("leg.lrs"), c.lrs, "solid", 2.2));
+      // unstable branch: thin dashed, labelled directly on the curve instead of a legend entry
+      traces.push({ ...br(data.unstable, L("leg.unstable"), c.unstable, "dash", 1.2), showlegend: false });
+      const mid = midPoint(data.unstable, log);
+      // above-right of the middle point: the branch falls to the right, so the label stays clear of it
+      if (mid) ann.push({ x: mid[0], y: yv(mid[1]), xref: "x", yref: "y", text: L("leg.unstable"), showarrow: false, xanchor: "left", yanchor: "bottom", xshift: 5, yshift: 3, font: { size: 11, color: c.muted } });
+    }
     if (showSweep) {
       for (const [dir, xy, color, name] of [
-        ["up", data.double_sweep.up, c.up, t("axis.leg.up")],
-        ["down", data.double_sweep.down, c.down, t("axis.leg.down")],
+        ["up", data.double_sweep.up, c.up, L("leg.up")],
+        ["down", data.double_sweep.down, c.down, L("leg.down")],
       ] as const) {
         const x = nums(xy.vd);
-        const y = log ? pos(xy.id) : nums(xy.id);
+        const y = Y(xy.id);
         traces.push({ x, y, type: "scatter", mode: "lines", line: { color, width: 1.1 }, opacity: 0.85, name, legendgroup: dir, hovertemplate: `${HOVER_IV}<extra>${name}</extra>` });
         const idx = arrowIndices(xy.vd, xy.id, Math.max(4, Math.floor(x.length / 9)));
         traces.push({
@@ -130,23 +211,39 @@ export function IvPanel() {
         marker: { symbol: "diamond", size: 10, color: [c.hrs, c.lrs], line: { color: c.surface, width: 1.5 } },
         hovertemplate: "V<sub>D</sub> = %{x:.4f} V<br>I<sub>D</sub> = %{y:.3~s}A<extra>fold</extra>",
       });
+      // the jumps: ↑ at V_LU (HRS → LRS), ↓ at V_LD (LRS → HRS)
+      const top = interpAt(data.LRS.vd, data.LRS.id, f.V_LU);
+      const bottom = interpAt(data.HRS.vd, data.HRS.id, f.V_LD);
+      if (isNum(f.I_LU) && f.I_LU > 0 && isNum(top) && top > f.I_LU * 1.5) ann.push(jumpArrow(f.V_LU, f.I_LU, top, c.hrs, yv));
+      if (isNum(f.I_LD) && f.I_LD > 0 && isNum(bottom) && bottom > 0 && bottom < f.I_LD / 1.5) ann.push(jumpArrow(f.V_LD, f.I_LD, bottom, c.lrs, yv));
+      ann.push(...foldAnnotations(f, c, yv));
     }
     const yr = log ? logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y)) : undefined;
     const layout: Partial<Layout> = {
       xaxis: { title: { text: t("axis.vd") }, range: [0, params.sweep.vd_max_V + 0.15], zeroline: false },
       yaxis: { ...currentAxis(log, log ? t("axis.idAbs") : t("axis.id")), ...(yr ? { range: yr } : {}) },
-      annotations: log && data.latch ? foldAnnotations(f, c) : [],
-      margin: { l: 64, r: 16, t: 16, b: 46 },
-      legend: insideLegend(c, "tl"),
+      annotations: ann,
+      margin: { l: 64, r: 16, t: 30, b: 46 },
+      legend: ROW_LEGEND,
     };
     return { data: traces, layout };
-  }, [data, log, showMeas, showSweep, measured.data, measKind, c, t, params.sweep.vd_max_V, params.device]);
+  }, [data, ghost, log, showMeas, showBand, showSweep, measured.data, measKind, c, t, params.sweep.vd_max_V, params.device]);
+
+  const f = data?.folds;
+  const foot = !data ? undefined : !data.latch ? L("foot.nolatch") : isNum(f?.I_LU) || isNum(f?.I_LD) ? <SubText text={subs(fill(L("foot.ifold"), { lu: fmtSI(f?.I_LU, "A", 3), ld: fmtSI(f?.I_LD, "A", 3) }))} /> : undefined;
+  const menu: PanelMenuItem[] = [
+    { kind: "check", id: "sweeps", label: L("menu.sweeps"), checked: showSweep, onChange: setShowSweep, testId: "iv-sweeps" },
+    ...(measKind ? [{ kind: "check" as const, id: "meas", label: L("menu.meas"), checked: showMeas, onChange: setShowMeas, testId: "toggle-measured" }] : []),
+    ...(measKind === "paper" ? [{ kind: "check" as const, id: "band", label: L("menu.band"), checked: showBand, onChange: setShowBand, disabled: !showMeas, testId: "iv-band" }] : []),
+    { kind: "check", id: "prev", label: L("menu.prev"), checked: showPrev, onChange: setShowPrev, testId: "iv-prev" },
+  ];
 
   return (
     <Panel
       id="iv"
-      title={t("p.iv")}
-      desc={t("p.iv.desc")}
+      primary
+      title={L("iv.title")}
+      desc={L("iv.desc")}
       topic="charge-balance"
       entry={entry}
       hasData={!!data}
@@ -154,14 +251,65 @@ export function IvPanel() {
       csvName="iv_branches"
       plot={plot}
       warnings={data?.warnings}
-      toolbar={
-        <>
-          <Seg label="y" value={log ? "log" : "lin"} onChange={(v) => setLog(v === "log")} options={[{ v: "log", label: t("log") }, { v: "lin", label: t("lin") }]} />
-          <Check checked={showSweep} onChange={setShowSweep} label={t("axis.leg.updown")} />
-          {measKind && <Check checked={showMeas} onChange={setShowMeas} label={t("measured")} testId="toggle-measured" />}
-        </>
-      }
-    />
+      toolbar={data ? <LogSeg t={t} log={log} setLog={setLog} /> : undefined}
+      menu={data ? menu : undefined}
+      foot={foot}
+      onPlotClick={data ? ({ x, clientX, clientY }) => (x >= 0.05 && x <= vmax ? setOffer({ vd: round(x, 3), x: clientX, y: clientY }) : setOffer(null)) : undefined}
+    >
+      {offer && <CbOffer t={t} {...offer} onClose={() => setOffer(null)} />}
+    </Panel>
+  );
+}
+
+/** Small floating offer at the clicked point of the I–V plot: open the charge balance at that V_D. */
+function CbOffer({ t, vd, x, y, onClose }: { t: T; vd: number; x: number; y: number; onClose: () => void }) {
+  const setCbVd = useStore((s) => s.setCbVd);
+  const isAll = useIsAll();
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState({ left: x + 10, top: y + 10 });
+  useLayoutEffect(() => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    setPos({ left: Math.max(8, Math.min(x + 10, window.innerWidth - r.width - 8)), top: y + 10 + r.height > window.innerHeight - 8 ? y - r.height - 10 : y + 10 });
+  }, [x, y]);
+  useEffect(() => {
+    const down = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("keydown", key);
+    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("keydown", key);
+      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [onClose]);
+  const go = () => {
+    setCbVd(vd);
+    void runChargeBalance(vd);
+    if (isAll) document.querySelector('[data-testid="panel-charge-balance"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+    else selectMoreTab("device-det", "charge-balance");
+    onClose();
+  };
+  return createPortal(
+    <div ref={ref} className="cb-offer" style={pos} role="group" aria-label={t.l(DEV["cbOffer.aria"])} data-testid="iv-cb-offer">
+      <span className="cb-offer-v">
+        <SubText text={subs(fill(t.l(DEV["cbOffer.label"]), { v: vd.toFixed(3) }))} />
+      </span>
+      <button type="button" className="btn sm" onClick={go} data-testid="iv-cb-offer-go">
+        {/* one flex item: .btn is inline-flex with a gap, which would split the text around the subscript */}
+        <span>
+          <SubText text={subs(t.l(DEV["cbOffer.go"]))} /> →
+        </span>
+      </button>
+    </div>,
+    document.body,
   );
 }
 
@@ -176,13 +324,14 @@ export const COMPONENTS: { key: keyof BranchesResult["HRS"]["comp"]; loss: boole
   { key: "loss_diffusion", loss: true },
   { key: "loss_junction_srh", loss: true },
 ];
+/** Components drawn at first (largest peak |I| on the shown branch); the others start hidden (legend click). */
+const TOP_COMPONENTS = 4;
 
 export function ComponentsPanel() {
   const t = useT();
   const c = usePalette();
-  const params = useStore((s) => s.params);
   const { entry, data } = useEntry<BranchesResult>("branches");
-  const key = useCurrentKey("branches", useMemo(() => branchesPayload(params), [params]));
+  const { branches: key } = useDeviceKeys();
   const [branch, setBranch] = useState<"HRS" | "LRS" | "full">("HRS");
   const [log, setLog] = useState(true);
   const plot = useMemo(() => {
@@ -190,17 +339,21 @@ export function ComponentsPanel() {
     // no latch (or an empty branch): HRS/LRS are empty — show the whole traced locus instead of a blank plot
     const used = branch !== "full" && data.latch && (data[branch]?.vd?.length ?? 0) > 0 ? branch : "full";
     const cv = data[used] ?? data.full;
+    const peak = COMPONENTS.map((k) => Math.max(0, ...abs(cv.comp?.[k.key]).map((v) => (v != null && Number.isFinite(v) ? v : 0))));
+    const top = new Set([...peak.keys()].sort((a, b) => peak[b] - peak[a]).slice(0, TOP_COMPONENTS).filter((i) => peak[i] > 0));
     const traces: Data[] = COMPONENTS.map((k, i) => {
       const name = t(`comp.${k.key}` as never);
       return {
         x: nums(cv.vd), y: log ? pos(abs(cv.comp?.[k.key])) : abs(cv.comp?.[k.key]), type: "scatter", mode: "lines", name,
+        visible: top.has(i) ? true : "legendonly",
         line: { color: c.categorical[i], width: k.loss ? 1.6 : 2, dash: k.loss ? "dash" : "solid" },
         hovertemplate: `V<sub>D</sub> = %{x:.3f} V<br>|I| = %{y:.3~s}A<extra>${name}</extra>`,
       } as Data;
     });
+    const shown = traces.filter((_, i) => top.has(i)).map((tr) => (tr as { y?: (number | null)[] }).y);
     const layout: Partial<Layout> = {
       xaxis: { title: { text: t("axis.vd") } },
-      yaxis: { ...currentAxis(log, t("axis.icomp")), ...(log ? { range: logRange(traces.map((tr) => (tr as { y?: (number | null)[] }).y), 1e-18, 12) } : {}) },
+      yaxis: { ...currentAxis(log, t("axis.icomp")), ...(log ? { range: logRange(shown.length ? shown : traces.map((tr) => (tr as { y?: (number | null)[] }).y), 1e-18, 12) } : {}) },
       // which branch the components follow (the whole traced locus when there is no latch)
       annotations: [{ x: 0.01, y: 0.99, xref: "paper", yref: "paper", xanchor: "left", yanchor: "top", showarrow: false, text: used === "full" ? t("axis.ann.full") : t("axis.ann.branch", { b: used }), font: { size: 11, color: c.text2 }, bgcolor: c.surface, borderpad: 2 }],
       legend: { orientation: "h", y: 1.01, yanchor: "bottom", x: 0, font: { size: 11 } },
@@ -219,12 +372,9 @@ export function ComponentsPanel() {
       currentKey={key}
       csvName="current_components"
       plot={plot}
-      toolbar={
-        <>
-          <Seg label={t("branch")} value={branch} onChange={setBranch} options={[{ v: "HRS", label: "HRS" }, { v: "LRS", label: "LRS" }, { v: "full", label: t("all") }]} />
-          <Seg label="y" value={log ? "log" : "lin"} onChange={(v) => setLog(v === "log")} options={[{ v: "log", label: t("log") }, { v: "lin", label: t("lin") }]} />
-        </>
-      }
+      toolbar={data ? <Seg label={t("branch")} value={branch} onChange={setBranch} options={[{ v: "HRS", label: "HRS" }, { v: "LRS", label: "LRS" }, { v: "full", label: t("all") }]} /> : undefined}
+      menu={data ? logMenu(t, log, setLog) : undefined}
+      foot={data ? t.l(DEV["foot.components"]) : undefined}
     />
   );
 }
@@ -242,13 +392,13 @@ export function ChargeBalancePanel() {
   const autoVd = midFold(br?.folds.V_LU, br?.folds.V_LD, 0.8 * params.sweep.vd_max_V);
   const vd = cbVd ?? data?.vd ?? autoVd;
   const key = useCurrentKey("charge_balance", useMemo(() => chargeBalancePayload(params, cbVd ?? data?.vd ?? autoVd), [params, cbVd, data?.vd, autoVd]));
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [timer] = useState<{ id?: ReturnType<typeof setTimeout> }>({});
   const onVd = (v: number) => {
     setCbVd(v);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => void runChargeBalance(v), 350);
+    clearTimeout(timer.id);
+    timer.id = setTimeout(() => void runChargeBalance(v), 350);
   };
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => () => clearTimeout(timer.id), [timer]);
 
   const plot = useMemo(() => {
     if (!data) return undefined;
@@ -270,7 +420,7 @@ export function ChargeBalancePanel() {
       return data.potential[best];
     };
     if (stable.length)
-      traces.push({ x: stable.map((r) => xr(r.u, r.Q_C)), y: stable.map((r) => potAt(r.u)), yaxis: "y2", type: "scatter", mode: "markers", name: t("cb.stable"), marker: { size: 11, color: c.det, line: { color: c.surface, width: 1.5 } }, hovertemplate: `${t("cb.stable")}<br>${hv}<br>I<sub>D</sub> = %{customdata:.3~s}A<extra></extra>`, customdata: stable.map((r) => r.id) as never });
+      traces.push({ x: stable.map((r) => xr(r.u, r.Q_C)), y: stable.map((r) => potAt(r.u)), yaxis: "y2", type: "scatter", mode: "markers", name: t("cb.stable"), marker: { size: 11, color: c.text, line: { color: c.surface, width: 1.5 } }, hovertemplate: `${t("cb.stable")}<br>${hv}<br>I<sub>D</sub> = %{customdata:.3~s}A<extra></extra>`, customdata: stable.map((r) => r.id) as never });
     if (unstable.length)
       traces.push({ x: unstable.map((r) => xr(r.u, r.Q_C)), y: unstable.map((r) => potAt(r.u)), yaxis: "y2", type: "scatter", mode: "markers", name: t("cb.unstable"), marker: { size: 11, color: c.surface, line: { color: c.warn, width: 2 } }, hovertemplate: `${t("cb.unstable")}<br>${hv}<extra></extra>` });
     // U(x) grows by 10⁴–10⁵ k_BT far from the wells: frame the region around the roots
@@ -283,10 +433,10 @@ export function ChargeBalancePanel() {
       uRange = [lo - 0.35 * d, hi + 0.8 * d];
     } else if (uRoots.length === 1) {
       const ru = data.roots.map((r) => xr(r.u, r.Q_C));
-      uRange = rangeWithin(x, nums(data.potential), ru[0] - 0.15 * (xq === "u" ? 1 : 1), ru[0] + 0.15);
+      uRange = rangeWithin(x, nums(data.potential), ru[0] - 0.15, ru[0] + 0.15);
     }
     const shapes: Partial<Shape>[] = data.roots.map((r) => ({
-      type: "line", xref: "x", yref: "paper", x0: xr(r.u, r.Q_C), x1: xr(r.u, r.Q_C), y0: 0, y1: 1, line: { color: r.kind === "stable" ? c.det : c.warn, width: 1, dash: "dot" },
+      type: "line", xref: "x", yref: "paper", x0: xr(r.u, r.Q_C), x1: xr(r.u, r.Q_C), y0: 0, y1: 1, line: { color: r.kind === "stable" ? c.text2 : c.warn, width: 1, dash: "dot" },
     }));
     const layout: Partial<Layout> = {
       grid: undefined,
@@ -300,6 +450,20 @@ export function ChargeBalancePanel() {
   }, [data, xq, c, t]);
 
   const vmax = params.sweep.vd_max_V;
+  const g = t.l(DEV["menu.x"]);
+  const menu: PanelMenuItem[] = [
+    { kind: "radio", id: "x-u", group: g, label: "u", checked: xq === "u", onSelect: () => setXq("u") },
+    { kind: "radio", id: "x-q", group: g, label: "Q_B", checked: xq === "Q", onSelect: () => setXq("Q") },
+    {
+      kind: "check", id: "auto", label: t.l(DEV["menu.cbAuto"]), checked: cbVd == null, testId: "cb-auto",
+      onChange: (on) => {
+        if (on) {
+          setCbVd(null);
+          void runChargeBalance(autoVd);
+        } else setCbVd(vd);
+      },
+    },
+  ];
   return (
     <Panel
       id="charge-balance"
@@ -313,24 +477,18 @@ export function ChargeBalancePanel() {
       plot={plot}
       warnings={data?.warnings}
       toolbar={
-        <>
+        data ? (
           <div className="slider-inline">
-            <label className="tb-label mono" htmlFor="cb-vd">V<sub>D</sub> = {vd.toFixed(3)} V</label>
+            <label className="tb-label mono" htmlFor="cb-vd">
+              V<sub>D</sub> = {vd.toFixed(3)} V
+            </label>
             <input id="cb-vd" type="range" min={0.05} max={vmax} step={0.005} value={Math.min(vmax, vd)} onChange={(e) => onVd(Number(e.target.value))} aria-label="V_D" data-testid="cb-vd" />
           </div>
-          <button type="button" className="btn sm" onClick={() => { setCbVd(null); void runChargeBalance(autoVd); }} title={t("cb.auto")} aria-pressed={cbVd == null}>
-            {t("cb.auto")}
-          </button>
-          <Seg label={t("cb.x")} value={xq} onChange={setXq} options={[{ v: "u", label: "u" }, { v: "Q", label: "Q_B" }]} />
-        </>
+        ) : undefined
       }
-    >
-      {data && (
-        <div className="panel-foot small muted mono">
-          {t("axis.cb.roots", { n: data.roots.length })} · {data.roots.map((r) => `${r.kind === "stable" ? "●" : "○"} u=${r.u.toFixed(3)} V`).join("  ")}
-        </div>
-      )}
-    </Panel>
+      menu={data ? menu : undefined}
+      foot={data ? `${t("axis.cb.roots", { n: data.roots.length })} · ${data.roots.map((r) => `${r.kind === "stable" ? "●" : "○"} u = ${r.u.toFixed(3)} V`).join("  ")}` : undefined}
+    />
   );
 }
 
@@ -342,21 +500,22 @@ export function VgPanel() {
   const range = useStore((s) => s.vgRange);
   const setRange = useStore((s) => s.setVgRange);
   const { entry, data } = useEntry<VgCurveResult>("vg_curve");
-  const key = useCurrentKey("vg_curve", useMemo(() => vgCurvePayload(params, range), [params, range]));
+  // canonical V_G in the payload: moving V_G only moves the "현재 V_G" marker (no stale badge, no re-run)
+  const { vg_curve: key } = useDeviceKeys();
   const vgNow = params.device.vg;
   const plot = useMemo(() => {
     if (!data) return undefined;
     const vg = nums(data.vg);
     const traces: Data[] = [
       { x: vg, y: nums(data.V_LD), type: "scatter", mode: "lines+markers", name: "V<sub>LD</sub>", line: { color: c.lrs, width: 2 }, marker: { size: 4 }, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>V<sub>LD</sub> = %{y:.4f} V<extra></extra>" },
-      { x: vg, y: nums(data.V_LU), type: "scatter", mode: "lines+markers", name: "V<sub>LU</sub>", line: { color: c.hrs, width: 2 }, marker: { size: 4 }, fill: "tonexty", fillcolor: c.detSoft, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>V<sub>LU</sub> = %{y:.4f} V<extra></extra>" },
+      { x: vg, y: nums(data.V_LU), type: "scatter", mode: "lines+markers", name: "V<sub>LU</sub>", line: { color: c.hrs, width: 2 }, marker: { size: 4 }, fill: "tonexty", fillcolor: c.neutralSoft, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>V<sub>LU</sub> = %{y:.4f} V<extra></extra>" },
     ];
     const shapes: Partial<Shape>[] = [];
-    const ann: NonNullable<Partial<Layout>["annotations"]> = [];
+    const ann: Ann[] = [];
     const w = data.window;
     if (isNum(w.vg_low) && isNum(w.vg_high)) {
-      shapes.push({ type: "rect", xref: "x", yref: "paper", x0: w.vg_low, x1: w.vg_high, y0: 0, y1: 1, fillcolor: c.detSoft, opacity: 0.35, line: { width: 0 }, layer: "below" });
-      ann.push({ x: (w.vg_low + w.vg_high) / 2, y: 1, xref: "x", yref: "paper", yanchor: "bottom", text: `${t("vg.window")}: ${signed(w.vg_low, 2)} … ${signed(w.vg_high, 2)} V`, showarrow: false, font: { size: 11, color: c.det } });
+      shapes.push({ type: "rect", xref: "x", yref: "paper", x0: w.vg_low, x1: w.vg_high, y0: 0, y1: 1, fillcolor: c.neutralSoft, opacity: 0.6, line: { width: 0 }, layer: "below" });
+      ann.push({ x: (w.vg_low + w.vg_high) / 2, y: 1, xref: "x", yref: "paper", yanchor: "bottom", text: `${t("vg.window")}: ${signed(w.vg_low, 2)} … ${signed(w.vg_high, 2)} V`, showarrow: false, font: { size: 11, color: c.text2 } });
     }
     shapes.push({ type: "line", xref: "x", yref: "paper", x0: vgNow, x1: vgNow, y0: 0, y1: 1, line: { color: c.text2, width: 1.2, dash: "dash" } });
     ann.push({ x: vgNow, y: 0.97, xref: "x", yref: "paper", yanchor: "top", text: t("axis.ann.setVg", { v: signed(vgNow, 2) }), showarrow: false, xanchor: "left", xshift: 4, font: { size: 11, color: c.text2 }, bgcolor: c.surface });
@@ -370,6 +529,8 @@ export function VgPanel() {
     };
     return { data: traces, layout };
   }, [data, vgNow, c, t]);
+  const vgs = nums(data?.vg).filter((v): v is number => v != null);
+  const foot = vgs.length ? fill(t.l(DEV["foot.range"]), { min: signed(vgs[0], 1), max: signed(vgs[vgs.length - 1], 1), n: vgs.length }) : undefined;
   return (
     <Panel
       id="vg"
@@ -382,27 +543,62 @@ export function VgPanel() {
       csvName="vg_curve"
       plot={plot}
       warnings={data?.warnings}
-      toolbar={<RangeInputs range={range} setRange={setRange} onRun={() => void runVgCurve()} maxN={61} />}
+      toolbar={<RangePopover t={t} range={range} setRange={setRange} onRun={() => void runVgCurve()} maxN={61} runLabel={t.l(DEV["range.run"])} testId="vg-range" />}
+      foot={foot}
     />
   );
 }
 
-export function RangeInputs({ range, setRange, onRun, maxN, label }: { range: { min: number; max: number; n: number }; setRange: (r: Partial<{ min: number; max: number; n: number }>) => void; onRun: () => void; maxN: number; label?: string }) {
-  const t = useT();
-  const num = (s: string, d: number) => {
-    const v = Number(s.replace(",", ".").replace("−", "-"));
-    return Number.isFinite(v) ? v : d;
-  };
+type VgRangeT = { min: number; max: number; n: number };
+const parseNum = (s: string, d: number) => {
+  const v = Number(s.trim().replace(",", ".").replace("−", "-"));
+  return s.trim() !== "" && Number.isFinite(v) ? v : d;
+};
+
+/** ⚙ 범위 popover: V_G min / max / points and one (re)compute button. */
+export function RangePopover({ t, range, setRange, onRun, maxN, runLabel, testId }: { t: T; range: VgRangeT; setRange: (r: Partial<VgRangeT>) => void; onRun: () => void; maxN: number; runLabel: string; testId?: string }) {
   return (
-    <span className="inline-inputs">
-      <span className="tb-label">{t("vg.range")}</span>
-      <input className="input" aria-label="V_G min" defaultValue={range.min} onBlur={(e) => setRange({ min: num(e.target.value, range.min) })} />
-      <span className="muted">…</span>
-      <input className="input" aria-label="V_G max" defaultValue={range.max} onBlur={(e) => setRange({ max: num(e.target.value, range.max) })} />
-      <input className="input" style={{ width: 48 }} aria-label={t("vg.points")} defaultValue={range.n} onBlur={(e) => setRange({ n: Math.max(2, Math.min(maxN, Math.round(num(e.target.value, range.n)))) })} />
-      <span className="tb-label">{t("vg.points")}</span>
-      <button type="button" className="btn sm" onClick={onRun}>{label ?? t("recompute")}</button>
-    </span>
+    <ToolPopover label={t.l(DEV["range.button"])} title={t.l(DEV["range.title"])} testId={testId}>
+      {(close) => <RangeForm t={t} range={range} setRange={setRange} maxN={maxN} runLabel={runLabel} onRun={() => { onRun(); close(); }} testId={testId} />}
+    </ToolPopover>
   );
 }
 
+function RangeForm({ t, range, setRange, onRun, maxN, runLabel, testId }: { t: T; range: VgRangeT; setRange: (r: Partial<VgRangeT>) => void; onRun: () => void; maxN: number; runLabel: string; testId?: string }) {
+  const [min, setMin] = useState(String(range.min));
+  const [max, setMax] = useState(String(range.max));
+  const [n, setN] = useState(String(range.n));
+  const commit = () => {
+    const lo = parseNum(min, range.min);
+    const hi = parseNum(max, range.max);
+    const next = { min: Math.min(lo, hi), max: Math.max(lo, hi), n: Math.max(2, Math.min(maxN, Math.round(parseNum(n, range.n)))) };
+    if (next.min === next.max) return;
+    setRange(next);
+  };
+  return (
+    <form
+      className="range-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        commit();
+        onRun();
+      }}
+    >
+      <label>
+        <span>{t.l(DEV["range.min"])}</span>
+        <input className="input" inputMode="decimal" value={min} onChange={(e) => setMin(e.target.value)} onBlur={commit} aria-label="V_G min" data-testid={testId ? `${testId}-min` : undefined} />
+      </label>
+      <label>
+        <span>{t.l(DEV["range.max"])}</span>
+        <input className="input" inputMode="decimal" value={max} onChange={(e) => setMax(e.target.value)} onBlur={commit} aria-label="V_G max" data-testid={testId ? `${testId}-max` : undefined} />
+      </label>
+      <label>
+        <span>{t.l(DEV["range.n"])}</span>
+        <input className="input" inputMode="numeric" value={n} onChange={(e) => setN(e.target.value)} onBlur={commit} aria-label={t("vg.points")} data-testid={testId ? `${testId}-n` : undefined} />
+      </label>
+      <button type="submit" className="btn sm primary range-run" data-testid={testId ? `${testId}-run` : undefined}>
+        {runLabel}
+      </button>
+    </form>
+  );
+}

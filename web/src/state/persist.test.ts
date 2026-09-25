@@ -4,7 +4,7 @@ import { modeHint } from "../components/Header";
 import { translate } from "../i18n";
 import type { StrKey } from "../i18n/strings";
 import { presetRoot } from "../utils/payload";
-import { parseOpenState, parsePersisted, PERSIST_VERSION, restoreParams, restoreRange } from "./persist";
+import { initialAutoRun, parseOpenState, parsePersisted, PERSIST_VERSION, restoreParams, restoreRange } from "./persist";
 import { BUILTIN_META } from "./presets";
 import { runContext } from "./runner";
 
@@ -17,6 +17,16 @@ describe("parsePersisted (localStorage from junk / older schemas)", () => {
     expect(p).toEqual({ v: 1 });
     const ok = parsePersisted(JSON.stringify({ v: 2, tab: "circuit", mode: "stochastic", lang: "en", theme: "dark", preset: "photo", autoRun: true, params: {} }));
     expect(ok).toMatchObject({ v: 2, tab: "circuit", mode: "stochastic", lang: "en", theme: "dark", preset: "photo", autoRun: true, params: {} });
+  });
+});
+
+describe("auto-run default", () => {
+  it("is on until the user sets the switch; then the stored choice wins", () => {
+    expect(initialAutoRun({})).toBe(true);
+    expect(initialAutoRun(parsePersisted(JSON.stringify({ v: 2, autoRun: false })))).toBe(true); // the old default, never chosen
+    expect(initialAutoRun(parsePersisted(JSON.stringify({ v: 2, autoRun: false, autoRunChosen: true })))).toBe(false);
+    expect(initialAutoRun(parsePersisted(JSON.stringify({ v: 2, autoRun: true, autoRunChosen: true })))).toBe(true);
+    expect(parsePersisted(JSON.stringify({ autoRunChosen: "yes" })).autoRunChosen).toBeUndefined();
   });
 });
 

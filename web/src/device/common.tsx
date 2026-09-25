@@ -1,9 +1,10 @@
 // Shared hooks/helpers for result panels.
 import { useMemo } from "react";
-import type { Arr, DeviceBlock, Kind } from "../api/types";
+import type { Arr, BranchesResult, ChargeBalanceResult, DeviceBlock, Kind } from "../api/types";
 import { palette } from "../plots/theme";
 import { useStore, type ResultEntry } from "../state/store";
 import { canonical } from "../utils/object";
+import { branchesPayload, chargeBalancePayload, hazardPayload, midFold, sweepMcPayload, vgCurvePayload, vgStochPayload } from "../utils/payload";
 
 export function useEntry<T>(key: string): { entry: ResultEntry | undefined; data: T | undefined } {
   const entry = useStore((s) => s.results[key]);
@@ -13,6 +14,45 @@ export function useEntry<T>(key: string): { entry: ResultEntry | undefined; data
 /** Canonical key of the payload the panel *would* compute now (for the "parameters changed" badge). */
 export function useCurrentKey(kind: Kind, payload: unknown): string {
   return useMemo(() => canonical({ kind, payload }), [kind, payload]);
+}
+
+/** Current payload keys of the Device-tab result slots (for the panels' badges and the analysis-card tab dots). */
+export function useDeviceKeys() {
+  const params = useStore((s) => s.params);
+  const vgRange = useStore((s) => s.vgRange);
+  const vgsRange = useStore((s) => s.vgsRange);
+  const cbVd = useStore((s) => s.cbVd);
+  const br = useStore((s) => s.results.branches?.data as BranchesResult | undefined);
+  const cb = useStore((s) => s.results.charge_balance?.data as ChargeBalanceResult | undefined);
+  const autoVd = midFold(br?.folds.V_LU, br?.folds.V_LD, 0.8 * params.sweep.vd_max_V);
+  const cbAt = cbVd ?? cb?.vd ?? autoVd;
+  return {
+    branches: useCurrentKey("branches", useMemo(() => branchesPayload(params), [params])),
+    vg_curve: useCurrentKey("vg_curve", useMemo(() => vgCurvePayload(params, vgRange), [params, vgRange])),
+    charge_balance: useCurrentKey("charge_balance", useMemo(() => chargeBalancePayload(params, cbAt), [params, cbAt])),
+    sweep_mc: useCurrentKey("sweep_mc", useMemo(() => sweepMcPayload(params), [params])),
+    hazard: useCurrentKey("hazard", useMemo(() => hazardPayload(params), [params])),
+    vg_curve_stochastic: useCurrentKey("vg_curve_stochastic", useMemo(() => vgStochPayload(params, vgsRange), [params, vgsRange])),
+  };
+}
+
+/**
+ * Value of a sampled curve at x (linear in x; log-linear in y when both neighbours are positive), or null when
+ * x lies outside the samples. The samples may be in either order.
+ */
+export function interpAt(xs: Arr, ys: Arr, x: number): number | null {
+  for (let i = 0; i + 1 < xs.length; i++) {
+    const x0 = xs[i];
+    const x1 = xs[i + 1];
+    const y0 = ys[i];
+    const y1 = ys[i + 1];
+    if (typeof x0 !== "number" || typeof x1 !== "number" || typeof y0 !== "number" || typeof y1 !== "number") continue;
+    if ((x - x0) * (x - x1) > 0) continue;
+    if (x0 === x1) return y0;
+    const f = (x - x0) / (x1 - x0);
+    return y0 > 0 && y1 > 0 ? Math.exp(Math.log(y0) + f * (Math.log(y1) - Math.log(y0))) : y0 + f * (y1 - y0);
+  }
+  return null;
 }
 
 /** True when `entry` holds data computed from a different payload than `currentKey` (and is not re-running). */

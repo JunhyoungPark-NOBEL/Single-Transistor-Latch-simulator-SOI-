@@ -1,17 +1,87 @@
-/* Circuit tab sub-view switch (schematic editor | quick benches). */
-.view-switch { display: inline-flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--surface-3); border: 1px solid var(--border); align-self: flex-start; max-width: 100%; }
-.view-tab { display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text-2); text-align: left; transition: background .15s, color .15s, box-shadow .15s; min-width: 0; }
+/* Circuit tab: sub-view switch (schematic editor | quick benches) + layout toggle, compact bench chips, the
+   result summary strip (shared with the schematic results), schematic thumbnail, waveform toolbar. */
+.circuit-top { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.circuit-top .layout-toggle { margin-left: auto; }
+.view-switch { display: inline-flex; gap: 3px; padding: 3px; border-radius: 11px; background: var(--surface-3); border: 1px solid var(--border); max-width: 100%; }
+.view-tab { display: flex; align-items: center; gap: 8px; padding: 5px 13px 5px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); text-align: left; transition: background .15s, color .15s, box-shadow .15s; min-width: 0; }
 .view-tab svg { flex: none; color: var(--muted); }
-.view-tab-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
-.view-tab-text strong { font-size: 13.5px; font-weight: 700; white-space: nowrap; }
-.view-tab-text span { font-size: 11px; color: var(--faint); white-space: nowrap; }
+.view-tab-text { font-size: 13.5px; font-weight: 700; white-space: nowrap; }
 .view-tab:hover { color: var(--text); background: color-mix(in srgb, var(--surface) 60%, transparent); }
 .view-tab[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); }
 .view-tab[aria-selected="true"] svg { color: var(--accent-strong); }
-.view-tab[aria-selected="true"] .view-tab-text span { color: var(--muted); }
-@media (max-width: 560px) {
-  .view-tab-text span { display: none; }
+
+/* ---- quick benches (간단히): 44 px chips, one description line and the summary on the left; the schematic
+   thumbnail on the right spans those rows */
+.bench-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); grid-template-rows: auto auto 1fr; column-gap: var(--s4); row-gap: 8px; align-items: start; margin-top: calc(-1 * var(--s1)); }
+.bench-top > .bench-chips { grid-column: 1; grid-row: 1; }
+.bench-top > .bench-line { grid-column: 1; grid-row: 2; }
+.bench-top > .bench-sum { grid-column: 1; grid-row: 3; margin-top: 4px; }
+.bench-top > [data-testid="panel-schematic"] { grid-column: 2; grid-row: 1 / span 3; }
+@media (max-width: 1000px) {
+  .bench-top { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  .bench-top > * { grid-column: 1 !important; grid-row: auto !important; }
 }
+.bench-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.bench-chip { height: 44px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px 0 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-1); font-size: 13.5px; font-weight: 650; color: var(--text-2); white-space: nowrap; transition: border-color .15s, color .15s, box-shadow .15s; }
+.bench-chip:hover { border-color: var(--border-strong); color: var(--text); }
+.bench-chip[aria-checked="true"] { border-color: var(--accent); color: var(--text); box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow-1); }
+.bench-glyph { flex: none; color: var(--muted); }
+.bench-chip[aria-checked="true"] .bench-glyph { color: var(--accent-strong); }
+.bench-line { margin: 0; font-size: 12.5px; color: var(--muted); }
+@media (max-width: 760px) {
+  /* even rows on phones: 2 × 2 chips */
+  .bench-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bench-chip { height: 40px; padding: 0 10px; font-size: 13px; min-width: 0; }
+  .bench-chip span { overflow: hidden; text-overflow: ellipsis; }
+}
+
+.schematic-thumb { gap: 6px; }
+.thumb-btn { display: block; width: 100%; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); cursor: zoom-in; transition: border-color .15s; }
+.thumb-btn:hover { border-color: var(--border-strong); }
+.thumb-btn svg { width: 100%; height: auto; max-height: 180px; }
+.schematic-big svg { width: 100%; height: auto; max-height: 72vh; }
+.resolved > summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; display: inline-flex; align-items: center; gap: 5px; user-select: none; }
+.resolved > summary::-webkit-details-marker { display: none; }
+.resolved > summary::after { content: "▸"; font-size: 10px; transition: transform .15s; }
+.resolved[open] > summary::after { transform: rotate(90deg); }
+.resolved[open] > summary { color: var(--text-2); margin-bottom: 6px; }
+
+/* ---- result summary strip (benches + schematic): ≤ 4 cells in one card, hairlines between cells */
+.sum-strip { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r3); box-shadow: var(--shadow-1); display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.sum-cells { display: grid; grid-template-columns: repeat(var(--sum-n, 4), minmax(0, 1fr)); overflow: hidden; }
+.sum-strip.all .sum-cells { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+/* hairlines to the left of and above every cell; the ones on the card edge are clipped */
+.sum-cell { padding: 11px 16px 12px; min-width: 0; box-shadow: -1px 0 0 var(--border), 0 -1px 0 var(--border); display: flex; flex-direction: column; justify-content: space-between; gap: 2px; }
+/* long server labels ("래치업 전압 V_LU (드레인 노드)") take two lines; the values stay aligned at the bottom */
+.sum-label { font-size: 11.5px; line-height: 1.3; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.sum-value { font-family: var(--mono); font-size: 20px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px; color: var(--text); }
+.sum-value .u { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 3px; }
+.sum-spread { font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: 0; }
+.sum-strip.stale .sum-value { opacity: .5; }
+.sum-more { border-top: 1px solid var(--border); }
+.sum-more > summary { list-style: none; cursor: pointer; padding: 5px 16px; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; user-select: none; }
+.sum-more > summary::-webkit-details-marker { display: none; }
+.sum-more > summary::after { content: "▸"; font-size: 10px; transition: transform .15s; }
+.sum-more[open] > summary::after { transform: rotate(90deg); }
+.sum-more > summary:hover { color: var(--text); }
+.sum-table { margin: 0; padding: 2px 16px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); column-gap: 28px; }
+.sum-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 4px 0; border-bottom: 1px dashed var(--border); font-size: 12.5px; min-width: 0; }
+.sum-row dt { color: var(--text-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sum-row dd { margin: 0; white-space: nowrap; font-size: 12px; }
+.sum-strip.sum-empty { display: grid; place-items: center; padding: 16px; min-height: 76px; color: var(--muted); font-size: 12.5px; text-align: center; border-style: dashed; box-shadow: none; background: var(--surface-2); }
+@media (max-width: 760px) {
+  .sum-cells.n4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sum-cell { padding: 9px 12px 10px; }
+  .sum-value { font-size: 17px; }
+}
+
+/* ---- waveform hero toolbar ("신호 ▾", run select) and footnote */
+.tb-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.signal-pop { left: 0; right: auto; max-height: min(60vh, 420px); overflow-y: auto; min-width: 240px; }
+.solver-stats { font-size: 11px; }
+.check-btn .check-mark { width: 8px; height: 8px; border-radius: 2px; background: var(--border-strong); }
+.check-btn.on { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+.check-btn.on .check-mark { background: var(--accent); }
 
 /* [axes-logo] waveform viewers (quick benches, schematic results): taller plots for 4–5 stacked subplots so
    every axis keeps ≈ 80 px and its title fits (see src/circuit/axes.ts). */

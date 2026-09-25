@@ -96,17 +96,18 @@ export function buildTemplate(id: TemplateId, stl: StlRef, name: string): Schema
         gnd(300, 320),
         el("R", "RS", 400, 320, { value: P.R_S_ohm }),
         gnd(400, 360),
-        el("CMP", "CMP1", 560, 260, { cmp: { v_ref: P.v_ref_V, v_high: 1, v_low: 0, hysteresis: 0 } }),
+        // the comparator sits right of X1's device label so the two names never overlap
+        el("CMP", "CMP1", 620, 260, { cmp: { v_ref: P.v_ref_V, v_high: 1, v_low: 0, hysteresis: 0 } }),
         label("d", 250, 120),
-        label("s", 460, 260),
-        label("q", 640, 260),
+        label("s", 480, 260),
+        label("q", 700, 260),
       ];
       d.wires = [
         ...path([100, 160], [100, 120], [400, 120], [400, 160]),
         ...path([360, 200], [300, 200], [300, 240]),
         ...path([400, 240], [400, 280]),
-        ...path([400, 260], [520, 260]),
-        ...path([600, 260], [660, 260]),
+        ...path([400, 260], [580, 260]),
+        ...path([660, 260], [720, 260]),
       ];
       d.tran = { ...d.tran, t_stop_s: P.n_pulses * P.period_s, dt_max_s: null };
       d.stoch.local_state = { ...clone(DEFAULT_LOCAL), mode: "none" };

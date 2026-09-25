@@ -56,6 +56,9 @@ export interface FieldDef {
   options?: Option[];
   show?: (c: Ctx) => boolean;
   experimental?: boolean;
+  /** Main field (간단히 layout): always visible, with a slider and the inline guide. Other fields of a basic
+   *  group fold behind "고급 항목 n개" unless their value differs from the default. */
+  main?: boolean | ((c: Ctx) => boolean);
 }
 export type CustomBlock = "light" | "seed" | "local-warning" | "bench";
 export interface GroupDef {
@@ -70,6 +73,8 @@ export interface GroupDef {
   custom?: CustomBlock[];
   stochasticOnly?: boolean;
   collapsed?: boolean;
+  /** Advanced group (간단히 layout): listed under the "고급 설정" disclosure, closed by default. */
+  advanced?: boolean;
   show?: (c: Ctx) => boolean;
 }
 
@@ -90,6 +95,14 @@ export const LOCAL_ACTION_OPTIONS: Option[] = [
   { value: "multiplication", label: "local.action.multiplication", experimental: true },
 ];
 
+/** Fields of the illumination block (the "light" group renders them itself: I_PH or P, plus R in power mode).
+ *  Exported for the guide index (Physics tab) — every key has a PARAM_GUIDE entry. */
+export const LIGHT_FIELDS: Record<"iph" | "power" | "resp", FieldDef> = {
+  iph: { key: "iph_pA", path: ["device", "light", "iph_pA"], sym: "I_{PH}", label: L("광전류", "Photocurrent"), help: L("body로 들어가는 균일한 광생성 정공 전류", "Uniform photogenerated hole current into the body"), code: "p[13]", unit: "pA", min: 0, max: 100, step: 0.01, slider: true, main: true },
+  power: { key: "power_mW", path: ["device", "light", "power_mW"], sym: "P", label: L("광 파워", "Optical power"), help: L("입사 광 파워 (I_PH = R·P)", "Incident optical power (I_PH = R·P)"), code: "p[13] = R·P", unit: "mW", min: 0, max: 50, step: 0.01, slider: true, main: true },
+  resp: { key: "resp", path: ["device", "light", "responsivity_pA_per_mW"], sym: "R", label: L("응답도", "Responsivity"), help: L("광 변환 계수 (이 소자 보정값 0.75 pA/mW)", "Light conversion factor (this device: 0.75 pA/mW)"), unit: "pA/mW", min: 0, max: 100, step: 0.01 },
+};
+
 export const GROUPS: GroupDef[] = [
   {
     id: "bias",
@@ -98,9 +111,9 @@ export const GROUPS: GroupDef[] = [
     topic: "charge-balance",
     tabs: ["device", "circuit"],
     fields: [
-      { key: "vg", path: ["device", "vg"], sym: "V_G", label: L("게이트 전압", "Gate voltage"), help: L("게이트-소스 전압 — 채널 전류와 게이트 가장자리 GIDL 전계에 들어갑니다", "Gate–source voltage — enters the channel current and the gate-edge GIDL field"), code: "p[11]", unit: "V", min: -6, max: 1, step: 0.01, slider: true },
-      { key: "vd_max", path: ["sweep", "vd_max_V"], sym: "V_{D,\\max}", label: L("스윕 최대 V_D", "Sweep peak"), help: L("삼각 스윕 0 → V_D,max → 0의 최고점 (서버 상한 8 V)", "Peak drain voltage of the triangular sweep 0 → V_D,max → 0 (server limit 8 V)"), unit: "V", min: 0.5, max: 8, step: 0.05, slider: true, show: isDevice },
-      { key: "rate", path: ["sweep", "rate_V_per_s"], sym: "\\dot V_D", label: L("램프 속도", "Ramp rate"), help: L("드레인 전압 스윕 속도 — hazard 적분과 MC 시간축을 정합니다", "Drain-voltage sweep rate — sets the hazard integral and the MC time axis"), unit: "V/s", min: 1e-3, max: 1e5, slider: "log", show: isDevice },
+      { key: "vg", path: ["device", "vg"], sym: "V_G", label: L("게이트 전압", "Gate voltage"), help: L("게이트-소스 전압 — 채널 전류와 게이트 가장자리 GIDL 전계에 들어갑니다", "Gate–source voltage — enters the channel current and the gate-edge GIDL field"), code: "p[11]", unit: "V", min: -6, max: 1, step: 0.01, slider: true, main: true },
+      { key: "vd_max", path: ["sweep", "vd_max_V"], sym: "V_{D,\\max}", label: L("스윕 최대 전압", "Sweep peak"), help: L("삼각 스윕 0 → V_D,max → 0의 최고점 (서버 상한 8 V)", "Peak drain voltage of the triangular sweep 0 → V_D,max → 0 (server limit 8 V)"), unit: "V", min: 0.5, max: 8, step: 0.05, slider: true, show: isDevice, main: true },
+      { key: "rate", path: ["sweep", "rate_V_per_s"], sym: "\\dot V_D", label: L("램프 속도", "Ramp rate"), help: L("드레인 전압 스윕 속도 — hazard 적분과 MC 시간축을 정합니다", "Drain-voltage sweep rate — sets the hazard integral and the MC time axis"), unit: "V/s", min: 1e-3, max: 1e5, slider: "log", show: isDevice, main: (c) => c.mode === "stochastic" },
       { key: "dv", path: ["sweep", "dv_V"], sym: "\\Delta V", label: L("전압 스텝", "Voltage step"), help: L("스윕 전압 간격 (MC 시간 스텝 Δt = ΔV / 램프 속도)", "Sweep voltage step (MC time step Δt = ΔV / ramp rate)"), unit: "mV", scale: 1e3, min: 0.1, max: 50, step: 0.1, show: isDevice },
     ],
   },
@@ -116,6 +129,7 @@ export const GROUPS: GroupDef[] = [
   },
   {
     id: "state",
+    advanced: true,
     title: "g.state",
     desc: "g.state.desc",
     topic: "local-states",
@@ -127,6 +141,7 @@ export const GROUPS: GroupDef[] = [
   },
   {
     id: "calib",
+    advanced: true,
     title: "g.calib",
     desc: "g.calib.desc",
     topic: "parameters",
@@ -149,6 +164,7 @@ export const GROUPS: GroupDef[] = [
   },
   {
     id: "ext",
+    advanced: true,
     title: "g.ext",
     desc: "g.ext.desc",
     topic: "open-problems",
@@ -177,7 +193,7 @@ export const GROUPS: GroupDef[] = [
           },
         ],
       },
-      { key: "kappaF", path: ["device", "ext", "kappaF"], sym: "\\kappa_F", label: L("κ_F", "κ_F"), help: L("국소 애벌랜치 경로의 전계 기울기", "Field slope of the local avalanche path"), code: "p[25]", unit: "1/V", min: -10, max: 10, step: 0.01, experimental: true },
+      { key: "kappaF", path: ["device", "ext", "kappaF"], sym: "\\kappa_F", label: L("경로 전계 기울기", "Path field slope"), help: L("국소 애벌랜치 경로의 전계 기울기", "Field slope of the local avalanche path"), code: "p[25]", unit: "1/V", min: -10, max: 10, step: 0.01, experimental: true },
     ],
   },
   {
@@ -188,7 +204,7 @@ export const GROUPS: GroupDef[] = [
     tabs: ["device"],
     stochasticOnly: true,
     fields: [
-      { key: "n_cycles", path: ["stochastic", "n_cycles"], sym: "N_{\\mathrm{cyc}}", label: L("사이클 수", "Cycles"), help: L("MC 스윕 사이클 수 (서버 상한 2000)", "Number of MC sweep cycles (server limit 2000)"), unit: "", min: 1, max: 2000, step: 1, int: true, slider: "log" },
+      { key: "n_cycles", path: ["stochastic", "n_cycles"], sym: "N_{\\mathrm{cyc}}", label: L("사이클 수", "Cycles"), help: L("MC 스윕 사이클 수 (서버 상한 2000)", "Number of MC sweep cycles (server limit 2000)"), unit: "", min: 1, max: 2000, step: 1, int: true, slider: "log", main: true },
       { key: "seed", path: ["stochastic", "seed"], sym: "\\mathrm{seed}", label: L("난수 시드", "Random seed"), help: L("같은 시드는 같은 난수열을 만듭니다", "The same seed gives the same random stream"), unit: "", min: 0, max: 2 ** 32 - 1, step: 1, int: true },
       { key: "carrier_noise", path: ["stochastic", "carrier_noise"], type: "toggle", sym: "\\text{Eq. 2}", label: L("캐리어 잡음 (Eq. 2)", "Carrier noise (Eq. 2)"), help: L("II 클러스터 + 단위 사건으로 이루어진 첫 통과 잡음. 끄면 fold에서 바로 탈출합니다", "Compound first-passage noise (II clusters + unit events). When off, the device escapes exactly at the fold") },
       { key: "ld_carrier_noise", path: ["stochastic", "ld_carrier_noise"], type: "toggle", label: L("latch-down 첫 통과도 계산", "Latch-down first passage"), help: L("하향 스윕의 첫 통과(FPT)도 계산합니다 (더 느림)", "Also compute the first passage of the down sweep (slower)") },
@@ -212,11 +228,11 @@ export const GROUPS: GroupDef[] = [
     stochasticOnly: true,
     custom: ["local-warning"],
     fields: [
-      { key: "ls_mode", path: ["stochastic", "local_state", "mode"], type: "segmented", label: L("상태 모드", "State mode"), help: L("고정: 사이클마다 한 번 추출, 진화: 시간에 따른 OU 과정", "Frozen: one draw per cycle; evolving: OU process in time"), options: LOCAL_MODE_OPTIONS },
+      { key: "ls_mode", path: ["stochastic", "local_state", "mode"], type: "segmented", label: L("상태 모드", "State mode"), help: L("고정: 사이클마다 한 번 추출, 진화: 시간에 따른 OU 과정", "Frozen: one draw per cycle; evolving: OU process in time"), options: LOCAL_MODE_OPTIONS, main: true },
       { key: "ls_action", path: ["stochastic", "local_state", "action"], type: "select", label: L("작용점", "Action point"), help: L("국소 상태의 요동이 작용하는 모델 파라미터", "Model parameter the fluctuating local state acts on"), options: LOCAL_ACTION_OPTIONS, show: (c) => c.root.stochastic.local_state.mode !== "none" },
       {
         key: "ls_sigma", path: ["stochastic", "local_state", "sigma"], sym: "\\sigma_{\\phi}", label: L("상태 표준편차", "State SD"), help: L("작용점 상태의 표준편차 (GIDL·접합은 V, 그 밖에는 ln 단위)", "SD of the action-point state (V for GIDL/junction, ln units otherwise)"),
-        unit: (c) => (isVolt(c) ? "mV" : "ln"), scale: (c) => (isVolt(c) ? 1e3 : 1), min: 0, max: 2000, step: 0.1, slider: true, show: (c) => c.root.stochastic.local_state.mode !== "none",
+        unit: (c) => (isVolt(c) ? "mV" : "ln"), scale: (c) => (isVolt(c) ? 1e3 : 1), min: 0, max: 2000, step: 0.1, slider: true, show: (c) => c.root.stochastic.local_state.mode !== "none", main: true,
       },
       { key: "ls_tau", path: ["stochastic", "local_state", "tau_s"], sym: "\\tau_{\\phi}", label: L("상태 상관 시간", "Correlation time"), help: L("OU 상관 시간 (진화 모드)", "OU correlation time (evolving mode)"), unit: "s", min: 1e-3, max: 1e4, slider: "log", show: (c) => c.root.stochastic.local_state.mode === "evolving" },
       { key: "ls_sigmaE", path: ["stochastic", "local_state", "sigma_E_V"], sym: "\\sigma_{\\phi E}", label: L("이미터 상태 SD", "Emitter SD"), help: L("소스 가장자리 국소 상태의 표준편차 (p[10]); 0이면 끕니다", "SD of the source-edge local state (p[10]); 0 turns it off"), code: "p[10]", unit: "mV", scale: 1e3, min: 0, max: 20, step: 0.001, show: (c) => c.root.stochastic.local_state.mode !== "none" },
@@ -226,6 +242,7 @@ export const GROUPS: GroupDef[] = [
   },
   {
     id: "numerics",
+    advanced: true,
     title: "g.numerics",
     desc: "g.numerics.desc",
     topic: "numerics",
@@ -249,6 +266,7 @@ export const GROUPS: GroupDef[] = [
   },
   {
     id: "solver",
+    advanced: true,
     title: "g.solver",
     desc: "g.solver.desc",
     topic: "circuit-element",
@@ -276,7 +294,7 @@ export const GROUPS: GroupDef[] = [
     stochasticOnly: true,
     custom: ["local-warning"],
     fields: [
-      { key: "c_runs", path: ["circuit", "stochastic", "n_runs"], sym: "N_{\\mathrm{run}}", label: L("실행 횟수", "Runs"), help: L("독립 과도해석 횟수 (≤ 200, 파형은 처음 8개만 반환)", "Number of independent transients (≤ 200; waveforms for the first 8)"), unit: "", min: 1, max: 200, step: 1, int: true, slider: "log" },
+      { key: "c_runs", path: ["circuit", "stochastic", "n_runs"], sym: "N_{\\mathrm{run}}", label: L("실행 횟수", "Runs"), help: L("독립 과도해석 횟수 (≤ 200, 파형은 처음 8개만 반환)", "Number of independent transients (≤ 200; waveforms for the first 8)"), unit: "", min: 1, max: 200, step: 1, int: true, slider: "log", main: true },
       { key: "c_seed", path: ["circuit", "stochastic", "seed"], sym: "\\mathrm{seed}", label: L("난수 시드", "Random seed"), help: L("같은 시드는 같은 난수열을 만듭니다", "The same seed gives the same random stream"), unit: "", min: 0, max: 2 ** 32 - 1, step: 1, int: true },
       { key: "c_noise", path: ["circuit", "stochastic", "carrier_noise"], type: "toggle", label: L("캐리어 잡음 (Eq. 2)", "Carrier noise (Eq. 2)"), help: L("매 스텝 Q_B 증분: Poisson 단위 사건 + II 클러스터", "Q_B increments at every step: Poisson unit events + II clusters") },
       { key: "c_ls_mode", path: ["circuit", "stochastic", "local_state", "mode"], type: "segmented", label: L("국소 상태", "Local state"), help: L("고정: 실행마다 한 번 추출, 진화: OU 과정", "Frozen: one draw per run; evolving: OU process"), options: LOCAL_MODE_OPTIONS },

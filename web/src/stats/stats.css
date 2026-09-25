@@ -69,21 +69,19 @@
 .hovertip:focus-visible { outline: none; box-shadow: var(--focus); }
 .tip.stats-tip { max-width: 330px; white-space: normal; }
 
-/* device-tab statistics panel */
-.stats-panel .panel-foot { gap: 4px; }
-.stats-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 14px 8px; }
-.stats-chip {
-  display: inline-flex; align-items: baseline; gap: 5px;
-  font-size: 11.5px; color: var(--text-2);
-  padding: 2px 9px; border-radius: 999px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  white-space: nowrap;
+/* compact view (6 columns, one header row): fits a 390 px phone; Δ측정 hides below 420 px */
+.stats-scroll.compact { align-self: flex-start; max-width: 100%; }
+.stats-table.compact { width: auto; }
+.stats-table.compact th.num, .stats-table.compact td.num { min-width: 70px; padding-left: 14px; padding-right: 10px; }
+.stats-table.compact .stats-label-col { min-width: 84px; padding-right: 14px; }
+.stats-table.compact .stats-sub { max-width: 120px; }
+.stats-table.compact thead th { vertical-align: bottom; }
+.stats-allcols { color: var(--accent-strong); }
+@media (max-width: 420px) {
+  .stats-table.compact [data-col="dmean"] { display: none; }
+  .stats-table.compact th, .stats-table.compact td, .stats-table.compact th.num, .stats-table.compact td.num { padding: 5px 4px; min-width: 0; }
+  .stats-table.compact .stats-label-col { min-width: 70px; }
 }
-.stats-chip b { font-weight: 650; color: var(--text); font-family: var(--mono); font-size: 11.5px; }
-.stats-chip.warn { background: var(--warn-soft); border-color: transparent; color: var(--warn); }
-.stats-chip.warn b { color: var(--warn); }
-.stats-panel .stats-block { padding: 0 14px 12px; }
-.stats-foot { padding: 0 14px 12px; margin-top: -4px; }
 
 @media (max-width: 760px) {
   .stats-table th, .stats-table td { padding: 5px 6px; }

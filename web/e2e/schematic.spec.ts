@@ -1,9 +1,11 @@
 // Schematic editor + device library (mock mode, no backend needed): draw a circuit (V + R + ground +
 // wire), run it, probe a node, time-cursor annotations, the load-line, oscillator and p-bit examples, keyboard shortcuts, ERC,
 // stochastic statistics and the device library (save → reload → load, place in a schematic).
+// Runs in the 모두 보기 layout (?view=all: every panel, the full toolbar and the open netlist, as before);
+// the 간단히 default is covered by e2e/ux-shell.spec.ts.
 import { expect, test, type Page } from "@playwright/test";
 
-const SHOTS = "e2e/screenshots";
+const SHOTS = "e2e/screenshots/all";
 
 async function fresh(page: Page, hash = "#tab=circuit&mode=deterministic") {
   await page.addInitScript(() => {
@@ -16,7 +18,7 @@ async function fresh(page: Page, hash = "#tab=circuit&mode=deterministic") {
       /* ignore */
     }
   });
-  await page.goto(`/?mock=1${hash}`);
+  await page.goto(`/?mock=1&view=all${hash}`);
   await expect(page.getByTestId("mode-toggle")).toBeVisible();
 }
 
@@ -298,7 +300,7 @@ test.describe("schematic editor (live backend on :8000)", () => {
         /* ignore */
       }
     });
-    await page.goto("/#tab=circuit&mode=deterministic");
+    await page.goto("/?view=all#tab=circuit&mode=deterministic");
     await expect(page.getByTestId("backend-status")).toContainText("API", { timeout: 15_000 });
     await page.getByTestId("menu-examples").click();
     await page.getByTestId("tpl-load_line").click();

@@ -1,12 +1,15 @@
 // Sidebar content while the schematic editor is active: device library (place devices), .tran settings
 // with a live feasibility estimate, and the stochastic settings (runs, seed, noise, local states).
-import { useMemo, useState } from "react";
+// 간단히: the stop time and the number of runs stay visible; the other settings fold behind "고급 항목 n개 ▸"
+// (open in 모두 보기).
+import { useMemo, useState, type ReactNode } from "react";
 import { useT } from "../i18n";
 import type { StrKey } from "../i18n/strings";
 import { deviceName, type LibDevice } from "../devices/library";
 import { SaveDeviceForm } from "../devices/DeviceCard";
 import { useDeviceLib } from "../devices/store";
 import { LOCAL_ACTION_OPTIONS, LOCAL_MODE_OPTIONS } from "../params/schema";
+import { useIsAll } from "../state/layout";
 import { useStore } from "../state/store";
 import { fmtDuration, fmtSI as fmtSIu } from "../utils/format";
 import { iphPA } from "../utils/payload";
@@ -21,6 +24,21 @@ import "./schematic.css";
 
 function patchDoc(fn: (d: SchematicDoc) => SchematicDoc) {
   useSch.getState().commit(fn);
+}
+
+/** "고급 항목 n개 ▸ …" disclosure (closed in 간단히, open in 모두 보기); the fields stay in the DOM. */
+function Advanced({ n, list, testId, children }: { n: number; list: string; testId: string; children: ReactNode }) {
+  const t = useT();
+  const all = useIsAll();
+  return (
+    <details className="sch-adv" open={all}>
+      <summary data-testid={testId}>
+        <span className="sch-adv-n">{t("schematic.sim.adv", { n })}</span>
+        <span className="sch-adv-list">{list}</span>
+      </summary>
+      <div className="sch-adv-body">{children}</div>
+    </details>
+  );
 }
 
 function LibraryCard() {
@@ -92,6 +110,7 @@ function SimCard() {
       <Row label={t("schematic.sim.tStop")}>
         <SIInput value={tran.t_stop_s} unit="s" min={1e-12} onCommit={(v) => v && setTran({ t_stop_s: v })} testId="sim-tstop" ariaLabel={t("schematic.sim.tStop")} />
       </Row>
+      <Advanced n={8} list={t("schematic.sim.advList")} testId="sch-sim-adv">
       <Row label={t("schematic.sim.tStart")}>
         <SIInput value={tran.t_start_save_s} unit="s" min={0} onCommit={(v) => setTran({ t_start_save_s: v ?? 0 })} testId="sim-tstart" ariaLabel={t("schematic.sim.tStart")} />
       </Row>
@@ -118,6 +137,7 @@ function SimCard() {
         <Switch on={saveAll} onChange={(v) => patchDoc((d) => ({ ...d, save_all: v }))} label={t("schematic.sim.saveAll")} testId="sim-saveall" />
       </div>
       {!saveAll && <div className="small muted">{t("schematic.sim.saveAllHint")}</div>}
+      </Advanced>
       <div className={`feas ${level}`} data-testid="feasibility" data-level={level}>
         <div className="feas-head">
           <span className="feas-dot" aria-hidden />
@@ -154,6 +174,7 @@ function StochCard() {
       <Row label={t("schematic.sto.runs")}>
         <SIInput value={st.n_runs} min={1} max={200} integer onCommit={(v) => v && setSt({ n_runs: v })} testId="sto-runs" ariaLabel={t("schematic.sto.runs")} />
       </Row>
+      <Advanced n={st.local_source === "device" ? 4 : ls.mode === "none" ? 5 : ls.mode === "evolving" ? 8 : 7} list={t("schematic.sto.advList")} testId="sch-sto-adv">
       <Row label={t("schematic.sto.seed")}>
         <SIInput value={st.seed} min={0} max={2 ** 32 - 1} integer onCommit={(v) => v != null && setSt({ seed: v })} ariaLabel={t("schematic.sto.seed")} />
       </Row>
@@ -203,6 +224,7 @@ function StochCard() {
           )}
         </>
       )}
+      </Advanced>
     </Card>
   );
 }

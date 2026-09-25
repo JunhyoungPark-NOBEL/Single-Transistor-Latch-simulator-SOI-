@@ -1,36 +1,17 @@
-// App shell: header + mode bar + (offline banner) + sidebar/main layout + floating Details window.
+// App shell: header + context strip (hint, backend status pill, credits) + sidebar/main layout + floating
+// Details window. There is no full-width banner: demo / offline / snapshot is the pill in the strip.
 import { useEffect } from "react";
 import { CircuitTab } from "./circuit/CircuitTab";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { Header, ModeBar } from "./components/Header";
-import { SnapshotBanner } from "./components/SnapshotNotice";
+import { ContextStrip, Header } from "./components/Header";
 import { DeviceTab } from "./device/DeviceTab";
-import { useT } from "./i18n";
+import { translate } from "./i18n";
 import { PhysicsTab } from "./physics/PhysicsTab";
 import { PhysicsWindow } from "./physics/PhysicsWindow";
 import { Sidebar } from "./sidebar/Sidebar";
-import { initBackend, runCurrent, startAutoRun, startHealthPolling } from "./state/runner";
+import { runCurrent, startAutoRun, startHealthPolling } from "./state/runner";
 import { useStore } from "./state/store";
 import { ValidationTab } from "./validation/ValidationTab";
-
-function Banner() {
-  const t = useT();
-  const backend = useStore((s) => s.backend);
-  if (backend !== "offline" && backend !== "mock") return null;
-  return (
-    <div className="banner" role="status" data-testid="offline-banner">
-      <span className="dot mock" aria-hidden />
-      <span>
-        <strong>{backend === "mock" ? "Demo" : "Offline"}</strong> — {backend === "mock" ? t("banner.mockForced") : t("banner.offline")}
-      </span>
-      {backend === "offline" && (
-        <button type="button" className="btn sm" onClick={() => void initBackend()}>
-          {t("banner.retry")}
-        </button>
-      )}
-    </div>
-  );
-}
 
 export default function App() {
   const tab = useStore((s) => s.tab);
@@ -43,6 +24,8 @@ export default function App() {
     el.dataset.theme = theme;
     el.dataset.mode = mode;
     el.lang = lang;
+    // the header shows only the name; the subtitle lives in the tab title and the About card
+    document.title = `${translate(lang, "app.title")} — ${translate(lang, "app.subtitle")}`;
   }, [theme, mode, lang]);
 
   useEffect(() => {
@@ -72,9 +55,7 @@ export default function App() {
   return (
     <>
       <Header />
-      <ModeBar />
-      <Banner />
-      <SnapshotBanner />
+      <ContextStrip />
       <div className={`layout${hasSidebar ? "" : " no-sidebar"}`}>
         {hasSidebar && <Sidebar />}
         <main className="main" id="main" role="tabpanel" aria-labelledby={`tab-${tab}`} data-testid={`main-${tab}`}>

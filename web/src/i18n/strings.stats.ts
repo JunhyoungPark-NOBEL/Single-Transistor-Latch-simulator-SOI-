@@ -17,8 +17,31 @@ export const STATS_STRINGS = {
   "stats.meta.latched": { ko: "스윕 안에서 래치업 {pct}", en: "Latched up within the sweep: {pct}" },
   "stats.meta.censored": { ko: "중도절단 {n}회 ({pct})", en: "Censored: {n} ({pct})" },
   "stats.meta.ci": { ko: "평균 V_LU의 95 % 신뢰구간 {lo} … {hi} V", en: "95 % CI of mean V_LU: {lo} … {hi} V" },
-  "stats.engine.calibrated_lookup": { ko: "보정 조회표 (calibrated lookup)", en: "Calibrated lookup" },
-  "stats.engine.general": { ko: "일반 (general)", en: "General" },
+  "stats.engine.calibrated_lookup": { ko: "보정 조회표 엔진", en: "calibrated lookup table" },
+  "stats.engine.general": { ko: "일반 엔진", en: "general engine" },
+
+  // ---------------------------------------------------------------- one-line summary (stats-meta) + disclosure
+  "stats.line.title": { ko: "통계", en: "Statistics" },
+  "stats.line.cycles": { ko: "{n} 사이클", en: "{n} cycles" },
+  // plain words here; the table and its tooltips keep the technical term (중도절단 / censored)
+  "stats.line.noLatch": { ko: "래치업 안 된 사이클 {n} ({pct})", en: "no latch-up in {n} cycles ({pct})" },
+  "stats.line.noLatch.tip": {
+    ko: "스윕 최대 전압까지 래치업하지 않은 사이클입니다. 평균과 분포는 래치업한 사이클만으로 계산합니다 (표의 ‘중도절단’).",
+    en: "Cycles that did not latch up before the sweep maximum. Means and distributions use only the cycles that did (‘censored’ in the table).",
+  },
+  "stats.line.ks": { ko: "측정 비교 KS p {p}", en: "vs measured KS p {p}" },
+  "stats.line.seed": { ko: "시드 {s}", en: "Seed {s}" },
+  "stats.line.running": { ko: "계산 중…", en: "Computing…" },
+  "stats.line.empty": { ko: "확률 모드로 계산하면 사이클 통계가 여기에 한 줄로 요약됩니다.", en: "Run the stochastic model to see a one-line summary of the cycle statistics here." },
+  "stats.expand": { ko: "표 보기", en: "Show table" },
+  "stats.collapse": { ko: "표 접기", en: "Hide table" },
+  "stats.cols.all": { ko: "모든 통계 열 ({n})", en: "All columns ({n})" },
+  "stats.cols.fewer": { ko: "주요 열만", en: "Key columns only" },
+
+  // ---------------------------------------------------------------- compact table headers (one header row)
+  "stats.cc.sd": { ko: "σ", en: "σ" },
+  "stats.cc.dmean": { ko: "Δ측정", en: "Δmeas." },
+  "stats.cc.ks_p": { ko: "KS p", en: "KS p" },
 
   "stats.row.vlu": { ko: "래치업", en: "latch-up" },
   "stats.row.vld": { ko: "래치다운", en: "latch-down" },
@@ -161,6 +184,8 @@ export const STATS_STRINGS = {
     en: "CDF over all cycles: it levels off at the {pct} that switched within the sweep (the rest are censored).",
   },
   "stats.dist.ks": { ko: "모델 vs 측정 KS D = {d}, p = {p}", en: "model vs measured KS D = {d}, p = {p}" },
+  "stats.dist.ksHead": { ko: "측정 대비 KS D:", en: "KS D vs measured:" },
+  "stats.dist.ksItem": { ko: "{d} (p {p})", en: "{d} (p {p})" },
 
   // ---------------------------------------------------------------- V_G curve (stochastic) censoring
   "stats.vgs.censored": { ko: "중도절단 비율", en: "Censored" },

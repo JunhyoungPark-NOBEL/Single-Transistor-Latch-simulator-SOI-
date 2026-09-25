@@ -6,7 +6,7 @@ import type { ParamRoot, Tab } from "../params/schema";
 import { BUILTIN_META } from "./presets";
 import { clone, getPath, mergeDefaults, setPath, type Path } from "../utils/object";
 import { presetRoot, type VgRange } from "../utils/payload";
-import { parsePersisted, PERSIST_VERSION, restoreParams, restoreRange, TABS, type Persisted } from "./persist";
+import { initialAutoRun, parsePersisted, PERSIST_VERSION, restoreParams, restoreRange, TABS, type Persisted } from "./persist";
 
 export type { Lang, Theme } from "./persist";
 import type { Lang, Theme } from "./persist";
@@ -61,6 +61,8 @@ export interface State {
   theme: Theme;
   sidebarOpen: boolean;
   autoRun: boolean;
+  /** The user has set the auto-run switch (persisted; until then auto-run defaults to on). */
+  autoRunChosen: boolean;
   backend: BackendState;
   forcedMock: boolean;
   health: Health | null;
@@ -113,7 +115,7 @@ function loadPersisted(): Partial<Persisted> {
 }
 export function savePersisted(s: State) {
   try {
-    const p: Persisted = { v: PERSIST_VERSION, mode: s.mode, lang: s.lang, theme: s.theme, autoRun: s.autoRun, preset: s.preset, params: s.params, vgRange: s.vgRange, vgsRange: s.vgsRange, tab: s.tab };
+    const p: Persisted = { v: PERSIST_VERSION, mode: s.mode, lang: s.lang, theme: s.theme, autoRun: s.autoRun, autoRunChosen: s.autoRunChosen, preset: s.preset, params: s.params, vgRange: s.vgRange, vgsRange: s.vgsRange, tab: s.tab };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
   } catch {
     /* storage unavailable (private mode, blocked) — ignore */
@@ -159,7 +161,8 @@ export const useStore = create<State>((set) => ({
   lang: P.lang ?? "ko",
   theme: P.theme ?? systemTheme(),
   sidebarOpen: typeof window !== "undefined" ? !window.matchMedia?.("(max-width: 1100px)").matches : true, // same breakpoint as the CSS drawer
-  autoRun: P.autoRun ?? false,
+  autoRun: initialAutoRun(P),
+  autoRunChosen: P.autoRunChosen ?? false,
   backend: "checking",
   forcedMock: false,
   health: null,
@@ -181,7 +184,7 @@ export const useStore = create<State>((set) => ({
   setLang: (lang) => set({ lang }),
   setTheme: (theme) => set({ theme }),
   setSidebar: (sidebarOpen) => set({ sidebarOpen }),
-  setAutoRun: (autoRun) => set({ autoRun }),
+  setAutoRun: (autoRun) => set({ autoRun, autoRunChosen: true }),
   setParam: (path, value) => set((s) => ({ params: setPath(s.params, path, value) })),
   updateParams: (fn) => set((s) => ({ params: fn(s.params) })),
   resetPaths: (paths) =>

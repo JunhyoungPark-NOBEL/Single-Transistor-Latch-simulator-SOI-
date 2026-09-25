@@ -10,7 +10,7 @@ import { usePalette } from "../device/common";
 import { useT } from "../i18n";
 import { fmtInt, isNum } from "../utils/format";
 
-function CmpPlot({ cmp, stale }: { cmp: ComparatorStats; stale: boolean }) {
+export function CmpPlot({ cmp, stale }: { cmp: ComparatorStats; stale: boolean }) {
   const t = useT();
   const c = usePalette();
   const nW = cmp.bits[0]?.length ?? 0;

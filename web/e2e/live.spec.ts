@@ -18,7 +18,7 @@ test("live: deterministic run shows the paper folds (3.70 / 2.60 V)", async ({ p
       /* ignore */
     }
   });
-  await page.goto("/#tab=device&mode=deterministic");
+  await page.goto("/?view=all#tab=device&mode=deterministic");
   await expect(page.getByTestId("backend-status")).toContainText("API", { timeout: 15_000 });
   await expect(page.getByTestId("offline-banner")).toHaveCount(0);
   await page.getByTestId("preset-paper").click();
@@ -28,7 +28,7 @@ test("live: deterministic run shows the paper folds (3.70 / 2.60 V)", async ({ p
   await expect(page.getByTestId("panel-iv").locator(".js-plotly-plot")).toBeVisible();
   await expect(page.getByTestId("panel-charge-balance").locator(".js-plotly-plot")).toBeVisible({ timeout: 120_000 });
   await page.waitForTimeout(800);
-  await page.screenshot({ path: "e2e/screenshots/live-deterministic.png" });
+  await page.screenshot({ path: "e2e/screenshots/all/live-deterministic.png" });
 });
 
 test("live: stochastic run (paper preset) shows V_LU mean ± σ", async ({ page, request }) => {
@@ -48,7 +48,7 @@ test("live: stochastic run (paper preset) shows V_LU mean ± σ", async ({ page,
       /* ignore */
     }
   });
-  await page.goto("/#tab=device&mode=stochastic");
+  await page.goto("/?view=all#tab=device&mode=stochastic");
   await expect(page.getByTestId("backend-status")).toContainText("API", { timeout: 15_000 });
   await page.getByTestId("preset-paper").click();
   await page.getByTestId("run-button").click();
@@ -56,7 +56,7 @@ test("live: stochastic run (paper preset) shows V_LU mean ± σ", async ({ page,
   await expect(page.getByTestId("kpi-vlu-value")).toContainText("3.6", { timeout: 400_000 });
   await expect(page.getByTestId("panel-hazard").locator(".js-plotly-plot")).toBeVisible({ timeout: 400_000 });
   await page.waitForTimeout(800);
-  await page.screenshot({ path: "e2e/screenshots/live-stochastic.png" });
+  await page.screenshot({ path: "e2e/screenshots/all/live-stochastic.png" });
 });
 
 test("live: circuit load-line bench reproduces the folds", async ({ page, request }) => {
@@ -76,7 +76,7 @@ test("live: circuit load-line bench reproduces the folds", async ({ page, reques
       /* ignore */
     }
   });
-  await page.goto("/#tab=circuit&mode=deterministic");
+  await page.goto("/?view=all#tab=circuit&mode=deterministic");
   await expect(page.getByTestId("backend-status")).toContainText("API", { timeout: 15_000 });
   await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
   await page.getByTestId("bench-load_line").click();
@@ -87,7 +87,7 @@ test("live: circuit load-line bench reproduces the folds", async ({ page, reques
   await expect(page.getByTestId("kpi-c-V_LU-value")).toContainText("3.70");
   await expect(page.getByTestId("panel-waves").locator(".js-plotly-plot")).toBeVisible();
   await page.waitForTimeout(800);
-  await page.screenshot({ path: "e2e/screenshots/live-circuit.png", fullPage: true });
+  await page.screenshot({ path: "e2e/screenshots/all/live-circuit.png", fullPage: true });
 });
 
 test("live: pulse bench uses the server's rise/fall default (auto → 10 µs)", async ({ page, request }) => {
@@ -107,7 +107,7 @@ test("live: pulse bench uses the server's rise/fall default (auto → 10 µs)", 
       /* ignore */
     }
   });
-  await page.goto("/#tab=circuit&mode=deterministic");
+  await page.goto("/?view=all#tab=circuit&mode=deterministic");
   await expect(page.getByTestId("backend-status")).toContainText("API", { timeout: 15_000 });
   await page.getByTestId("circuit-view-benches").click(); // the circuit tab opens on the schematic editor
   await page.getByTestId("bench-pulse").click();
@@ -141,9 +141,10 @@ test("live: HTTP 429 (queue full) shows 'server busy' and retries once after Ret
       await route.fulfill({ status: 429, headers: { "Retry-After": "2", "Content-Type": "application/json" }, body: JSON.stringify({ detail: "job queue full" }) });
     } else await route.continue();
   });
-  await page.goto("/#tab=device&mode=deterministic");
+  await page.goto("/?view=all#tab=device&mode=deterministic");
   await expect(page.getByTestId("backend-status")).toContainText("API", { timeout: 15_000 });
-  await page.getByTestId("run-button").click();
+  // no click: the first load runs Device · deterministic by itself (auto-run is on by default), and that
+  // first I–V request meets the 429
   await expect(page.getByTestId("panel-iv")).toContainText("서버가 바쁩니다", { timeout: 10_000 });
   await expect(page.getByTestId("kpi-vlu-value")).toContainText("3.70", { timeout: 60_000 });
   expect(rejected).toBe(1);

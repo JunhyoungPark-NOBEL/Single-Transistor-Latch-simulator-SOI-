@@ -97,7 +97,7 @@ function GroundSym({ x }: { x: number }) {
   );
 }
 
-export function Schematic({ nodes, elements, title }: { nodes: string[]; elements: SchematicElement[]; title?: string }) {
+export function Schematic({ nodes, elements, title, testId = "schematic" }: { nodes: string[]; elements: SchematicElement[]; title?: string; testId?: string }) {
   const gateNodes = new Set(elements.filter((e) => e.kind === "STL" && e.nodes[1]).map((e) => e.nodes[1]));
   const allNodes = [...nodes, ...elements.flatMap((e) => e.nodes)].filter((n, i, a) => a.indexOf(n) === i && !isGnd(n));
   const main = allNodes.filter((n) => !gateNodes.has(n));
@@ -243,7 +243,7 @@ export function Schematic({ nodes, elements, title }: { nodes: string[]; element
     );
   });
   return (
-    <svg viewBox={`0 ${-yOff} ${width} ${height}`} role="img" aria-label={title ?? "schematic"} data-testid="schematic" style={{ color: "var(--text)", maxWidth: width * 1.15, display: "block", margin: "0 auto" }}>
+    <svg viewBox={`0 ${-yOff} ${width} ${height}`} role="img" aria-label={title ?? "schematic"} data-testid={testId} style={{ color: "var(--text)", maxWidth: width * 1.15, display: "block", margin: "0 auto" }}>
       {parts}
     </svg>
   );

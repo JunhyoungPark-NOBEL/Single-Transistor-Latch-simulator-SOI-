@@ -6,6 +6,8 @@ import { IconCheck, IconCopy } from "../components/icons";
 import { RichText } from "../components/RichText";
 import { FitTex, Tex } from "../components/Tex";
 import { useT } from "../i18n";
+import { GUIDE } from "../i18n/strings.guide";
+import "../components/guide.css";
 
 export async function copyText(text: string): Promise<boolean> {
   try {
@@ -56,10 +58,10 @@ function EquationBlock({ eq, n }: { eq: Equation; n: number }) {
       </div>
       {eq.note && <RichText text={t.l(eq.note)} className="eq-note" />}
       {eq.code && (
-        <div className="eq-code">
-          <span className="small muted">{t("ph.code")}</span>
+        <details className="eq-code-d">
+          <summary>{t.l(GUIDE["pw.codeRef"])}</summary>
           <code className="code-chip" title={eq.code}>{eq.code}</code>
-        </div>
+        </details>
       )}
     </figure>
   );

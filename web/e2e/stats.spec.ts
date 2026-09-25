@@ -3,7 +3,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
-const SHOTS = "e2e/screenshots";
+const SHOTS = "e2e/screenshots/all";
 
 async function freshStochastic(page: Page) {
   await page.addInitScript(() => {
@@ -16,7 +16,7 @@ async function freshStochastic(page: Page) {
       /* ignore */
     }
   });
-  await page.goto("/?mock=1#tab=device&mode=stochastic");
+  await page.goto("/?mock=1&view=all#tab=device&mode=stochastic");
   await expect(page.getByTestId("mode-toggle")).toBeVisible();
 }
 

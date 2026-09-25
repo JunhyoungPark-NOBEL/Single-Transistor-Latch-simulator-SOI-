@@ -1,7 +1,7 @@
 import { describe as suite, expect, it } from "vitest";
 import { describe } from "./describe";
 import { fmtCoef, fmtLevel, fmtP, fmtPct, fmtShare, fmtSpread, levelDecimals, planUnits } from "./format";
-import { ALL_COLUMNS, cellValue, COLUMN_GROUP, computeRow, computeRows, GROUP_COLUMNS, statsCsv } from "./table";
+import { ALL_COLUMNS, cellValue, COLUMN_GROUP, COMPACT_COLUMNS, computeRow, computeRows, GROUP_COLUMNS, statsCsv, visibleColumns } from "./table";
 
 suite("unit plans and cell formatting", () => {
   it("voltages: levels in V, spreads in mV, level decimals follow the spread (≥ mV resolution)", () => {
@@ -105,5 +105,24 @@ suite("table model", () => {
     expect(Number(model[col("ks_D")])).toBeGreaterThan(0);
     expect(meas[col("ks_D")]).toBe("");
     expect(model[col("unit")]).toBe("V");
+  });
+});
+
+suite("compact columns", () => {
+  const vals = [3.6, 3.7, 3.65, 3.62, 3.68];
+  it("mean, SD, p5, p95, Δmeasured, KS p — the comparison only with measured data", () => {
+    expect(COMPACT_COLUMNS).toEqual(["mean", "sd", "p05", "p95", "dmean", "ks_p"]);
+    const withMeas = computeRows([{ key: "V_LU", label: "V_LU", values: vals, measured: [3.61, 3.66, 3.7] }]);
+    const all = ALL_COLUMNS.filter((c) => c !== "m_mean" && c !== "m_sd");
+    expect(all).toHaveLength(19);
+    expect(visibleColumns(all, COMPACT_COLUMNS, withMeas)).toEqual(COMPACT_COLUMNS);
+    const noMeasCols = ALL_COLUMNS.filter((c) => COLUMN_GROUP[c] !== "compare");
+    const noMeas = computeRows([{ key: "V_LU", label: "V_LU", values: vals }]);
+    expect(visibleColumns(noMeasCols, COMPACT_COLUMNS, noMeas)).toEqual(["mean", "sd", "p05", "p95"]);
+    expect(visibleColumns(all, null, withMeas)).toBe(all);
+  });
+  it("adds the censored count when a row lost cycles, so it never goes unnoticed", () => {
+    const cens = computeRows([{ key: "V_LU", label: "V_LU", values: [...vals, null, NaN] }]);
+    expect(visibleColumns(ALL_COLUMNS.filter((c) => COLUMN_GROUP[c] !== "compare"), COMPACT_COLUMNS, cens)).toEqual(["mean", "sd", "p05", "p95", "censored"]);
   });
 });

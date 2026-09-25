@@ -1,0 +1,167 @@
+/* Parameter guide: quantity tokens, arrow chips, ⓘ popover / bottom sheet, the ghost 상세 button,
+   the Details-window "한눈에" block and the Physics-tab guide list. Only :root tokens from app.css. */
+
+/* ------------------------------------------------------------------ quantity tokens (V_LU blue, V_LD red) */
+.q { white-space: nowrap; }
+.q sub { font-size: .74em; line-height: 0; vertical-align: -0.28em; letter-spacing: 0; }
+.q-lu { color: var(--hrs); font-weight: 650; }
+.q-ld { color: var(--lrs); font-weight: 650; }
+
+/* arrow chips: "키우면  V_LU ↑ 80 mV  V_LD → 그대로" (no fill: the token colours keep AA contrast on --surface) */
+.gchips { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; min-width: 0; }
+.gchips-lead { font-size: 11px; font-weight: 650; color: var(--muted); margin-right: 1px; }
+.gchip {
+  display: inline-block; white-space: nowrap;
+  padding: 0 7px; height: 19px; line-height: 17px; border-radius: 999px;
+  border: 1px solid var(--border); background: transparent;
+  font-size: 11.5px; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.gchip.lu { border-color: color-mix(in srgb, var(--hrs) 32%, var(--border)); }
+.gchip.ld { border-color: color-mix(in srgb, var(--lrs) 32%, var(--border)); }
+.gchip-mean { font-size: 10.5px; color: var(--muted); }
+.gchip-arrow { font-weight: 700; }
+.gchip[data-dir="flat"] .gchip-arrow, .gchip[data-dir="flat"] .gchip-mag { color: var(--muted); }
+.gchip-sigma { color: var(--text-2); }
+
+/* ------------------------------------------------------------------ ⓘ trigger */
+.info-dot.on { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+.info-dot { cursor: pointer; }
+/* touch: a bigger hit area without a bigger dot */
+@media (pointer: coarse) {
+  .info-dot { position: relative; }
+  .info-dot::after { content: ""; position: absolute; inset: -10px; }
+}
+
+/* ------------------------------------------------------------------ popover */
+.gp {
+  position: fixed; z-index: 960;
+  width: min(340px, 92vw);
+  max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain;
+  padding: 10px 14px 12px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: var(--shadow-3);
+  font-size: 12.5px; line-height: 1.5; text-align: left;
+  animation: gpIn .12s ease-out;
+}
+.gp:focus { outline: none; }
+.gp.pinned:focus-visible { box-shadow: var(--shadow-3), var(--focus); }
+.gp.preview { pointer-events: none; overflow: hidden; }
+@keyframes gpIn { from { opacity: 0; transform: translateY(3px); } }
+.gp-scrim { position: fixed; inset: 0; z-index: 955; background: rgba(15, 23, 42, 0.32); animation: fadeIn .15s; }
+:root[data-theme="dark"] .gp-scrim { background: rgba(0, 0, 0, 0.5); }
+.gp.sheet {
+  left: 0; right: 0; bottom: 0; top: auto; width: auto;
+  max-height: 70vh; border-radius: 16px 16px 0 0; border-bottom: 0;
+  padding: 6px 16px calc(14px + env(safe-area-inset-bottom));
+  font-size: 13px; animation: gpSheet .18s ease-out;
+}
+.gp.sheet.preview { display: none; } /* on touch the tap pins; no half-state sheet */
+@keyframes gpSheet { from { transform: translateY(24px); opacity: .4; } }
+.gp-grab { width: 36px; height: 4px; border-radius: 2px; background: var(--border-strong); margin: 2px auto 6px; }
+
+.gp-head { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+.gp-sym { font-size: 14px; flex: none; color: var(--text); }
+.gp-title { flex: 1; min-width: 0; font-weight: 700; font-size: 13px; color: var(--text); }
+.gp-close { flex: none; margin: -4px -6px -4px 0; }
+.gp-block + .gp-block { margin-top: 8px; }
+.gp-h { font-size: 11px; font-weight: 750; letter-spacing: .02em; color: var(--muted); margin-bottom: 2px; }
+.gp-intuitive { margin: 0; font-size: 14px; line-height: 1.55; color: var(--text); }
+.gp.sheet .gp-intuitive { font-size: 14.5px; }
+.gp-effects { margin: 0; padding: 0 0 0 16px; font-size: 12.5px; line-height: 1.5; }
+.gp-effects li { margin: 1px 0; }
+.gp-effects li::marker { color: var(--faint); }
+.gp-effects li.why { color: var(--text-2); }
+.gp-effects .q.lead { margin-right: 1px; }
+
+.gp-caveat { display: flex; gap: 7px; margin-top: 9px; padding: 7px 9px; border-radius: 8px; background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 25%, transparent); }
+.gp-caveat-icon { color: var(--warn); flex: none; margin-top: 2px; }
+.gp-caveat-body { min-width: 0; flex: 1; }
+.gp-caveat-text { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.gp-caveat-text.open { display: block; -webkit-line-clamp: unset; line-clamp: none; overflow: visible; }
+.gp-caveat-more { margin-top: 2px; font-size: 11.5px; color: var(--text-2); }
+
+.gp-basis { margin: 8px 0 0; font-size: 11px; line-height: 1.45; color: var(--muted); }
+.gp-basis-src { color: var(--muted); }
+.gp-basis-src .mono { font-size: 10.5px; word-break: break-word; }
+
+.gp-tech { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.45; color: var(--text-2); }
+.gp-tech.solo { margin-top: 0; padding-top: 0; border-top: 0; color: var(--text); }
+.gp-tech-help { margin: 0; }
+.gp-tech-meta { margin-top: 3px; font-size: 11px; color: var(--muted); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.gp-tech-meta .code-chip { font-size: 10.5px; padding: 0 5px; margin-right: 4px; }
+.gp-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.gp-more { font-size: 12px; font-weight: 650; color: var(--accent-strong); text-decoration: none; }
+.gp-more:hover { text-decoration: underline; }
+
+/* ------------------------------------------------------------------ 상세 (Details) button: ghost style */
+.details-btn {
+  border-color: transparent; background: transparent; color: var(--text-2);
+  font-weight: 600; padding: 0 7px 0 5px;
+}
+.details-btn:hover { background: var(--surface-3); border-color: var(--border); color: var(--text); }
+.details-btn svg { color: var(--accent-strong); }
+.details-btn.icon { width: 26px; height: 26px; padding: 0; justify-content: center; border-radius: 7px; }
+
+/* ------------------------------------------------------------------ Details window: "한눈에" block */
+.pw { container-type: inline-size; container-name: pw; }
+.pw-guide { margin: 0 0 18px; padding: 10px 12px 10px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); scroll-margin-top: 8px; }
+.pw-guide > h3 { font-size: 13.5px; font-weight: 750; margin: 0 0 4px; }
+.pwg-lead { margin: 0 0 8px; font-size: 13px; line-height: 1.55; color: var(--text); }
+.pwg-foot { margin: 8px 0 0; font-size: 11px; line-height: 1.45; color: var(--muted); }
+
+/* one row per parameter: [symbol, label, intuitive] │ [키우면 3 lines]; stacked when narrow */
+.grow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 14px; padding: 8px 10px; border-radius: 9px; background: var(--surface); border: 1px solid var(--border); transition: box-shadow .3s, border-color .3s; }
+.grow + .grow { margin-top: 6px; }
+.grow.hl { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.grow-name { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 12.5px; }
+.grow-name h4, .grow-name h5 { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--text); display: inline-flex; align-items: baseline; gap: 6px; }
+.grow-name .grow-sym { font-size: 13px; color: var(--text); }
+.grow-name .badge { font-size: 10px; padding: 0 6px; }
+.grow-easy { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text); }
+.grow-easy.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; cursor: pointer; }
+.grow-expand { display: block; margin-top: 1px; font-size: 11px; }
+.grow-eff .gp-h { margin-bottom: 1px; }
+.grow-eff ul { margin: 0; padding: 0 0 0 15px; font-size: 12px; line-height: 1.45; }
+.grow-eff li { margin: 1px 0; }
+.grow-eff li.why { color: var(--text-2); }
+.grow-eff li::marker { color: var(--faint); }
+.grow-cav { margin-top: 3px; font-size: 11.5px; }
+.grow-cav > summary { cursor: pointer; color: var(--warn); font-weight: 650; list-style: none; display: inline-flex; align-items: center; gap: 4px; }
+.grow-cav > summary::-webkit-details-marker { display: none; }
+.grow-cav > summary::after { content: "▸"; font-size: .9em; transition: transform .15s; }
+.grow-cav[open] > summary::after { transform: rotate(90deg); }
+.grow-cav p { margin: 3px 0 0; padding: 6px 8px; border-radius: 7px; background: var(--warn-soft); color: var(--text); line-height: 1.45; }
+@container pw (min-width: 520px) {
+  .pw-guide .grow { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); }
+  .pw-guide .grow-eff { border-left: 1px solid var(--border); padding-left: 12px; }
+}
+
+/* ------------------------------------------------------------------ Physics tab: parameter guide list */
+.guide-jump { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: var(--r3); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-1); }
+.guide-jump .chip { font-family: var(--font); font-weight: 650; font-size: 12.5px; padding: 3px 12px; color: var(--accent-strong); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: var(--accent-soft); }
+.guide-jump .hint { font-size: 12.5px; color: var(--text-2); }
+.guide-list { container-type: inline-size; container-name: glist; margin: 6px 0 16px; scroll-margin-top: calc(var(--header-h) + var(--modebar-h) + 16px); }
+.guide-list > h3 { font-size: 15px; font-weight: 750; margin: 0 0 2px; }
+.guide-list > .lead { margin: 0 0 8px; font-size: 12.5px; color: var(--text-2); }
+.glist-group { margin: 12px 0 0; }
+.glist-group > h4 { margin: 0 0 4px; font-size: 12.5px; font-weight: 750; color: var(--text-2); display: flex; align-items: center; gap: 8px; }
+.glist-group > .glist-lead { margin: 0 0 6px; font-size: 12.5px; color: var(--text); }
+.guide-list .grow { background: var(--surface-2); }
+.guide-list .pwg-foot { margin-top: 10px; }
+@container glist (min-width: 520px) {
+  .guide-list .grow { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); }
+  .guide-list .grow-eff { border-left: 1px solid var(--border); padding-left: 12px; }
+}
+
+/* equation code reference collapsed to one line ("코드 대응 ▸") */
+.eq-code-d { padding: 0 12px 8px; font-size: 11.5px; }
+.eq-code-d > summary { cursor: pointer; color: var(--muted); list-style: none; display: inline-flex; align-items: center; gap: 4px; }
+.eq-code-d > summary::-webkit-details-marker { display: none; }
+.eq-code-d > summary::after { content: "▸"; font-size: .9em; transition: transform .15s; }
+.eq-code-d[open] > summary::after { transform: rotate(90deg); }
+.eq-code-d .code-chip { margin-top: 4px; display: inline-block; }
+
+/* Details window: slim header (title + ← ↗ ✕), tags in the footer */
+.pw-head.slim { align-items: center; padding: 8px 8px 8px 14px; }
+.pw-foot .pw-tags { margin-top: 0; }

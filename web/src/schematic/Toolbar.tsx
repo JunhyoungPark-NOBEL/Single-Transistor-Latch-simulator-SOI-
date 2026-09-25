@@ -1,9 +1,14 @@
 // Editor toolbar (tools, parts, edit, view) + Examples and File menus, and the LTspice-like keyboard map.
+// 간단히 layout: 15 top-level controls — select / wire / probe, the 8 parts and the STL device, then "편집 ▾"
+// (undo, redo, rotate, mirror, duplicate, delete, zoom in / out, fit; shortcuts unchanged), 예제 ▾ and 파일 ▾.
+// 모두 보기: every edit and view button in the bar, as before.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useT } from "../i18n";
+import { selectMoreTab } from "../components/MoreCard";
+import { useT, type T } from "../i18n";
 import type { StrKey } from "../i18n/strings";
 import { deviceName } from "../devices/library";
 import { useDeviceLib } from "../devices/store";
+import { useIsAll } from "../state/layout";
 import { useStore } from "../state/store";
 import { downloadText } from "../utils/csv";
 import { deleteItems, duplicateItems, mirrorItems, rotateItems } from "./edit";
@@ -11,7 +16,24 @@ import type { ElKind, Rot } from "./model";
 import { defaultDoc, exportDocJson, parseDoc } from "./persist";
 import { libraryEntries, templateDoc, useSch } from "./store";
 import { PartIcon } from "./Symbols";
-import { TEMPLATE_ORDER, TEMPLATE_TEXT } from "./templates";
+import { TEMPLATE_ORDER, TEMPLATE_TEXT, type TemplateId } from "./templates";
+
+/** Scope of the results' analysis card (Results.tsx). */
+export const SCH_MORE_SCOPE = "schematic";
+
+/**
+ * Loads an example (Examples menu and the empty-canvas buttons). The analysis card follows the example: the
+ * p-bit opens on its comparator (the p-bit output); the others go back to the card's own default tab.
+ */
+export function loadTemplate(id: TemplateId, t: T) {
+  const st = useSch.getState();
+  const doc = templateDoc(id);
+  st.replaceDoc(doc);
+  st.notify(t("schematic.file.loadedToast", { name: t(TEMPLATE_TEXT[id].title) }));
+  const cmp = doc.elements.find((e) => e.kind === "CMP");
+  // "" matches no tab → the MoreCard falls back to its defaultTab (comparator / distribution / trajectory)
+  selectMoreTab(SCH_MORE_SCOPE, cmp ? `sch-cmp-${cmp.name}` : "");
+}
 
 const PARTS: { kind: ElKind; key: string; label: StrKey }[] = [
   { kind: "R", key: "R", label: "schematic.tool.R" },
@@ -31,7 +53,7 @@ export function placeTool(kind: ElKind) {
   st.select([]);
 }
 
-function Menu({ label, icon, children, testId, align = "left" }: { label: ReactNode; icon?: ReactNode; children: (close: () => void) => ReactNode; testId?: string; align?: "left" | "right" }) {
+function Menu({ label, icon, children, testId, align = "left", title }: { label: ReactNode; icon?: ReactNode; children: (close: () => void) => ReactNode; testId?: string; align?: "left" | "right"; title?: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -49,7 +71,7 @@ function Menu({ label, icon, children, testId, align = "left" }: { label: ReactN
   }, [open]);
   return (
     <div className="sch-menu" ref={ref}>
-      <button type="button" className="btn sm" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)} data-testid={testId}>
+      <button type="button" className="btn sm" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)} data-testid={testId} title={title}>
         {icon}
         {label}
         <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} aria-hidden>
@@ -100,6 +122,57 @@ export function zoomBy(f: number) {
   st.setView({ k, x: cx - ((cx - st.view.x) * k) / st.view.k, y: cy - ((cy - st.view.y) * k) / st.view.k });
 }
 
+interface EditCtx {
+  hasSel: boolean;
+  past: boolean;
+  future: boolean;
+}
+interface EditAction {
+  id: string;
+  label: StrKey;
+  key: string;
+  icon: ReactNode;
+  run: () => void;
+  enabled: (c: EditCtx) => boolean;
+  testId?: string;
+  /** Zoom steps keep the menu open (several clicks in a row). */
+  keepOpen?: boolean;
+}
+
+/** Edit and view actions: toolbar groups in 모두 보기, the "편집 ▾" menu sections in 간단히. */
+const EDIT_GROUPS: EditAction[][] = [
+  [
+    { id: "undo", label: "schematic.tool.undo", key: "Ctrl+Z", icon: I.undo, run: () => useSch.getState().undo(), enabled: (c) => c.past, testId: "tool-undo" },
+    { id: "redo", label: "schematic.tool.redo", key: "Ctrl+Y", icon: I.redo, run: () => useSch.getState().redo(), enabled: (c) => c.future, testId: "tool-redo" },
+  ],
+  [
+    { id: "rotate", label: "schematic.tool.rotate", key: "Ctrl+R", icon: I.rotate, run: () => useSch.getState().commit((d) => rotateItems(d, useSch.getState().selection)), enabled: (c) => c.hasSel, testId: "tool-rotate" },
+    { id: "mirror", label: "schematic.tool.mirror", key: "Ctrl+E", icon: I.mirror, run: () => useSch.getState().commit((d) => mirrorItems(d, useSch.getState().selection)), enabled: (c) => c.hasSel, testId: "tool-mirror" },
+    {
+      id: "duplicate", label: "schematic.tool.duplicate", key: "Ctrl+D", icon: I.dup, enabled: (c) => c.hasSel, testId: "tool-duplicate",
+      run: () => {
+        const st = useSch.getState();
+        const r = duplicateItems(st.doc, st.selection);
+        st.commit(() => r.doc);
+        st.select(r.ids);
+      },
+    },
+    {
+      id: "delete", label: "schematic.tool.delete", key: "Del", icon: I.del, enabled: (c) => c.hasSel, testId: "tool-delete",
+      run: () => {
+        const st = useSch.getState();
+        st.commit((d) => deleteItems(d, st.selection));
+        st.select([]);
+      },
+    },
+  ],
+  [
+    { id: "zoomOut", label: "schematic.tool.zoomOut", key: "−", icon: I.minus, run: () => zoomBy(1 / 1.25), enabled: () => true, testId: "tool-zoom-out", keepOpen: true },
+    { id: "fit", label: "schematic.tool.fit", key: "F", icon: I.fit, run: () => useSch.getState().requestFit(), enabled: () => true, testId: "tool-fit" },
+    { id: "zoomIn", label: "schematic.tool.zoomIn", key: "+", icon: I.plus, run: () => zoomBy(1.25), enabled: () => true, testId: "tool-zoom-in", keepOpen: true },
+  ],
+];
+
 export function Toolbar() {
   const t = useT();
   const lang = useStore((s) => s.lang);
@@ -115,7 +188,8 @@ export function Toolbar() {
   const fileRef = useRef<HTMLInputElement>(null);
   const entries = libraryEntries();
   const st = useSch.getState;
-  const hasSel = selection.length > 0;
+  const all = useIsAll();
+  const ctx: EditCtx = { hasSel: selection.length > 0, past: past > 0, future: future > 0 };
   return (
     <div className="sch-toolbar" role="toolbar" aria-label={t("schematic.tool.aria")} data-testid="sch-toolbar">
       <div className="sch-tgroup">
@@ -153,57 +227,47 @@ export function Toolbar() {
           ))}
         </select>
       </div>
-      <div className="sch-tgroup">
-        <ToolBtn onClick={() => st().commit((d) => rotateItems(d, st().selection))} label={t("schematic.tool.rotate")} shortcut="Ctrl+R" disabled={!hasSel}>
-          {I.rotate}
-        </ToolBtn>
-        <ToolBtn onClick={() => st().commit((d) => mirrorItems(d, st().selection))} label={t("schematic.tool.mirror")} shortcut="Ctrl+E" disabled={!hasSel}>
-          {I.mirror}
-        </ToolBtn>
-        <ToolBtn
-          onClick={() => {
-            const r = duplicateItems(st().doc, st().selection);
-            st().commit(() => r.doc);
-            st().select(r.ids);
-          }}
-          label={t("schematic.tool.duplicate")}
-          shortcut="Ctrl+D"
-          disabled={!hasSel}
-        >
-          {I.dup}
-        </ToolBtn>
-        <ToolBtn
-          onClick={() => {
-            st().commit((d) => deleteItems(d, st().selection));
-            st().select([]);
-          }}
-          label={t("schematic.tool.delete")}
-          shortcut="Del"
-          disabled={!hasSel}
-          testId="tool-delete"
-        >
-          {I.del}
-        </ToolBtn>
-      </div>
-      <div className="sch-tgroup">
-        <ToolBtn onClick={() => st().undo()} label={t("schematic.tool.undo")} shortcut="Ctrl+Z" disabled={!past} testId="tool-undo">
-          {I.undo}
-        </ToolBtn>
-        <ToolBtn onClick={() => st().redo()} label={t("schematic.tool.redo")} shortcut="Ctrl+Y" disabled={!future} testId="tool-redo">
-          {I.redo}
-        </ToolBtn>
-      </div>
-      <div className="sch-tgroup">
-        <ToolBtn onClick={() => zoomBy(1 / 1.25)} label={t("schematic.tool.zoomOut")} shortcut="−">
-          {I.minus}
-        </ToolBtn>
-        <ToolBtn onClick={() => st().requestFit()} label={t("schematic.tool.fit")} shortcut="F" testId="tool-fit">
-          {I.fit}
-        </ToolBtn>
-        <ToolBtn onClick={() => zoomBy(1.25)} label={t("schematic.tool.zoomIn")} shortcut="+">
-          {I.plus}
-        </ToolBtn>
-      </div>
+      {all ? (
+        // today's bar order: edit, undo / redo, view
+        [EDIT_GROUPS[1], EDIT_GROUPS[0], EDIT_GROUPS[2]].map((g, gi) => (
+          <div key={gi} className="sch-tgroup">
+            {g.map((a) => (
+              <ToolBtn key={a.id} onClick={a.run} label={t(a.label)} shortcut={a.key} disabled={!a.enabled(ctx)} testId={a.testId}>
+                {a.icon}
+              </ToolBtn>
+            ))}
+          </div>
+        ))
+      ) : (
+        <Menu label={t("schematic.tool.edit")} testId="menu-edit" title={t("schematic.tool.editAria")}>
+          {(close) =>
+            EDIT_GROUPS.map((g, gi) => (
+              <div key={gi} className="sch-menu-group" role="group">
+                {g.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    role="menuitem"
+                    className="sch-menu-item sch-menu-action"
+                    disabled={!a.enabled(ctx)}
+                    data-testid={a.testId}
+                    onClick={() => {
+                      a.run();
+                      if (!a.keepOpen) close();
+                    }}
+                  >
+                    <span className="sch-mi-icon" aria-hidden>
+                      {a.icon}
+                    </span>
+                    <strong>{t(a.label)}</strong>
+                    <kbd>{a.key}</kbd>
+                  </button>
+                ))}
+              </div>
+            ))
+          }
+        </Menu>
+      )}
       <div className="spacer" />
       <Menu label={t("schematic.file.examples")} icon={I.book} testId="menu-examples" align="right">
         {(close) => (
@@ -216,8 +280,7 @@ export function Toolbar() {
                 className="sch-menu-item"
                 data-testid={`tpl-${id}`}
                 onClick={() => {
-                  st().replaceDoc(templateDoc(id));
-                  st().notify(t("schematic.file.loadedToast", { name: t(TEMPLATE_TEXT[id].title) }));
+                  loadTemplate(id, t);
                   close();
                 }}
               >

@@ -5,10 +5,12 @@
 // drops its card border and hides its h3 visually: the tab label is the title). Tabs carry status dots
 // (running | error | stale) so a failure in a hidden tab stays visible. The active tab is kept per scope in
 // localStorage "stl-websim:more:<scope>"; at ≤ 760 px the tab strip becomes a <select>.
-import { createContext, Fragment, useEffect, useRef, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { createContext, Fragment, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { create } from "zustand";
 import { useT } from "../i18n";
 import { UX } from "../i18n/strings.ux";
+import { subs } from "../plots/labels";
+import { SubText } from "../plots/SubText";
 import { useIsAll } from "../state/layout";
 import type { ResultEntry } from "../state/store";
 import "./more.css";
@@ -20,6 +22,11 @@ export interface MoreCardCtx {
 }
 export const MoreCardContext = createContext<MoreCardCtx>({ embedded: false });
 const EMBEDDED: MoreCardCtx = { embedded: true };
+/**
+ * Right end of the MoreCard tab row: an embedded Panel portals its status badge, 📖 and ⋯ there, so the tab
+ * row doubles as the panel's title row (null outside a MoreCard, or before the row has mounted).
+ */
+export const MoreSlotContext = createContext<HTMLElement | null>(null);
 
 // ---------------------------------------------------------------- tab status
 export type TabStatus = "running" | "error" | "stale";
@@ -122,6 +129,7 @@ export function MoreCard({ scope, tabs, defaultTab, className }: MoreCardProps) 
   const active = visible.find((x) => x.id === chosen) ?? visible.find((x) => x.id === defaultTab) ?? visible[0];
   const activeId = active?.id;
   const btns = useRef(new Map<string, HTMLButtonElement>());
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
 
   // a newly shown tab mounts its Plotly chart; a window resize lets every chart re-lay out to its box
   const prev = useRef(activeId);
@@ -182,7 +190,10 @@ export function MoreCard({ scope, tabs, defaultTab, className }: MoreCardProps) 
                   data-testid={`more-tab-${x.id}`}
                   onClick={() => selectMoreTab(scope, x.id)}
                 >
-                  <span className="more-tab-label">{x.label}</span>
+                  <span className="more-tab-label">
+                    {/* "V_G 의존성" → V<sub>G</sub> 의존성 (the phone <select> keeps the plain label) */}
+                    <SubText text={subs(x.label)} />
+                  </span>
                   {x.status && (
                     <>
                       <span className={`more-dot ${x.status}`} aria-hidden title={statusText(x.status)} />
@@ -194,9 +205,12 @@ export function MoreCard({ scope, tabs, defaultTab, className }: MoreCardProps) 
             })}
           </div>
         )}
+        <div className="more-actions" ref={setSlot} />
       </div>
       <div className="more-body" {...(narrow ? {} : { role: "tabpanel", id: `${domId(active.id)}-panel`, "aria-labelledby": `${domId(active.id)}-tab` })}>
-        <MoreCardContext.Provider value={EMBEDDED}>{active.panel}</MoreCardContext.Provider>
+        <MoreCardContext.Provider value={EMBEDDED}>
+          <MoreSlotContext.Provider value={slot}>{active.panel}</MoreSlotContext.Provider>
+        </MoreCardContext.Provider>
       </div>
     </section>
   );
