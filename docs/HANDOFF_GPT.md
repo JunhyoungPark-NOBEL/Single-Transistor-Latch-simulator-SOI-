@@ -829,7 +829,7 @@ node scripts/verify-artifact.mjs --serve --port 5211   # 손으로 열어 보기
 3. claude.ai 링크를 Share 메뉴로 공유한다. 비공개 아티팩트는 소유자만 열 수 있다.
 4. PR #1을 병합한다(open, mergeable_state clean).
 5. 선택: 실시간 백엔드를 배포한다(Render, HF, 연구실 서버). 현재 배포는 없는 것으로 보인다(미확인).
-6. GPT가 정적 페이지를 다시 게시해야 한다면, 소유자가 gitignore된 `web/snapshot/`과 `web/dist-artifact/`를 따로 넘긴다. 이 폴더는 Claude가 따로 보낸 `stl-websim-build-data.zip`에 들어 있다(없으면 Claude 세션이 끝나기 전에 받아 둔다). 넘기지 않으면 다시 녹화해야 한다(30–40 min). 이 폴더들은 공개 저장소에 커밋하지 않는다.
+6. GPT가 정적 페이지를 다시 게시해야 한다면, 소유자가 gitignore된 `web/snapshot/`과 `web/dist-artifact/`를 따로 넘긴다. 이 폴더는 Claude가 따로 보낸 `stl-websim-snapshot.zip`(web/snapshot)과 `stl-websim-dist-artifact-locked.zip`(web/dist-artifact)에 들어 있다(없으면 Claude 세션이 끝나기 전에 받아 둔다). 넘기지 않으면 다시 녹화해야 한다(30–40 min). 이 폴더들은 공개 저장소에 커밋하지 않는다.
 7. (완료) 인수인계 문서 두 개는 커밋되어 저장소 `docs/`에 있다.
 
 ### P1 — 작고 안전한 코드·문서 정리
