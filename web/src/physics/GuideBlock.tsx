@@ -1,6 +1,7 @@
 // "한눈에" guide block — the first section of the Details window when it is opened from a parameter group
 // or a field (physics/guideTarget.ts), and the row format of the Physics-tab parameter guide list.
-// Each row: [symbol, label, intuitive picture (3-line clamp), ⚠ 주의 ▸] │ [키우면: the 3 effect lines].
+// Each row: [symbol, label, (Details window only) the one-line definition + code index, intuitive picture
+// (3-line clamp), ⚠ 주의 ▸] │ [키우면: the 3 effect lines].
 // Two columns when the window (or the list) is ≥ 520 px wide (container queries in components/guide.css).
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { EffectLine, GuideText, verbLabel } from "../components/GuidePopover";
@@ -56,7 +57,7 @@ function Clamp({ text, open, onToggle }: { text: string; open: boolean; onToggle
   );
 }
 
-export function GuideRow({ fieldKey, testId, focused, heading = "h4", main }: { fieldKey: string; testId: string; focused?: boolean; heading?: "h4" | "h5"; main?: boolean }) {
+export function GuideRow({ fieldKey, testId, focused, heading = "h4", main, definition = false }: { fieldKey: string; testId: string; focused?: boolean; heading?: "h4" | "h5"; main?: boolean; definition?: boolean }) {
   const t = useT();
   const g = guideFor(fieldKey);
   const f = FIELD_INDEX.get(fieldKey);
@@ -81,6 +82,13 @@ export function GuideRow({ fieldKey, testId, focused, heading = "h4", main }: { 
           </H>
           {main && <span className="badge">{t.l(GUIDE["guide.main"])}</span>}
         </div>
+        {/* Details window: the one-line technical definition (f.help, e.g. the E_G formula of l_GIDL) and the code index */}
+        {definition && f && (
+          <p className="grow-def" data-testid={`${testId}-def`}>
+            <GuideText text={t.l(f.help)} plain />
+            {f.code && <code className="code-chip">{f.code}</code>}
+          </p>
+        )}
         <Clamp text={t.l(g.intuitive)} open={open} onToggle={() => setOpen(!open)} />
         {g.caveat && (
           <details className="grow-cav" open={cavOpen} onToggle={(e) => setCavOpen((e.currentTarget as HTMLDetailsElement).open)}>
@@ -144,7 +152,7 @@ export function GuideBlock({ keys, focus, group, nonce }: { keys: string[]; focu
         <GuideText text={t.l(groupLead(group))} />
       </p>
       {rows.map((k) => (
-        <GuideRow key={`${k}-${nonce}`} fieldKey={k} testId={`pw-guide-row-${k}`} focused={hl === k} />
+        <GuideRow key={`${k}-${nonce}`} fieldKey={k} testId={`pw-guide-row-${k}`} focused={hl === k} definition />
       ))}
       <p className="pwg-foot">
         <GuideText text={t.l(GUIDE_LEGEND.arrows)} plain />

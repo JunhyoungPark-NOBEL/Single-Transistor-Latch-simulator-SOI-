@@ -84,7 +84,9 @@ export function Notices({ items, inline }: { items: string[]; inline?: boolean }
       </summary>
       <ul>
         {items.map((w, i) => (
-          <li key={i}>{w}</li>
+          <li key={i}>
+            <SubText text={symbolSubs(w)} />
+          </li>
         ))}
       </ul>
     </details>

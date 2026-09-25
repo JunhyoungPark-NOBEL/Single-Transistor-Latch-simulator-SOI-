@@ -222,13 +222,26 @@ export function cancelActive() {
   useStore.setState({ activeRun: { ...ar, finishedAt: performance.now() } });
 }
 
+/** Add a key to the running group (the Run bar then waits for it too). */
+function extendGroup(id: number, key: string) {
+  const ar = useStore.getState().activeRun;
+  if (ar && ar.startedAt === id && ar.finishedAt === undefined && !ar.keys.includes(key)) useStore.setState({ activeRun: { ...ar, keys: [...ar.keys, key] } });
+}
+
 export async function runDeterministic() {
   if (useForcing.getState().forcing === "csvm") return runCsvm();
   const s = useStore.getState();
   const p = s.params;
   if (useLayout.getState().layout === "simple") {
     const gid = beginGroup(["branches"], "deterministic");
-    try { await runKey("branches", "branches", branchesPayload(p)); } finally { endGroup(gid); }
+    try {
+      const r = await runKey<BranchesResult>("branches", "branches", branchesPayload(p));
+      // no latch at this V_G: the V_G curve tells the answer bar where the latch window is
+      if (r.ok && r.data && !r.data.latch) {
+        extendGroup(gid, "vg_curve");
+        await runKeyIfChanged("vg_curve", "vg_curve", vgCurvePayload(p, useStore.getState().vgRange));
+      }
+    } finally { endGroup(gid); }
     return;
   }
   const keys = ["branches", "charge_balance", "vg_curve"];
@@ -268,6 +281,53 @@ export async function runStochastic() {
     runKey("branches", "branches", branchesPayload(p)),
   ]);
   endGroup(gid);
+}
+
+/** Result slot done for exactly this request. */
+function freshFor(key: string, kind: Kind, payload: unknown): boolean {
+  const e = useStore.getState().results[key];
+  return !!e && e.status === "done" && e.data !== undefined && e.dataKey === canonical({ kind, payload });
+}
+const inFlight = (key: string) => {
+  const st = useStore.getState().results[key]?.status;
+  return st === "running" || st === "queued";
+};
+
+/**
+ * "모두 보기" shows panels whose results the simple layout never computes (charge balance and V_G curve;
+ * hazard in the stochastic mode). On switching to it, run the ones missing or stale for the current
+ * parameters, but only once the main result (I–V branches / MC sweeps) exists for these parameters: opening
+ * the layout never starts the main run by itself.
+ */
+export async function fillAllLayout() {
+  const s = useStore.getState();
+  if (s.tab !== "device" || useForcing.getState().forcing === "csvm" || useLayout.getState().layout !== "all") return;
+  const p = s.params;
+  const jobs: [string, Kind, unknown][] = [];
+  if (s.mode === "deterministic") {
+    if (!freshFor("branches", "branches", branchesPayload(p))) return;
+    const f = (s.results.branches?.data as BranchesResult | undefined)?.folds;
+    const vd = s.cbVd ?? midFold(f?.V_LU, f?.V_LD, 0.8 * p.sweep.vd_max_V);
+    jobs.push(["charge_balance", "charge_balance", chargeBalancePayload(p, vd)], ["vg_curve", "vg_curve", vgCurvePayload(p, s.vgRange)]);
+  } else {
+    if (!freshFor("sweep_mc", "sweep_mc", sweepMcPayload(p))) return;
+    jobs.push(["hazard", "hazard", hazardPayload(p)]);
+  }
+  const todo = jobs.filter(([key, kind, payload]) => !freshFor(key, kind, payload) && !inFlight(key));
+  if (!todo.length) return;
+  const gid = beginGroup(todo.map(([key]) => key), runContext("device", s.mode) ?? s.mode);
+  try {
+    await Promise.all(todo.map(([key, kind, payload]) => runKey(key, kind, payload)));
+  } finally {
+    endGroup(gid);
+  }
+}
+
+/** Fill the "모두 보기" panels when the layout switches to it (App mounts this once). */
+export function startAllLayoutFill(): () => void {
+  return useLayout.subscribe((st, prev) => {
+    if (st.layout === "all" && prev.layout !== "all") void fillAllLayout();
+  });
 }
 
 /** Device CSVM uses the same live MNA/body-state solver as the free-form circuit editor. */

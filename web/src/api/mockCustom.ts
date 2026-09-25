@@ -7,6 +7,7 @@
 import type { ComparatorStats, CustomCircuitRequest, CustomCircuitResult, CustomElement, Envelope, Wave } from "./circuitCustom";
 import type { Arr, CircuitRun, DeviceBlock, Signal, SummaryItem } from "./types";
 import { waveAt, wavePoints } from "../schematic/waves";
+import { useStore } from "../state/store";
 
 const GROUND = new Set(["0", "gnd", "GND"]);
 
@@ -362,7 +363,10 @@ export function mockCustomCircuit(req: CustomCircuitRequest): CustomCircuitResul
   const t0 = performance.now();
   const els = req.netlist?.elements ?? [];
   if (!els.length) throw new Error("the netlist has no elements");
-  if (els.some((e) => ["MOS", "D", "BJT"].includes(e.type))) throw new Error("MOSFET · diode · BJT simulation requires the live calculation server (실시간 계산 서버가 필요합니다).");
+  if (els.some((e) => ["MOS", "D", "BJT"].includes(e.type)))
+    throw new Error(useStore.getState().lang === "ko"
+      ? "MOSFET·다이오드·BJT가 들어간 회로는 계산 서버에 연결해야 시뮬레이션할 수 있습니다."
+      : "Circuits with a MOSFET, diode or BJT need the compute server to simulate.");
   const touchesGround = els.some((e) => nodesOf(e).some((nd) => GROUND.has(nd)));
   if (!touchesGround) throw new Error("no ground reference: connect at least one element to node 0");
   if (!(req.tran?.t_stop_s > 0)) throw new Error("tran.t_stop_s must be > 0");

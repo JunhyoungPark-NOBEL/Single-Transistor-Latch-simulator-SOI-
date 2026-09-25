@@ -92,3 +92,11 @@ export function nearlyEqual(a: unknown, b: unknown, rel = 1e-9): boolean {
   }
   return a === b;
 }
+
+const SUP: Record<string, string> = { "-": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
+/** Scientific notation for reading, not editing: 2.30×10¹⁷ (2 decimals by default; typographic minus). */
+export function sciText(v: number, digits = 2): string {
+  if (!Number.isFinite(v)) return "—";
+  const [m, e] = v.toExponential(digits).split("e");
+  return `${m.replace("-", "−")}×10${String(Number(e)).split("").map((c) => SUP[c] ?? c).join("")}`;
+}

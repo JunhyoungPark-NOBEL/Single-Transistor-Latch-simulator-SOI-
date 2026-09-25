@@ -57,7 +57,7 @@
 .sch-menu-item span { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
 .sch-menu-item:hover { background: var(--accent-soft); }
 .sch-menu-item:hover strong { color: var(--accent-strong); }
-.sch-menu-sep { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); padding: 8px 10px 2px; border-top: 1px solid var(--border); margin-top: 4px; }
+.sch-menu-sep { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 8px 10px 2px; border-top: 1px solid var(--border); margin-top: 4px; }
 .sch-menu-sep:empty { padding: 0; margin: 4px 0; }
 .sch-menu-empty { font-size: 12px; color: var(--muted); padding: 4px 10px 6px; }
 .sch-menu-row { display: flex; align-items: center; gap: 4px; }
@@ -263,7 +263,7 @@
 .feas.refuse { border-color: color-mix(in srgb, var(--err) 45%, var(--border)); background: var(--err-soft); }
 .feas.refuse .feas-dot { background: var(--err); }
 .feas-hint { color: var(--text-2); line-height: 1.4; }
-.feas-note { color: var(--faint); font-size: 11px; }
+.feas-note { color: var(--muted); font-size: 11px; }
 
 /* toast */
 .sch-toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 950; padding: 9px 16px; border-radius: 999px; background: #111827; color: #f9fafb; font-size: 13px; box-shadow: var(--shadow-3); animation: toastIn .18s ease-out; max-width: calc(100vw - 32px); }

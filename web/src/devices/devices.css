@@ -17,6 +17,8 @@
 .dev-row .select { height: 28px; font-size: 12px; }
 .dev-row .btn.active { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
 .dev-save { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); background: var(--accent-soft); animation: groupIn .2s ease-out; }
+/* inside the save dialog the modal is the frame: no second box around the form */
+.modal .dev-save { padding: 0; border: 0; background: transparent; animation: none; }
 .dev-field { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--text-2); font-weight: 600; }
 .dev-field .input { font-weight: 400; }
 .dev-hint { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.4; }
@@ -49,7 +51,7 @@
 .dm-meta { font-size: 11.5px; color: var(--text-2); }
 .dm-meta.mono { font-size: 11px; color: var(--muted); }
 .dm-notes { font-size: 12px; color: var(--text-2); white-space: pre-wrap; }
-.dm-date { font-size: 11px; color: var(--faint); }
+.dm-date { font-size: 11px; color: var(--muted); }
 .dm-actions { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
 .dm-empty { font-size: 12.5px; color: var(--muted); padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px; }
 @media (max-width: 640px) {

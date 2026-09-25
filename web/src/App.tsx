@@ -10,7 +10,7 @@ import { translate } from "./i18n";
 import { PhysicsTab } from "./physics/PhysicsTab";
 import { PhysicsWindow } from "./physics/PhysicsWindow";
 import { Sidebar } from "./sidebar/Sidebar";
-import { runCurrent, startAutoRun, startHealthPolling } from "./state/runner";
+import { runCurrent, startAllLayoutFill, startAutoRun, startHealthPolling } from "./state/runner";
 import { useStore } from "./state/store";
 import { ValidationTab } from "./validation/ValidationTab";
 
@@ -32,6 +32,7 @@ export default function App() {
   useEffect(() => {
     const stopHealth = startHealthPolling();
     const stopAuto = startAutoRun();
+    const stopFill = startAllLayoutFill();
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
@@ -47,6 +48,7 @@ export default function App() {
     return () => {
       stopHealth();
       stopAuto();
+      stopFill();
       window.removeEventListener("keydown", onKey);
       mq?.removeEventListener?.("change", onMq);
     };

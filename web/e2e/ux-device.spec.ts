@@ -90,6 +90,31 @@ test.describe("Device workspace", () => {
     await expect(page.getByTestId("kpis")).not.toHaveClass(/stale/);
   });
 
+  test("switching to 모두 보기 after a simple run fills the charge balance and the V_G curve, once", async ({ page }) => {
+    await fresh(page);
+    await ready(page);
+    expect(await jobs(page)).toEqual(["branches"]);
+    await page.getByTestId("layout-all").click();
+    for (const id of ["charge-balance", "vg"]) await plotted(page, id);
+    expect((await jobs(page)).sort()).toEqual(["branches", "charge_balance", "vg_curve"]);
+    await expect(page.getByTestId("panel-charge-balance").locator(".badge.stale")).toHaveCount(0);
+    await page.getByTestId("layout-simple").click();
+    await page.getByTestId("layout-all").click();
+    await plotted(page, "vg");
+    expect((await jobs(page)).length).toBe(3);
+  });
+
+  test("no latch at this V_G: the answer bar names the latch range from the V_G curve", async ({ page }) => {
+    await fresh(page);
+    await ready(page);
+    await setVg(page, "-0.5");
+    await expect(page.getByTestId("kpi-vlu-value")).toContainText("래치 없음", { timeout: 15_000 });
+    await expect(page.getByTestId("kpi-vlu")).toContainText(/래치 가능 범위: VG −3\.\d+ … −0\.\d+ V/, { timeout: 15_000 });
+    await expect(page.getByTestId("kpi-vlu")).not.toContainText("V_{D,max}");
+    expect(await jobs(page)).toContain("vg_curve");
+    await expect(page.getByTestId("panel-iv")).toContainText("래치가 생기지 않습니다");
+  });
+
   test("full-view link keeps detailed panels, unchanged V_G analysis, and accessible range controls", async ({ page }) => {
     await fresh(page, "deterministic", true);
     await ready(page);

@@ -15,10 +15,8 @@ export const UX = {
   "layout.all.title": { ko: "모든 그래프, 표, 설정을 한 화면에 펼칩니다.", en: "Shows every plot, table and setting at once." },
 
   // ---------------------------------------------------------------- analysis card (MoreCard)
-  "more.label": { ko: "더 보기", en: "More" },
   "more.tabs": { ko: "분석 그래프", en: "Analysis views" },
   "more.select": { ko: "분석 그래프 선택", en: "Choose an analysis view" },
-  "more.n": { ko: "{n}개 더", en: "{n} more" },
   // tab status dots (screen-reader text and tooltip; the dot itself is aria-hidden)
   "status.running": { ko: "계산 중", en: "running" },
   "status.error": { ko: "오류", en: "error" },
@@ -30,12 +28,9 @@ export const UX = {
   "menu.export": { ko: "내보내기", en: "Export" },
   "menu.csv": { ko: "CSV 저장", en: "Save CSV" },
   "menu.png": { ko: "PNG 저장", en: "Save PNG" },
-  "menu.settings": { ko: "설정", en: "Settings" },
   "badge.changed": { ko: "변경됨", en: "Changed" },
   "panel.placeholder": { ko: "계산을 실행하면 여기에 표시됩니다.", en: "Run a calculation to see this." },
   "close": { ko: "닫기", en: "Close" },
-  "show.more": { ko: "더 보기", en: "Show more" },
-  "show.less": { ko: "접기", en: "Show less" },
 } satisfies Record<string, L10n>;
 
 export type UxKey = keyof typeof UX;

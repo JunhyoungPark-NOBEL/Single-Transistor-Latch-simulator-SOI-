@@ -4,6 +4,7 @@ import { useT } from "../i18n";
 import { useStore } from "../state/store";
 import { resolveBackGate } from "../params/geometry";
 import { clone, deepEqual } from "../utils/object";
+import { sciText } from "../utils/format";
 import { geometryFromDevice, stochOf, type Geometry, type LibDevice } from "./library";
 import { MAX_USER_DEVICES, useDeviceLib } from "./store";
 import "./devices.css";
@@ -15,7 +16,7 @@ export function GeometryLine({ g }: { g: Geometry }) {
   const f = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
   return (
     <>
-      L {f(g.Lg_nm)} nm{SEP}W {f(g.W_nm)} nm{SEP}T<sub>Si</sub> {f(g.Tsi_nm)} nm{SEP}EOT {f(g.EOT_nm)} nm{SEP}T<sub>box</sub> {f(g.Tbox_nm)} nm{SEP}N<sub>body</sub> {g.Nbody_cm3.toExponential(2).replace("e+", "e")} cm⁻³
+      L {f(g.Lg_nm)} nm{SEP}W {f(g.W_nm)} nm{SEP}T<sub>Si</sub> {f(g.Tsi_nm)} nm{SEP}EOT {f(g.EOT_nm)} nm{SEP}T<sub>box</sub> {f(g.Tbox_nm)} nm{SEP}N<sub>body</sub> {sciText(g.Nbody_cm3)} cm⁻³
     </>
   );
 }
@@ -99,7 +100,7 @@ export function DeviceCard() {
   const reference = meta.presets.paper.device;
   const modified = !deepEqual(current, { ...reference, geometry: geometryFromDevice(reference), vbg: resolveBackGate(reference.vbg) });
   return <section className="preset-card dev-card compact" data-testid="preset-card">
-    <div className="dev-head"><span className="preset-head">{matched?.name ?? "Device 1"}{modified && !matched ? " ·" : ""}</span><span className="tech-chip">FDSOI</span></div>
-    {modified && <div className="preset-note" data-testid="preset-label"><span className="chg" /><span>{matched ? (t.lang === "ko" ? "저장된 소자" : "Saved device") : (t.lang === "ko" ? "수정됨" : "Modified")}</span><button type="button" className="link-btn" data-testid="preset-paper" onClick={() => load("paper")}>{t("reset")}</button></div>}
+    <div className="dev-head"><span className="preset-head">{matched?.name ?? "Device 1"}</span><span className="tech-chip">FDSOI</span></div>
+    {modified && <div className="preset-note" data-testid="preset-label"><span className="chg" /><span>{matched ? (t.lang === "ko" ? "저장된 소자" : "Saved device") : (t.lang === "ko" ? "수정됨" : "Modified")}</span><button type="button" className="link-btn" data-testid="preset-paper" title={t.lang === "ko" ? "치수·보정값·바이어스를 모두 Device 1 값으로 되돌립니다" : "Restore every value (geometry, calibration, bias) to Device 1"} onClick={() => load("paper")}>{t.lang === "ko" ? "Device 1로 되돌리기" : "Back to Device 1"}</button></div>}
   </section>;
 }

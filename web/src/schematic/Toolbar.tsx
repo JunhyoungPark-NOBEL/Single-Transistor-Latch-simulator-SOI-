@@ -29,7 +29,7 @@ export function loadTemplate(id: TemplateId, t: T) {
   const st = useSch.getState();
   const doc = templateDoc(id);
   st.replaceDoc(doc);
-  st.notify(t("schematic.file.loadedToast", { name: t(TEMPLATE_TEXT[id].title) }));
+  st.notify(t("schematic.file.exampleToast", { name: t(TEMPLATE_TEXT[id].title) }));
   const cmp = doc.elements.find((e) => e.kind === "CMP");
   // "" matches no tab → the MoreCard falls back to its defaultTab (comparator / distribution / trajectory)
   selectMoreTab(SCH_MORE_SCOPE, cmp ? `sch-cmp-${cmp.name}` : "");

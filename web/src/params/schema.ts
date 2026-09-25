@@ -87,17 +87,23 @@ export interface GroupDef {
 }
 
 const L = (ko: string, en: string): L10n => ({ ko, en });
-/** Geometry is a compact, always-visible block above the parameter groups. */
+/** Geometry is a compact, always-visible block above the parameter groups (sym: plain text with "_" subscripts). */
 export const GEOMETRY_FIELDS: (FieldDef & { geometryKey: GeometryKey })[] = [
-  { geometryKey: "Lg_nm", label: L("게이트 길이", "Gate length"), sym: "L", unit: "nm" },
-  { geometryKey: "W_nm", label: L("소자 폭", "Device width"), sym: "W", unit: "nm" },
-  { geometryKey: "Tsi_nm", label: L("실리콘 두께", "Silicon thickness"), sym: "Tsi", unit: "nm" },
-  { geometryKey: "EOT_nm", label: L("등가 산화막 두께", "Equivalent oxide thickness"), sym: "Tox (EOT)", unit: "nm" },
-  { geometryKey: "Tbox_nm", label: L("매몰 산화막 두께", "Buried oxide thickness"), sym: "Tbox", unit: "nm" },
-  { geometryKey: "Nbody_cm3", label: L("바디 도핑", "Body doping"), sym: "Nbody", unit: "cm⁻³" },
+  { geometryKey: "Lg_nm", label: L("게이트 길이", "Gate length"), sym: "L_g", unit: "nm",
+    help: L("소스와 드레인 사이의 게이트 길이 (바디의 가로 길이)", "Gate length between source and drain (the lateral length of the body)") },
+  { geometryKey: "W_nm", label: L("소자 폭", "Device width"), sym: "W", unit: "nm",
+    help: L("채널 폭. 전류와 바디 전하가 폭에 비례합니다", "Channel width; currents and body charge scale with it") },
+  { geometryKey: "Tsi_nm", label: L("실리콘 두께", "Silicon thickness"), sym: "T_Si", unit: "nm",
+    help: L("실리콘(바디) 층의 두께", "Thickness of the silicon (body) layer") },
+  { geometryKey: "EOT_nm", label: L("등가 산화막 두께", "Equivalent oxide thickness"), sym: "EOT", unit: "nm",
+    help: L("게이트 산화막의 등가 두께 (전면 게이트 결합)", "Equivalent gate-oxide thickness (front-gate coupling)") },
+  { geometryKey: "Tbox_nm", label: L("매몰 산화막 두께", "Buried oxide thickness"), sym: "T_box", unit: "nm",
+    help: L("매몰 산화막(BOX) 두께. 백게이트 결합을 정합니다 (기준 140 nm는 가정값)", "Buried-oxide (BOX) thickness; sets the back-gate coupling (the 140 nm reference is an assumption)") },
+  { geometryKey: "Nbody_cm3", label: L("바디 도핑", "Body doping"), sym: "N_body", unit: "cm⁻³",
+    help: L("바디의 p형 도핑 농도", "p-type doping of the body") },
 ].map((f) => ({
   ...f, geometryKey: f.geometryKey as GeometryKey, key: `geometry-${f.geometryKey}`,
-  path: ["device", "geometry", f.geometryKey], help: f.label,
+  path: ["device", "geometry", f.geometryKey], documentationPath: "docs/geometry-model.html",
   ...GEOMETRY_LIMITS[f.geometryKey as GeometryKey],
 }));
 const isDevice = (c: Ctx) => c.tab === "device" || c.tab === "validation" || c.tab === "physics";
@@ -119,7 +125,7 @@ export const LOCAL_ACTION_OPTIONS: Option[] = [
 /** Fields of the illumination block (the "light" group renders them itself: I_PH or P, plus R in power mode).
  *  Exported for the guide index (Physics tab) — every key has a PARAM_GUIDE entry. */
 export const LIGHT_FIELDS: Record<"iph" | "power" | "resp", FieldDef> = {
-  iph: { key: "iph_pA", path: ["device", "light", "iph_pA"], sym: "I_{PH}", label: L("광전류", "Photocurrent"), help: L("body로 들어가는 균일한 광생성 정공 전류", "Uniform photogenerated hole current into the body"), code: "p[13]", unit: "pA", min: 0, max: 100, step: 0.01, slider: true, main: true },
+  iph: { key: "iph_pA", path: ["device", "light", "iph_pA"], sym: "I_{PH}", label: L("광전류", "Photocurrent"), help: L("바디로 들어가는 균일한 광생성 정공 전류", "Uniform photogenerated hole current into the body"), code: "p[13]", unit: "pA", min: 0, max: 100, step: 0.01, slider: true, main: true },
   power: { key: "power_mW", path: ["device", "light", "power_mW"], sym: "P", label: L("광 파워", "Optical power"), help: L("입사 광 파워 (I_PH = R·P)", "Incident optical power (I_PH = R·P)"), code: "p[13] = R·P", unit: "mW", min: 0, max: 50, step: 0.01, slider: true, main: true },
   resp: { key: "resp", path: ["device", "light", "responsivity_pA_per_mW"], sym: "R", label: L("응답도", "Responsivity"), help: L("광 변환 계수 (이 소자 보정값 0.75 pA/mW)", "Light conversion factor (this device: 0.75 pA/mW)"), unit: "pA/mW", min: 0, max: 100, step: 0.01 },
 };
@@ -133,9 +139,9 @@ export const GROUPS: GroupDef[] = [
     tabs: ["device", "circuit"],
     fields: [
       { key: "vg", path: ["device", "vg"], sym: "V_G", label: L("게이트 전압", "Gate voltage"), help: L("게이트-소스 전압. 채널 전류와 게이트 가장자리 GIDL 전계를 정합니다", "Gate–source voltage; sets the channel current and the gate-edge GIDL field"), code: "p[11]", unit: "V", min: -6, max: 1, step: 0.01, slider: true, main: true },
-      { key: "vbg", path: ["device", "vbg"], sym: "V_{BG}", label: L("백게이트 전압", "Back-gate voltage"), help: L("매몰 산화막을 통한 백게이트 결합을 채널 전류에 반영합니다", "Back-gate coupling through the buried oxide changes the channel current"), documentationPath: "docs/geometry-model.html", unit: "V", min: -10, max: 10, step: 0.1, main: true },
+      { key: "vbg", path: ["device", "vbg"], sym: "V_{BG}", label: L("백게이트 전압", "Back-gate voltage"), help: L("이 모델에서 V_BG는 전면 채널 전류(결합비 EOT/(Tbox+Tsi/3))에만 작용합니다. 채널이 꺼진 V_G ≲ −1.5 V에서는 V_LU·V_LD가 거의 변하지 않으며, 백게이트에 의한 바디 정공 저장 효과는 포함하지 않습니다.", "In this model V_BG acts only on the front-channel current (coupling ratio EOT/(Tbox + Tsi/3)). With the channel off (V_G ≲ −1.5 V), V_LU and V_LD hardly change; hole storage in the body induced by the back gate is not included."), documentationPath: "docs/geometry-model.html", unit: "V", min: -10, max: 10, step: 0.1, main: true },
       { key: "vd_max", path: ["sweep", "vd_max_V"], sym: "V_{D,\\max}", label: L("스윕 최대 전압", "Sweep peak"), help: L("삼각 스윕 0 → V_D,max → 0의 최고점 (서버 상한 8 V)", "Peak drain voltage of the triangular sweep 0 → V_D,max → 0 (server limit 8 V)"), unit: "V", min: 0.5, max: 8, step: 0.05, slider: true, show: isDevice, main: true },
-      { key: "rate", path: ["sweep", "rate_V_per_s"], sym: "\\dot V_D", label: L("램프 속도", "Ramp rate"), help: L("드레인 전압 스윕 속도 — hazard 적분과 MC 시간축을 정합니다", "Drain-voltage sweep rate — sets the hazard integral and the MC time axis"), unit: "V/s", min: 1e-3, max: 1e5, slider: "log", show: isDevice, main: (c) => c.mode === "stochastic" },
+      { key: "rate", path: ["sweep", "rate_V_per_s"], sym: "\\dot V_D", label: L("램프 속도", "Ramp rate"), help: L("드레인 전압 스윕 속도. 켜짐률(hazard) 적분과 MC 시간축을 정합니다", "Drain-voltage sweep rate — sets the hazard integral and the MC time axis"), unit: "V/s", min: 1e-3, max: 1e5, slider: "log", show: isDevice, main: (c) => c.mode === "stochastic" },
       { key: "dv", path: ["sweep", "dv_V"], sym: "\\Delta V", label: L("전압 스텝", "Voltage step"), help: L("스윕 전압 간격 (MC 시간 스텝 Δt = ΔV / 램프 속도)", "Sweep voltage step (MC time step Δt = ΔV / ramp rate)"), unit: "mV", scale: 1e3, min: 0.1, max: 50, step: 0.1, show: isDevice },
     ],
   },
@@ -229,7 +235,7 @@ export const GROUPS: GroupDef[] = [
       { key: "n_cycles", path: ["stochastic", "n_cycles"], sym: "N_{\\mathrm{cyc}}", label: L("사이클 수", "Cycles"), help: L("MC 스윕 사이클 수 (서버 상한 2000)", "Number of MC sweep cycles (server limit 2000)"), unit: "", min: 1, max: 2000, step: 1, int: true, slider: "log", main: true },
       { key: "seed", path: ["stochastic", "seed"], sym: "\\mathrm{seed}", label: L("난수 시드", "Random seed"), help: L("같은 시드는 같은 난수열을 만듭니다", "The same seed gives the same random stream"), unit: "", min: 0, max: 2 ** 32 - 1, step: 1, int: true },
       { key: "carrier_noise", path: ["stochastic", "carrier_noise"], type: "toggle", sym: "\\text{Eq. 2}", label: L("캐리어 잡음 (Eq. 2)", "Carrier noise (Eq. 2)"), help: L("II 클러스터 + 단위 사건으로 이루어진 첫 통과 잡음. 끄면 fold에서 바로 탈출합니다", "Compound first-passage noise (II clusters + unit events). When off, the device escapes exactly at the fold") },
-      { key: "ld_carrier_noise", path: ["stochastic", "ld_carrier_noise"], type: "toggle", label: L("latch-down 첫 통과도 계산", "Latch-down first passage"), help: L("하향 스윕의 첫 통과(FPT)도 계산합니다 (더 느림)", "Also compute the first passage of the down sweep (slower)") },
+      { key: "ld_carrier_noise", path: ["stochastic", "ld_carrier_noise"], type: "toggle", label: L("래치다운 첫 통과도 계산", "Latch-down first passage"), help: L("하향 스윕의 첫 통과(FPT)도 계산합니다 (더 느림)", "Also compute the first passage of the down sweep (slower)") },
       {
         key: "engine", path: ["stochastic", "engine"], type: "select", label: L("엔진", "Engine"), help: L("자동: 기준 보정 소자에 GIDL 작용점이면 보정 lookup 표, 그 밖에는 일반 엔진", "Auto: calibrated lookup for the reference-calibration device with the GIDL action point, general engine otherwise"),
         options: [
@@ -273,7 +279,7 @@ export const GROUPS: GroupDef[] = [
     fields: [
       { key: "grid", path: ["device", "numerics", "grid"], sym: "N_{\\mathrm{grid}}", label: L("상태 격자 점", "Grid points"), help: L("classify()의 state_grid 점 수", "Number of state_grid points for classify()"), unit: "", min: 201, max: 2001, step: 1, int: true, slider: true },
       { key: "fold_nodes", path: ["stochastic", "fold_nodes"], sym: "N_{\\mathrm{fold}}", label: L("fold 노드", "Fold nodes"), help: L("상태별 fold 표의 노드 수 (≤ 61)", "Nodes of the fold-vs-state table (≤ 61)"), unit: "", min: 3, max: 61, step: 1, int: true, show: (c) => c.mode === "stochastic" },
-      { key: "hazard_nodes", path: ["stochastic", "hazard_nodes"], sym: "N_{h}", label: L("hazard 노드", "Hazard nodes"), help: L("첫 통과 hazard의 노드 수 (≤ 9, 많을수록 느림)", "First-passage hazard nodes (≤ 9; more is slower)"), unit: "", min: 1, max: 9, step: 1, int: true, show: (c) => c.mode === "stochastic" },
+      { key: "hazard_nodes", path: ["stochastic", "hazard_nodes"], sym: "N_{h}", label: L("켜짐률(hazard) 노드", "Hazard nodes"), help: L("첫 통과 켜짐률(hazard) 계산의 노드 수 (≤ 9, 많을수록 느림)", "First-passage hazard nodes (≤ 9; more is slower)"), unit: "", min: 1, max: 9, step: 1, int: true, show: (c) => c.mode === "stochastic" },
     ],
   },
   // ------------------------------------------------------------------ circuit
@@ -300,7 +306,7 @@ export const GROUPS: GroupDef[] = [
       { key: "reltol", path: ["circuit", "solver", "reltol"], sym: "\\epsilon_{\\mathrm{rel}}", label: L("상대 허용오차", "Rel. tolerance"), help: L("스텝당 변화 한계의 배율: reltol = 1e-3이면 |Δu| ≤ 10 mV, |Δln I| ≤ 0.2, |Δv| ≤ 20 mV", "Relative tolerance; scales the per-step limits: at reltol = 1e-3, |Δu| ≤ 10 mV, |Δln I| ≤ 0.2, |Δv| ≤ 20 mV"), unit: "", min: 1e-6, max: 0.5, slider: "log" },
       { key: "max_steps", path: ["circuit", "solver", "max_steps"], sym: "N_{\\max}", label: L("최대 스텝", "Max steps"), help: L("시간 스텝 수의 상한 (서버 상한 2·10⁶)", "Maximum number of time steps (server limit 2·10⁶)"), unit: "", min: 100, max: 2e6, step: 1, int: true, slider: "log" },
       // latch-event detection is used by both modes (deterministic and stochastic transients)
-      { key: "c_ith", path: ["circuit", "detect", "i_threshold_A"], sym: "I_{\\mathrm{th}}", label: L("스위칭 판정 전류", "Detect threshold"), help: L("래치 사건 판정 문턱 — I_D가 이 값을 넘어 올라가면 latch-up, 내려가면 latch-down (두 모드 공통)", "Current threshold for latch events — I_D crossing it upward is a latch-up, downward a latch-down (both modes)"), unit: "A", min: 1e-15, max: 1e-3, slider: "log" },
+      { key: "c_ith", path: ["circuit", "detect", "i_threshold_A"], sym: "I_{\\mathrm{th}}", label: L("스위칭 판정 전류", "Detect threshold"), help: L("래치 사건 판정 문턱 — I_D가 이 값을 넘어 올라가면 래치업, 내려가면 래치다운 (두 모드 공통)", "Current threshold for latch events — I_D crossing it upward is a latch-up, downward a latch-down (both modes)"), unit: "A", min: 1e-15, max: 1e-3, slider: "log" },
       { key: "tau_frac", path: ["circuit", "solver", "tau_frac"], sym: "f_\\tau", label: L("확률 스텝 비율", "Step fraction"), help: L("확률 과도해석의 스텝 제한: h ≤ tau_frac · τ_rel", "Stochastic step limit: h ≤ tau_frac · τ_rel"), unit: "", min: 1e-4, max: 1, slider: "log", show: (c) => c.mode === "stochastic" },
       { key: "max_ev", path: ["circuit", "solver", "max_events_per_step"], sym: "N_{\\mathrm{ev}}", label: L("스텝당 최대 사건", "Max events/step"), help: L("스텝당 기대 사건 수의 상한", "Upper bound on the expected number of events per step"), unit: "", min: 1, max: 1e6, step: 1, int: true, show: (c) => c.mode === "stochastic" },
       { key: "noise_dt_min", path: ["circuit", "solver", "noise_dt_min_s"], sym: "\\Delta t_{\\mathrm{noise}}", label: L("잡음 최소 Δt", "Noise Δt floor"), help: L("tau_frac·τ_rel이 이 값 이상인 구간에서만 캐리어 잡음을 풀고, 나머지는 드리프트만 계산합니다", "Carrier noise is resolved only where tau_frac·τ_rel ≥ this value; elsewhere drift only"), unit: "s", min: 1e-15, max: 1, slider: "log", show: (c) => c.mode === "stochastic" },

@@ -244,12 +244,12 @@ export function ContextStrip() {
   const forcing = useForcing((s) => s.forcing);
   const phone = usePhone();
   const csvm = tab === "device" && forcing === "csvm";
-  const hint = csvm ? (t.lang === "ko" ? "전류 구동 · 드레인 전압 파형" : "Current forcing · drain-voltage transient") : modeHint(t, tab, mode, method);
+  const hint = csvm ? (t.lang === "ko" ? "전류 구동 · 드레인 전압 파형" : "Current forcing · drain-voltage waveform") : modeHint(t, tab, mode, method);
   return (
     <div className={`modestrip${hasMode(tab) ? "" : " no-mode"}`} data-testid="modebar">
       {phone && hasMode(tab) && <ModeToggle compact />}
       <span className="hint" data-testid="mode-hint" title={csvm ? hint : `${hint} · ${modeHintTech(t, tab, mode, method)}`}>
-        <SubText text={subs(tab === "device" ? (csvm ? "FDSOI · VD(t)" : "FDSOI · ID–VD") : tab === "circuit" ? t("tab.circuit") : t(tab === "validation" ? "tab.validation" : "tab.physics"))} />
+        <SubText text={subs(tab === "device" ? (csvm ? "FDSOI · V_D(t)" : "FDSOI · I_D–V_D") : tab === "circuit" ? t("tab.circuit") : t(tab === "validation" ? "tab.validation" : "tab.physics"))} />
       </span>
       <StatusPill />
       <Credits />

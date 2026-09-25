@@ -39,8 +39,9 @@ export default function PlotImpl({ data, layout, config, onGraph, className }: P
       config={{
         displaylogo: false,
         responsive: true,
-        // touch screens have no hover: the bar would sit on top of the legend for good (export is in ⋯)
-        displayModeBar: typeof window !== "undefined" && window.matchMedia?.("(hover: none)").matches ? false : "hover",
+        // touch screens have no hover, and on a phone-width plot the bar covers the legend row: no bar there
+        // (zoom still works by dragging, double-click resets; export is in ⋯)
+        displayModeBar: typeof window !== "undefined" && window.matchMedia?.("(hover: none), (max-width: 600px)").matches ? false : "hover",
         modeBarButtonsToRemove: ["select2d", "lasso2d", "toImage", "autoScale2d"],
         ...config,
       }}

@@ -10,8 +10,9 @@
 .geometry-scope { color: var(--muted); font-size: 10px; border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
 .geometry-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 9px 12px; }
 .geometry-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.geometry-field label { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; font-size: 11px; font-weight: 600; }
-.geometry-field .geometry-unit { color: var(--muted); font-size: 10px; font-weight: 400; }
+.geometry-label { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.geometry-label label { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.geometry-field .geometry-unit { margin-left: auto; color: var(--muted); font-size: 10px; font-weight: 400; white-space: nowrap; }
 .geometry-field .input { width: 100%; min-width: 0; padding: 6px 8px; height: 31px; text-align: left; font-size: 12px; font-variant-numeric: tabular-nums; }
 .geometry-error { color: var(--err); font-size: 10px; line-height: 1.3; }
 

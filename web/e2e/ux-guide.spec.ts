@@ -1,5 +1,6 @@
-// Compact parameter controls and click-only design guides, including full documentation,
-// keyboard access, changed calibration parameters, both languages, and mobile layout.
+// Compact parameter controls and click-only design guides (D1): the ⓘ popover shows the guide first (picture,
+// V_LU / V_LD effect lines, caveat), then the one-line definition, code, default and range, and the documentation
+// link. Keyboard access, changed calibration parameters, both languages, geometry fields and the phone sheet.
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 async function fresh(page: Page, query = "") {
@@ -78,7 +79,7 @@ test.describe("compact parameter guides", () => {
     await expect(sidebar.locator(".guide-inline")).toHaveCount(0);
   });
 
-  test("info button opens a short guide on click; keyboard, outside click, and documentation work", async ({ page }) => {
+  test("info button opens the guide on click, guide first; keyboard, outside click, and documentation work", async ({ page }) => {
     await fresh(page);
     const trigger = page.getByTestId("tip-vg");
     await trigger.hover();
@@ -90,16 +91,26 @@ test.describe("compact parameter guides", () => {
     const pop = page.getByTestId("guide-pop");
     await expect(pop).toBeVisible();
     await expect(pop).toHaveAttribute("role", "dialog");
-    await expect(pop.locator(".gp-intuitive")).toHaveText("게이트는 드레인 가장자리 '정공 수도꼭지'(GIDL)의 손잡이입니다.");
-    await expect(pop.locator(".gchip.lu")).toHaveText("VLU ↑ 80 mV");
-    await expect(pop.locator(".gchip.ld")).toHaveText("VLD → 그대로");
-    await expect(pop.locator(".gchips-step")).toHaveText("(+0.1 V)");
-    await expect(pop).toContainText("기준 소자에서의 변화");
-    await expect(pop.locator(".gp-tech, .gp-caveat, .gp-effects, .gp-basis")).toHaveCount(0);
+    // guide first: the picture, then the three effect lines, the caveat, then the technical block
+    await expect(pop.locator(".gp-intuitive")).toContainText("게이트는 드레인 가장자리 '정공 수도꼭지'(GIDL");
+    const effects = pop.getByTestId("guide-pop-effects").locator("li");
+    await expect(effects).toHaveCount(3);
+    await expect(effects.nth(0)).toContainText(/^VLU ↑/);
+    await expect(effects.nth(1)).toContainText(/^VLD/);
+    await expect(pop.locator(".gp-caveat")).toBeVisible();
+    await expect(pop.locator(".gp-basis")).toContainText("기준 보정");
+    const tech = pop.getByTestId("guide-pop-tech");
+    await expect(tech).toContainText("게이트-소스 전압");
+    await expect(tech).toContainText("p[11]");
+    await expect(tech).toContainText("기본값 −2 V");
+    await expect(tech).toContainText("범위 −6 … 1 V");
+    const order = await pop.evaluate((el) => [".gp-intuitive", ".gp-effects", ".gp-caveat", ".gp-tech"].map((s) => el.querySelector(s)!.getBoundingClientRect().top));
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
     await settle(pop);
     const box = (await pop.boundingBox())!;
-    expect(box.height).toBeLessThan(270);
     expect(box.width).toBeLessThanOrEqual(321);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(900.5);
     await page.keyboard.press("Escape");
     await expect(pop).toHaveCount(0);
     await expect(trigger).toBeFocused();
@@ -139,7 +150,9 @@ test.describe("compact parameter guides", () => {
     await expect(calib.locator(".group-head")).toContainText("1개 수정");
     await page.getByTestId("tip-l_gidl").click();
     await expect(page.getByTestId("guide-pop").locator(".gp-intuitive")).toBeVisible();
-    await expect(page.getByTestId("guide-pop").locator(".gp-tech")).toHaveCount(0);
+    // the one-line definition brings back the E_G formula of l_GIDL
+    await expect(page.getByTestId("guide-pop-help")).toContainText("GIDL 전계를 정하는 유효 길이");
+    await expect(page.getByTestId("guide-pop-help")).toContainText("l_GIDL");
     await page.keyboard.press("Escape");
     await adv.click();
     await expect(adv).toContainText("1개 수정");
@@ -164,10 +177,11 @@ test.describe("compact parameter guides", () => {
       if (theme === "dark") await page.getByTestId("theme-toggle").click();
       await page.getByTestId("tip-vg").click();
       const pop = page.getByTestId("guide-pop");
-      await expect(pop.locator(".gp-intuitive")).toHaveText("The gate is the handle of the hole tap at the drain edge (GIDL).");
+      await expect(pop.locator(".gp-intuitive")).toContainText("The gate is the handle of the hole tap at the drain edge (GIDL");
+      await expect(pop.getByTestId("guide-pop-tech")).toContainText("Definition · default");
       await expect(pop.getByTestId("guide-pop-more")).toHaveText("Documentation →");
       await expect(pop).not.toContainText(/\bguide\.[a-z]/);
-      for (const sel of [".gp-intuitive", ".q-lu", ".q-ld", ".gchips-lead", ".gp-reference", ".gp-more"]) {
+      for (const sel of [".gp-intuitive", ".q-lu", ".q-ld", ".gp-h", ".gp-basis", ".gp-tech-help", ".gp-tech-meta", ".gp-more"]) {
         const c = await contrastOf(pop.locator(sel));
         expect(c, `${theme} ${sel} contrast ${c.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
       }
@@ -180,8 +194,25 @@ test.describe("compact parameter guides", () => {
     for (const key of ["rate", "dv", "dphiG0"]) await expect(page.getByTestId(`field-${key}`)).toBeVisible();
     await expect(page.getByTestId("sidebar").locator(".guide-inline")).toHaveCount(0);
     await page.getByTestId("tip-rate").click();
-    await expect(page.getByTestId("guide-pop").locator(".gp-intuitive")).toHaveText("드레인 전압을 올리고 내리는 속도입니다.");
+    await expect(page.getByTestId("guide-pop").locator(".gp-intuitive")).toContainText("드레인 전압을 올리고 내리는 속도입니다.");
   });
+});
+
+test("geometry fields and V_BG have their own guides; a field without a guide entry still explains itself", async ({ page }) => {
+  await fresh(page);
+  for (const key of ["Lg_nm", "W_nm", "Tsi_nm", "EOT_nm", "Tbox_nm", "Nbody_cm3"]) await expect(page.getByTestId(`tip-geometry-${key}`)).toBeVisible();
+  await page.getByTestId("tip-geometry-Nbody_cm3").click();
+  const pop = page.getByTestId("guide-pop");
+  await expect(pop).toHaveAccessibleName(/바디 도핑/);
+  await expect(pop.getByTestId("guide-pop-help")).toContainText("p형 도핑");
+  await expect(pop.getByTestId("guide-pop-tech")).toContainText("×10");
+  await expect(pop.getByTestId("guide-pop-more")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByTestId("tip-vbg").click();
+  await expect(pop.getByTestId("guide-pop-help")).toContainText("전면 채널 전류");
+  await expect(pop.getByTestId("guide-pop-help")).toContainText("바디 정공 저장 효과는 포함하지 않습니다");
+  await expect(pop).not.toContainText("V_BG");
+  await page.keyboard.press("Escape");
 });
 
 test.describe("compact guides on phone", () => {
@@ -198,9 +229,9 @@ test.describe("compact guides on phone", () => {
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(390.5);
     expect(Math.abs(box.y + box.height - 844)).toBeLessThanOrEqual(1);
-    expect(box.height).toBeLessThan(280);
+    expect(box.height).toBeLessThanOrEqual(844 * 0.7 + 1);
     expect(await sheet.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
-    await expect(sheet.locator(".gchip")).toHaveCount(2);
+    await expect(sheet.getByTestId("guide-pop-effects").locator("li")).toHaveCount(3);
     await expect(sheet.getByTestId("guide-pop-more")).toBeVisible();
     await sheet.getByTestId("guide-pop-close").tap();
     await expect(sheet).toHaveCount(0);

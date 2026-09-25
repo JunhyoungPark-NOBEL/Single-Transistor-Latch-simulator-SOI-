@@ -34,9 +34,9 @@ afterEach(() => {
   host.remove();
 });
 
-describe("commercial simulator export selection", () => {
+describe("external simulator export selection", () => {
   it("offers three formats and blocks a misleading executable Sentaurus download", async () => {
-    expect(find("model-export-open").textContent).toBe("상용 시뮬레이터로 내보내기");
+    expect(find("model-export-open").textContent).toBe("외부 시뮬레이터로 내보내기");
     await click("model-export-open");
     expect(document.querySelectorAll('[name="model-export-format"]')).toHaveLength(3);
     expect(find("model-export-download").disabled).toBe(false);
@@ -59,6 +59,35 @@ describe("commercial simulator export selection", () => {
     expect(document.querySelector(".model-export-result")).toBeNull();
     await click("model-export-download");
     expect(downloadText).toHaveBeenLastCalledWith("STL_Reference.cir", expect.stringContaining(".subckt STL_Reference D S"), expect.any(String));
+  });
+
+  it("says the file carries the calibrated curve and leaves the calibration vector out unless asked", async () => {
+    await click("model-export-open");
+    expect(find("model-export-share").textContent).toContain("보정된 ID–VD 곡선");
+    const box = find("model-export-include-calibration") as unknown as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    await click("model-export-download");
+    const plain = String(vi.mocked(downloadText).mock.lastCall?.[1]);
+    expect(plain).toContain('"calibration_included": false');
+    expect(plain).not.toContain("effective_engine_p");
+    await click("model-export-include-calibration");
+    expect(box.checked).toBe(true);
+    await click("model-export-download");
+    const full = String(vi.mocked(downloadText).mock.lastCall?.[1]);
+    expect(full).toContain('"calibration_included": true');
+    expect(full).toContain("effective_engine_p");
+    // a new opening starts unchecked again
+    await click("modal-close");
+    await click("model-export-open");
+    expect((find("model-export-include-calibration") as unknown as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("names the @(cross) requirement for the Verilog-A export", async () => {
+    await click("model-export-open");
+    expect(find("model-export-cross")).toBeNull();
+    await click("model-export-verilog-a");
+    expect(find("model-export-cross").textContent).toContain("@(cross)");
+    expect(find("model-export-cross").textContent).toContain("OpenVAF");
   });
 
   it("does not export demo data while disconnected", async () => {

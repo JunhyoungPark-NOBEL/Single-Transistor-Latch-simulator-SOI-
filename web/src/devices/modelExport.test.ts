@@ -202,6 +202,9 @@ describe("Verilog-A calibration export", () => {
     expect(exported.readme).toContain("CSVM Vtop/Vbottom/frequency");
     expect(exported.readme).toContain("not a Sentaurus physical-device deck");
     expect(exported.readme).toContain("No commercial Verilog-A simulator was executed");
+    expect(exported.readme).toContain("@(cross) events");
+    expect(exported.readme).toContain("OpenVAF");
+    expect(exported.source).toContain("@(cross) event support");
   });
 
   it("keeps two-terminal topology and prevents names from adding source code", () => {

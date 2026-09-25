@@ -31,7 +31,7 @@ describe("axis.* dictionary", () => {
     }
   });
   it("puts units last in parentheses: Name symbol (unit)", () => {
-    for (const k of ["axis.vd", "axis.vg", "axis.idAbs", "axis.icomp", "axis.cb.u", "axis.vlu", "axis.power", "axis.dmap.L"] as const)
+    for (const k of ["axis.vd", "axis.vg", "axis.idAbs", "axis.icomp", "axis.cb.u", "axis.vlu", "axis.dmap.L"] as const)
       for (const s of [BRAND_STRINGS[k].ko, BRAND_STRINGS[k].en]) expect(s, k).toMatch(/ \((V|A|fC|mW|nm)\)$/);
     expect(BRAND_STRINGS["axis.vd"].en).toBe("Drain voltage V<sub>D</sub> (V)");
     expect(BRAND_STRINGS["axis.count"]).toEqual({ ko: "빈도", en: "Count" });

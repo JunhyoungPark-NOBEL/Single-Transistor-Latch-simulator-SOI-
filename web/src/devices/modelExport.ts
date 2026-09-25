@@ -197,6 +197,7 @@ export function buildLtspiceExport(selection: ExportSelection, result: BranchesR
     `전압 범위는 **0–${maxVoltage} V**입니다. 범위 밖 테이블은 끝값으로 고정되며 역방향 전압에서는 0 A입니다. 이 동작은 외삽에 대한 물리 모델이 아닙니다.\n\n` +
     `안정 branch의 전류는 웹 시뮬레이터와 같은 log(I) 선형 보간입니다. ${result.latch ? `이상적 히스테리시스 스위치가 VLU=${lu} V와 VLD=${ld} V에서 전환합니다.` : "이 조건에서 유효한 두 fold가 없어 단일 branch를 내보냈습니다."} 초기 상태는 HRS이며 먼저 0 V에서 시작합니다.\n\n` +
     `**지원 범위:** 고정 게이트·광전류·국소 상태 평균에서 결정론적 ID–VD와 정적 히스테리시스. 캐리어 잡음, 확률적 래칭, 바디 전하의 시간 적분, 물리적 스위칭 시간, 발진 주파수, 온도·형상·게이트 스윕은 포함하지 않습니다. 상승 속도는 예제 시간축만 정합니다. 빠른 펄스나 발진 예측에는 웹의 물리 회로 엔진을 사용합니다. LTspice 바이너리 실행 검증은 아직 수행하지 않았습니다.\n\n` +
+    `**공유 전 확인:** 표에는 이 소자의 보정된 ID–VD 곡선이 그대로 담깁니다${selection.includeCalibration ? ". 보정값과 엔진 파라미터 벡터도 JSON 주석으로 들어 있습니다" : ""}. 공유 범위를 확인해 주세요.\n\n` +
     `## English\n\n` +
     `This is a **deterministic quasi-static ID–VD behavioral export**, not the full transport/body-charge solver. Fixed bias: ${fixed}. Pin order: **D S**. The gate has no external pin because its voltage is held constant.\n\n` +
     `Open \`${modelName}.cir\` in LTspice and Run. Plot \`-I(Vdrive)\` versus \`V(d)\`. For reuse, copy the complete \`.subckt … .ends\` block into \`${modelName}.lib\`, add \`.include ${modelName}.lib\`, then instantiate \`X1 drain source ${modelName}\`.\n\n` +
@@ -260,6 +261,7 @@ export function buildVerilogAExport(selection: ExportSelection, result: Branches
     `// Fixed geometry: ${geometryLine(resolveGeometry(selection.device.geometry))}`,
     `// Supported V(D,S): 0 to ${num(maxVoltage)} V.`,
     "// Use transient voltage sweep starting at V(D,S)=0; DC hysteresis is not validated.",
+    ...(result.latch ? ["// Needs analog @(cross) event support (e.g. Spectre); OpenVAF-based flows such as ngspice OSDI cannot compile it."] : []),
     "// No physical body-charge transient, noise, temperature or variable gate bias.",
     "// Ideal instantaneous switching: do not infer CSVM frequency, Vtop or Vbottom.",
     "// Table endpoints clamp; VDS <= 0 gives zero. Out-of-range use is not validated.",
@@ -287,15 +289,19 @@ export function buildVerilogAExport(selection: ExportSelection, result: Branches
     `## 한국어\n\n` +
     `현재 보정의 **결정론적 준정적 ID–VD 동작 모델**입니다. 단자는 **D, S**이며 고정 조건은 VG=${result.p[11]} V, VBG=${selection.device.vbg ?? 0} V, IPH=${result.iph_A} A입니다. 유효 VDS 범위는 0–${maxVoltage} V입니다.\n\n` +
     `형상: ${geometryLine(resolveGeometry(selection.device.geometry))}. 이 형상에서 계산한 ID–VD를 저장합니다. 형상을 바꾸면 웹에서 다시 계산하여 내보내세요.\n\n` +
+    (result.latch ? `**시뮬레이터 요구 사항:** 히스테리시스에 @(cross) 이벤트를 사용하므로 Spectre처럼 아날로그 이벤트를 지원하는 시뮬레이터가 필요합니다. OpenVAF 기반 흐름(ngspice OSDI 등)에서는 컴파일되지 않습니다.\n\n` : "") +
     `Verilog-A를 지원하는 시뮬레이터에 \`${modelName}.va\`를 모델 소스로 등록합니다. \`disciplines.vams\`는 해당 시뮬레이터의 표준 include 경로에서 찾을 수 있어야 합니다. Spectre에서는 \`ahdl_include "${modelName}.va"\`와 \`X1 (d 0) ${modelName}\`로 등록·연결할 수 있습니다. 다른 시뮬레이터는 해당 제품의 Verilog-A 등록 절차를 따릅니다. LTspice는 별도 LTspice 형식으로 내보내세요.\n\n` +
     `0 V에서 시작하는 삼각파 전압원의 **과도해석**으로 상승·하강 ID–VD를 확인합니다. ${result.latch ? `VLU=${lu} V에서 LRS, VLD=${ld} V에서 HRS로 전환합니다. 초기 전압이 VLU 미만이면 HRS, 이상이면 LRS입니다.` : "이 조건은 단일 branch이며 히스테리시스 상태를 만들지 않습니다."} 전류는 안정 branch의 log(I) 선형 보간이며, 표 범위를 넘으면 끝값으로 고정됩니다. 역방향 VDS에서는 0 A입니다.\n\n` +
     `**포함하지 않는 항목:** 바디 전하 시간 적분, 캐리어 잡음, 물리적 스위칭 지연, CSVM의 Vtop·Vbottom·주파수, 온도·형상·게이트 스윕. 시간은 정적 곡선을 따라가는 용도이며 실제 발진을 예측하지 않습니다. DC sweep 히스테리시스와 AC/잡음 해석 용도로 검증하지 않았습니다. 상용 Verilog-A 시뮬레이터 실행 검증은 수행하지 않았습니다.\n\n` +
     `이 .va 파일은 Sentaurus의 물리 소자 TCAD 입력 파일이 아닙니다. Sentaurus 물리 해석에는 별도 구조·격자·도핑 분포·접촉·물리 모델 설정이 필요하며, compact model 연동에는 버전에 맞는 지원 인터페이스와 검증이 필요합니다.\n\n` +
+    `**공유 전 확인:** 표에는 이 소자의 보정된 ID–VD 곡선이 그대로 담깁니다${selection.includeCalibration ? ". 보정값과 엔진 파라미터 벡터도 JSON 주석으로 들어 있습니다" : ""}. 공유 범위를 확인해 주세요.\n\n` +
     `## English\n\n` +
     `A standard Verilog-A **deterministic quasi-static behavioral model**, with fixed VG=${result.p[11]} V, VBG=${selection.device.vbg ?? 0} V and IPH=${result.iph_A} A. Pins: **D S**. Valid VDS: 0–${maxVoltage} V. Add the .va source through your simulator's Verilog-A integration and ensure its standard disciplines.vams is on the include path. Spectre example: \`ahdl_include "${modelName}.va"\`, then \`X1 (d 0) ${modelName}\`.\n\n` +
+    (result.latch ? `**Simulator requirement:** the hysteresis uses @(cross) events, so the model needs a simulator with analog-event support such as Spectre. It does not compile in OpenVAF-based flows (e.g. ngspice with OSDI).\n\n` : "") +
     `Run a transient triangular voltage sweep from 0 V. Stable branches use linear interpolation of log(I), with ideal threshold events from initial_step/cross. There is no artificial switching delay. Endpoint clamping and zero reverse current are numerical boundaries, not validated extrapolation.\n\n` +
     `Fixed geometry: ${geometryLine(resolveGeometry(selection.device.geometry))}. The tables are computed at this geometry. Regenerate the export after changing any dimension or doping; the .va has no tunable geometry parameters.\n\n` +
     `No body-charge ODE, carrier noise, physical switching delay, CSVM Vtop/Vbottom/frequency, or variable bias/geometry/temperature is modeled. DC-sweep hysteresis and AC/noise operation are not validated. No commercial Verilog-A simulator was executed to validate this source. This is not a Sentaurus physical-device deck, nor a claim of direct .va import into Sentaurus.\n\n` +
+    `Bias, geometry, folds and server warnings are embedded as comments in the .va${selection.includeCalibration ? ", together with the calibration descriptors and the effective engine parameter vector" : ""}. The tables themselves reproduce the calibrated ID–VD curve: share the file only where that is acceptable.\n\n` +
     `Language reference: https://www.accellera.org/images/downloads/standards/v-ams/VAMS-LRM-2023.pdf\n`;
   return { filename: `${modelName}.va`, source: lines.join("\n"), readme, modelName, maxVoltage };
 }

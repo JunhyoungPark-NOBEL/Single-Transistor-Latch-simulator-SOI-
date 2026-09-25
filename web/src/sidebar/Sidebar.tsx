@@ -6,9 +6,11 @@ import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
 import { useCircuitView } from "../circuit/view";
 import { DeviceCard } from "../devices/DeviceCard";
 import { useForcing } from "../device/forcing";
-import { Progress } from "../components/Panel";
+import { Progress, symbolSubs } from "../components/Panel";
+import { SubText } from "../plots/SubText";
 import { IconChevron, IconPlay, IconStop, IconX } from "../components/icons";
 import { useT } from "../i18n";
+import type { StrKey } from "../i18n/strings";
 import { GUIDE } from "../i18n/strings.guide";
 import { fill } from "../i18n/strings.ux";
 import { GROUPS, groupPaths, groupVisible, type Ctx, type GroupDef } from "../params/schema";
@@ -57,8 +59,17 @@ export function RunBar() {
   const elapsed = active ? ((active.finishedAt ?? performance.now()) - active.startedAt) / 1000 : 0;
   const label = tab === "circuit" ? t("run.circuit") : mode === "stochastic" ? t("run.sto") : t("run.det");
 
+  // the job kind in words; the server's progress note is English, so the Korean bar keeps it in the tooltip
+  // (the client's own notes, e.g. "서버가 바쁩니다", are shown)
+  const kindLabel = runningEntry?.kind ? t(`run.kind.${runningEntry.kind}` as StrKey) : "";
+  const note = runningEntry?.message ?? "";
+  const showNote = !!note && (t.lang === "en" || /[가-힣]/.test(note));
   let status: string;
-  if (running) status = `${runningEntry?.kind ?? ""}${runningEntry?.message ? ": " + runningEntry.message : ""}`;
+  let statusTitle: string | undefined;
+  if (running) {
+    status = `${kindLabel}${showNote ? `: ${note}` : ""}`;
+    statusTitle = `${kindLabel}${note ? `: ${note}` : ""}`;
+  }
   else if (!active) status = t("run.idle");
   else if (failed) status = `${t("run.failed")} (${failed}/${entries.length})`;
   else if (cancelled) status = t("run.cancelled");
@@ -93,8 +104,8 @@ export function RunBar() {
         </div>
       )}
       <div className="runbar-status" aria-live="polite">
-        <span className={`msg${failed && !running ? " err" : ""}`} data-testid="run-status" title={status}>
-          {status}
+        <span className={`msg${failed && !running ? " err" : ""}`} data-testid="run-status" title={statusTitle ?? status}>
+          <SubText text={symbolSubs(status)} />
         </span>
         {running && <span className="mono">{t("run.elapsed", { t: fmtDuration(elapsed) })}</span>}
       </div>

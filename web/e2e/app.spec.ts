@@ -292,6 +292,9 @@ test.describe("UX regressions", () => {
     const row = page.getByTestId("physics-window").getByTestId("pw-guide-row-l_gidl");
     await expect(row).toContainText("GIDL 전계 길이");
     await expect(row).not.toContainText("BTBT 영역 길이");
+    // the Details row carries the one-line definition (the E_G formula) with its code index
+    await expect(row.getByTestId("pw-guide-row-l_gidl-def")).toContainText("GIDL 전계를 정하는 유효 길이");
+    await expect(row.getByTestId("pw-guide-row-l_gidl-def")).toContainText("p[4]");
   });
 
   test("run bar reports only runs of the current tab/mode; KPIs dim when parameters change", async ({ page }) => {
@@ -314,7 +317,7 @@ test.describe("UX regressions", () => {
     await expect(page.getByTestId("panel-components").locator(".badge.stale")).toBeVisible();
   });
 
-  test("credits corner opens the About card (lab and institution) and never says “paper”", async ({ page }) => {
+  test("About chip opens the About card (KAIST · NOBEL) and never says “paper”", async ({ page }) => {
     await fresh(page);
     const chip = page.getByTestId("credits-chip");
     await expect(chip).toBeVisible();

@@ -77,8 +77,8 @@ export function builtinDevices(meta: Meta, ids: PresetId[] = BUILTIN_IDS): LibDe
     const geometry = geometryFromDevice(pr.device, meta);
     return {
       id: builtinId(p),
-      name: p === "paper" ? "Device 1" : "Device (legacy)",
-      label: { ko: p === "paper" ? "Device 1" : "Device (legacy)", en: p === "paper" ? "Device 1" : "Device (legacy)" },
+      name: p === "paper" ? "Device 1" : "Legacy device",
+      label: p === "paper" ? { ko: "Device 1", en: "Device 1" } : { ko: "이전 기본 소자", en: "Legacy device" },
       technology: "FDSOI",
       geometry,
       calibration_label: pr.label,
