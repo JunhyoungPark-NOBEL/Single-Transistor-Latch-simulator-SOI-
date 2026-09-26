@@ -61,3 +61,17 @@ def test_default_remains_detailed():
     d,_=normalize('branches',{})
     assert d['device']['model']=='detailed'
     assert len(params.build_p(d['device']))==26
+
+
+def test_legacy_gidl_volume_scale_is_translated_with_a_warning():
+    from server.payloads import normalize_device
+    warnings = []
+    d = normalize_device({'model': 'simple', 'simple': {'gidl_volume_scale': 100.}}, warnings)
+    assert 'gidl_volume_scale' not in d['simple']
+    assert d['simple']['gidl_volume_ref_cm3'] == pytest.approx(100 * 4.55e-18)
+    assert any('gidl_volume_scale' in w and 'converted' in w for w in warnings)
+    warnings = []
+    d = normalize_device({'model': 'simple', 'simple': {'gidl_volume_scale': 100., 'gidl_volume_ref_cm3': 2e-16}}, warnings)
+    assert d['simple']['gidl_volume_ref_cm3'] == 2e-16
+    assert any('ignored' in w for w in warnings)
+    assert normalize_device({'model': 'simple'}, [])['simple']['gidl_volume_ref_cm3'] == 4.55e-16

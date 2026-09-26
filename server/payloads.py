@@ -141,6 +141,17 @@ def normalize_device(device: Any, warnings: list[str]) -> dict:
         for section in ("geometry", "light", "calib", "ext", "state", "numerics", "simple"):
             _obj(device, section, f"device.{section}")
     d = params.resolve_device(device)          # raises ValueError for an unknown preset
+    if "gidl_volume_scale" in d["simple"]:
+        # Interim key of simple-edl2026-paper-v2: a factor on the physical volume
+        # W_ref * 5 nm * 4.55 nm = 4.55e-18 cm^3.  Translate it once, with a warning.
+        legacy = d["simple"].pop("gidl_volume_scale")
+        given = (device or {}).get("simple") or {}
+        if "gidl_volume_ref_cm3" not in given:
+            d["simple"]["gidl_volume_ref_cm3"] = _num(legacy, "device.simple.gidl_volume_scale") * 4.55e-18
+            warnings.append("device.simple.gidl_volume_scale is obsolete: converted to gidl_volume_ref_cm3 = "
+                            f"{d['simple']['gidl_volume_ref_cm3']:.3g} cm^3 (factor x 4.55e-18 cm^3)")
+        else:
+            warnings.append("device.simple.gidl_volume_scale is obsolete and was ignored (gidl_volume_ref_cm3 given)")
     for key, (lo, hi) in SIMPLE_LIMITS.items():
         v = _num(d["simple"][key], f"device.simple.{key}")
         if not lo <= v <= hi:
