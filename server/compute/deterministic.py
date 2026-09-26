@@ -17,9 +17,10 @@ import numpy as np
 from scipy.optimize import brentq
 
 from server import params
+from server import simple_model as SIMPLE
 from server.engine_bridge import MODEL, S, m
 from server.progress import null_progress
-from server.geometry_model import pack_p, constants_from_p, backgate_charge
+from server.geometry_model import pack_p, constants_from_p, backgate_charge, body_potential
 
 Q = float(m.Q)
 GRID_MIN, GRID_MAX = 201, 2001
@@ -130,7 +131,7 @@ def _fold_row(v: float, cur: float) -> np.ndarray:
 
 
 def double_sweep(b: np.ndarray | None, i: int | None, j: int | None, folds: dict, vd_max: float, dv: float,
-                 warnings: list[str], full: np.ndarray | None = None) -> dict:
+                 warnings: list[str], full: np.ndarray | None = None, zero_origin: bool = True) -> dict:
     """Quasi-static triangular sweep 0 -> vd_max -> 0: up follows HRS until V_LU then LRS; down follows LRS
     until V_LD then HRS.  Currents are log-interpolated along each monotone branch (as FastModel.double_curve).
     The fold jumps are inserted explicitly (two points at the same V_D)."""
@@ -145,8 +146,9 @@ def double_sweep(b: np.ndarray | None, i: int | None, j: int | None, folds: dict
             if len(mx):
                 part = _monotone(full[: mx[0] + 2])
         up_i, dn_i = _interp_log(part, v), _interp_log(part, vdown)
-        up_i[v == 0] = 0.0
-        dn_i[vdown == 0] = 0.0
+        if zero_origin:
+            up_i[v == 0] = 0.0
+            dn_i[vdown == 0] = 0.0
         return dict(up=dict(vd=v, id=up_i), down=dict(vd=vdown, id=dn_i))
 
     V_LU, V_LD = folds["V_LU"], folds["V_LD"]
@@ -177,8 +179,9 @@ def double_sweep(b: np.ndarray | None, i: int | None, j: int | None, folds: dict
         dn_v, dn_i = vdown, _interp_log(lrs, vdown)
     else:
         dn_v, dn_i = vdown, _interp_log(hrs, vdown)
-    up_i = np.where(up_v == 0, 0.0, up_i)
-    dn_i = np.where(dn_v == 0, 0.0, dn_i)
+    if zero_origin:
+        up_i = np.where(up_v == 0, 0.0, up_i)
+        dn_i = np.where(dn_v == 0, 0.0, dn_i)
     return dict(up=dict(vd=up_v, id=up_i), down=dict(vd=dn_v, id=dn_i))
 
 
@@ -247,7 +250,7 @@ def run_branches(payload: dict, progress=null_progress) -> dict:
         else:
             warnings.append("no two-fold branch at these parameters: the device does not latch (folds are null)")
         fl = folds_of(None)
-        ds = double_sweep(None, None, None, fl, vd_max, dv, warnings, full=traced)
+        ds = double_sweep(None, None, None, fl, vd_max, dv, warnings, full=traced, zero_origin=device["model"] != "simple")
         res = dict(latch=False, HRS=empty, unstable=empty, LRS=empty, full=curve_dict(full, iph), folds=fl,
                    double_sweep=ds)
     else:
@@ -260,14 +263,16 @@ def run_branches(payload: dict, progress=null_progress) -> dict:
         if fl["V_LU"] > vd_max:
             warnings.append(f"V_LU = {fl['V_LU']:.4f} V exceeds the sweep maximum {vd_max:g} V: "
                             "the quasi-static sweep never latches")
-        ds = double_sweep(b, i, j, fl, vd_max, dv, warnings)
+        ds = double_sweep(b, i, j, fl, vd_max, dv, warnings, zero_origin=device["model"] != "simple")
         res = dict(latch=True, HRS=curve_dict(b[: i + 1], iph), unstable=curve_dict(b[i: j + 1], iph),
                    LRS=curve_dict(lrs, iph), full=curve_dict(b, iph), folds=fl, double_sweep=ds)
     progress(1.0, "done")
     sg = _sweep_grid(vd_max, dv)
-    res.update(vbg=float(device.get("vbg", 0.0)), geometry=dict(device["geometry"]), geometry_model=params.geometry_model_metadata(device),
+    res.update(model=device["model"], vbg=float(device.get("vbg", 0.0)), geometry=dict(device["geometry"]), geometry_model=params.geometry_model_metadata(device),
                iph_A=iph, p=params.build_p(device), grid=grid, vd_max_V=vd_max, sweep_dv_V=float(sg[1] - sg[0]),
                runtime_s=time.perf_counter() - t0, warnings=warnings)
+    if device["model"] == "simple":
+        res["component_semantics"] = {"loss_bulk_srh": "first_order_Q_over_tau", "loss_junction_srh": "absent"}
     return res
 
 
@@ -285,7 +290,7 @@ def run_folds(payload: dict, progress=null_progress) -> dict:
     elif z is None:
         warnings.append("no two-fold branch: the device does not latch")
     progress(1.0, "done")
-    return dict(vbg=float(device.get("vbg", 0.0)), geometry=dict(device["geometry"]), geometry_model=params.geometry_model_metadata(device),
+    return dict(model=device["model"], vbg=float(device.get("vbg", 0.0)), geometry=dict(device["geometry"]), geometry_model=params.geometry_model_metadata(device),
                 latch=z is not None, folds=folds_of(z), iph_A=float(p[13]), p=params.build_p(device), grid=grid,
                 runtime_s=time.perf_counter() - t0, warnings=warnings)
 
@@ -322,6 +327,14 @@ def state_row(u: float, vd: float, p: np.ndarray) -> np.ndarray:
     """setup_photo.state(u, vd, p) with a wider fallback: when the r bracket [0, vd-u] ends in the region where
     components() is NaN, the bracket is shrunk to the finite part.  Same row formulas as S.state:
     [u, r, I_D, gen(1/s), loss(1/s), C_ox ψ, Q_exc, q N_A A L_n, F(A), seed(A), unit(A)]."""
+    if SIMPLE.is_simple(p):
+        lo, hi = -.05, min(float(vd), float(p[41]) * (1 - 1e-10))
+        if hi <= lo:
+            raise ValueError("simple-domain-unavailable: collector voltage outside forward domain")
+        r = brentq(lambda rr: SIMPLE.components(float(u), rr, p)[0] - vd, lo, hi, xtol=1e-12)
+        z = SIMPLE.components(float(u), r, p)
+        return np.array([u, r, z[1], (z[1]-z[3])/m.Q, (z[5]+z[6])/m.Q,
+                         z[13], 0., 0., z[2], z[3], z[8]+z[9]+z[18]])
     if len(p) < 32:
         try:
             return S.state(float(u), float(vd), p)
@@ -334,7 +347,7 @@ def state_row(u: float, vd: float, p: np.ndarray) -> np.ndarray:
     r = brentq(lambda rr: _comp(u, rr, p)[0] - vd, 0.0, rmax, xtol=1e-11)
     z = _comp(u, r, p)
     _, _, tsi, area, cox, na, _ = constants_from_p(p)
-    psi = u - m.VT * np.log1p(z[10])
+    psi = body_potential(u,p)
     ratio = (p[5] * 1e-7 / tsi) * (p[7] * 1e-7 / z[11])
     qb = (z[13] - cox * u) / (1 + ratio)
     qa = qb * ratio
@@ -397,6 +410,8 @@ def run_charge_balance(payload: dict, progress=null_progress) -> dict:
     t0 = time.perf_counter()
     warnings: list[str] = []
     device = _device(payload)
+    if device["model"] == "simple":
+        raise ValueError("simple-mode-unavailable: Simple Model has no calibrated stochastic charge landscape")
     vd = float(payload.get("vd", 3.2))
     if not 0.05 <= vd <= 8.0:
         raise ValueError("vd must be within [0.05, 8] V")
@@ -537,5 +552,5 @@ def run_vg_curve(payload: dict, progress=null_progress) -> dict:
         warnings.append(f"steady-state locus not traceable at the fold (gap in u) at {len(gaps)} V_G value(s) "
                         f"({gaps[0]:+.3f} … {gaps[-1]:+.3f} V): reported as no latch")
     progress(1.0, "done")
-    return dict(vbg=float(device.get("vbg", 0.0)), geometry=dict(device["geometry"]), geometry_model=params.geometry_model_metadata(device), vg=vg, V_LU=V_LU, V_LD=V_LD, I_LU=I_LU, I_LD=I_LD, latch=latch.tolist(), window=window,
+    return dict(model=device["model"], vbg=float(device.get("vbg", 0.0)), geometry=dict(device["geometry"]), geometry_model=params.geometry_model_metadata(device), vg=vg, V_LU=V_LU, V_LD=V_LD, I_LU=I_LU, I_LD=I_LD, latch=latch.tolist(), window=window,
                 grid=grid, runtime_s=time.perf_counter() - t0, warnings=warnings)

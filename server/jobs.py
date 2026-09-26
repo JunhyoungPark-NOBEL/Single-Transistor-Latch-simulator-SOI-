@@ -35,6 +35,7 @@ import logging
 import math
 import multiprocessing as mp
 import os
+import secrets
 import threading
 import time
 import traceback
@@ -50,6 +51,7 @@ from typing import Any, Callable
 from server import jsonutil, payloads
 from server.compute import KINDS
 from server.progress import JobCancelled
+from server.performance import PerformanceStore, describe, family_key, preparation_key, schedule
 
 log = logging.getLogger("stl.jobs")
 
@@ -67,21 +69,7 @@ FINAL = ("done", "error", "cancelled")
 # engine inputs that shape results (code + data); run-time cache folders are not inputs
 _ENGINE_SUFFIXES = {".py", ".json", ".npz", ".npy", ".csv", ".txt"}
 _ENGINE_CACHE_DIRS = {"__pycache__", "photo_nodes", "fpt_nodes", "conditional_table", "fast_fpt"}
-# server sources that never shape a result (HTTP layer, login gate); every other server/**/*.py is hashed
-_SERVER_EXCLUDED = ("main.py", "auth.py")
-
-
-def _server_sources(server_dir: Path) -> list[Path]:
-    """server/**/*.py except tests, caches (__pycache__, hidden folders such as .cache) and _SERVER_EXCLUDED."""
-    out = []
-    for f in server_dir.rglob("*.py"):
-        rel = f.relative_to(server_dir).parts
-        if "__pycache__" in rel or "tests" in rel or any(x.startswith(".") for x in rel[:-1]):
-            continue
-        if len(rel) == 1 and rel[0] in _SERVER_EXCLUDED:
-            continue
-        out.append(f)
-    return sorted(out)
+_SERVER_FILES = ("params.py", "engine_bridge.py", "geometry_model.py", "simple_model.py", "simple_config.py", "jsonutil.py", "jobs.py", "payloads.py")
 
 
 def _env_float(name: str, default: float) -> float:
@@ -93,11 +81,11 @@ def _env_float(name: str, default: float) -> float:
 
 
 def engine_version(server_dir: Path = SERVER_DIR, engine_dir: Path = ENGINE_DIR) -> str:
-    """sha256 over everything that shapes a cached result: every server/**/*.py except the tests and the HTTP/login
-    layer (main.py, auth.py) -- compute/**, params.py, engine_bridge.py, geometry_model.py, payloads.py (normalisation),
-    jsonutil.py (serialisation), jobs.py (result post-processing), and any module added later -- plus the engine's
+    """sha256 over everything that shapes a cached result: server/compute/**/*.py, params.py,
+    engine_bridge.py, geometry_model.py, simple_model.py, simple_config.py, payloads.py, jsonutil.py (serialisation), jobs.py (result post-processing) and the engine's
     code + data files.  Any edit invalidates the result cache."""
-    groups: list[tuple[str, Path, list[Path]]] = [("server", server_dir, _server_sources(server_dir))]
+    groups: list[tuple[str, Path, list[Path]]] = [
+        ("server", server_dir, sorted((server_dir / "compute").rglob("*.py")) + [server_dir / n for n in _SERVER_FILES])]
     if engine_dir.is_dir():
         groups.append(("engine", engine_dir, sorted(
             f for f in engine_dir.rglob("*")
@@ -191,6 +179,10 @@ def prune_dir(directory: Path, max_bytes: int, pattern: str = "*") -> int:
 # =============================================================================================
 _W_PROGRESS: Any = None
 _W_CANCEL: Any = None
+_W_FAMILIES: set[str] = set()
+_W_PREPARATIONS: set[str] = set()
+_W_INIT_STARTED = 0.0
+_W_READY = 0.0
 
 
 def _parent_watchdog() -> None:
@@ -211,12 +203,14 @@ def _parent_watchdog() -> None:
 
 
 def _init_worker(progress_dict: Any, cancel_dict: Any) -> None:
-    global _W_PROGRESS, _W_CANCEL
+    global _W_PROGRESS, _W_CANCEL, _W_INIT_STARTED, _W_READY
+    _W_INIT_STARTED = time.time()
     _parent_watchdog()
     _W_PROGRESS, _W_CANCEL = progress_dict, cancel_dict
     for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
         os.environ.setdefault(var, "1")
     importlib.import_module("server.engine_bridge")      # loads the engine + numba caches once per worker
+    _W_READY = time.time()
 
 
 def _resolve(kind: str) -> Callable:
@@ -228,7 +222,7 @@ def _warm() -> bool:
     return True
 
 
-def _run_job(job_id: str, kind: str, payload: dict, pre_warnings: list[str]) -> tuple:
+def _run_job(job_id: str, kind: str, payload: dict, pre_warnings: list[str], submitted_at: float = 0.0) -> tuple:
     """Executed in a worker. Returns ("ok", json_bytes) | ("error", message, traceback) | ("cancelled",)."""
     state = {"last": -1e9}
 
@@ -238,7 +232,7 @@ def _run_job(job_id: str, kind: str, payload: dict, pre_warnings: list[str]) -> 
             return
         state["last"] = now
         try:
-            _W_PROGRESS[job_id] = (float(min(max(fraction, 0.0), 1.0)), str(message)[:300])
+            _W_PROGRESS[job_id] = (float(min(max(fraction, 0.0), 1.0)), str(message)[:300], started_at)
             cancelled = bool(_W_CANCEL.get(job_id, False))
         except (OSError, EOFError, BrokenPipeError, ConnectionError, TypeError):
             return
@@ -246,15 +240,36 @@ def _run_job(job_id: str, kind: str, payload: dict, pre_warnings: list[str]) -> 
             raise JobCancelled(job_id)
 
     t0 = time.perf_counter()
+    started_at = time.time()
     try:
         progress(0.0, "started")
         fn = _resolve(kind)
+        resolved_at = time.perf_counter()
+        tag = family_key(kind, payload) if kind != "performance_calibrate" else "calibration"
+        first = tag not in _W_FAMILIES
+        preparation = preparation_key(kind, payload)
+        first_preparation = bool(preparation and preparation not in _W_PREPARATIONS)
+        compute_started = time.perf_counter()
         result = fn(payload, progress)
+        compute_s = time.perf_counter() - compute_started
+        _W_FAMILIES.add(tag)
+        if preparation:
+            _W_PREPARATIONS.add(preparation)
         if not isinstance(result, dict):
             result = {"value": result}
+        if kind == "performance_calibrate":
+            _W_FAMILIES.update(s["model"] + ":" + s["family"] for s in result.get("samples", []))
         result["warnings"] = list(pre_warnings) + list(result.get("warnings") or [])
         result.setdefault("runtime_s", time.perf_counter() - t0)
-        return ("ok", jsonutil.dumps(result))
+        timing = dict(compute_s=compute_s, resolve_s=resolved_at - t0,
+                      worker_pid=os.getpid(), first_for_family=first,
+                      first_preparation=first_preparation,
+                      started_at=started_at, finished_at=time.time(),
+                      bootstrap_s=max(0.0, min(started_at, _W_READY) - max(submitted_at, _W_INIT_STARTED)) if submitted_at else 0.0,
+                      queue_s=max(0.0, started_at - submitted_at) if submitted_at else 0.0,
+                      complete=not any(row.get("key") == "truncated_runs" and float(row.get("value") or 0) > 0
+                                       for row in result.get("summary", []) if isinstance(row, dict)))
+        return ("ok", jsonutil.dumps(result), timing)
     except JobCancelled:
         return ("cancelled",)
     except ValueError as exc:
@@ -353,6 +368,13 @@ class ResultCache:
             pass
         return data
 
+    def contains(self, key: str) -> bool:
+        """Read-only cache presence check for pre-run estimates (no decompression)."""
+        with self._lock:
+            if key in self._mem:
+                return True
+        return self._path(key).is_file()
+
     def _put_mem(self, key: str, data: bytes) -> None:
         with self._lock:
             if key in self._mem:
@@ -412,6 +434,8 @@ class JobManager:
         self.cache = ResultCache(directory or cache_dir(),
                                  max_bytes=int(_env_float("STL_MEM_CACHE_MB", 256) * (1 << 20)),
                                  disk_max_bytes=int(_env_float("STL_DISK_CACHE_MB", 1024) * (1 << 20)))
+        self.performance = PerformanceStore(self.cache.dir / "performance", self.engine_version,
+                                            self.workers, available_cpus())
         self._lock = threading.RLock()
         self._jobs: OrderedDict[str, Job] = OrderedDict()
         self._inflight: dict[str, _Run] = {}
@@ -434,13 +458,17 @@ class JobManager:
                 os.environ.setdefault(var, "1")      # inherited by the spawned workers
             ctx = mp.get_context(self.mp_context)
             if self._manager is None:
-                mgr = SyncManager(ctx=ctx)
+                # Private loopback TCP works on Windows and hosts that disallow Unix-domain sockets.
+                # The random authentication key is passed only to child processes; neither the
+                # manager address nor its key is exposed by the HTTP API. No public bind/fallback.
+                mgr = SyncManager(address=("127.0.0.1", 0), authkey=secrets.token_bytes(32), ctx=ctx)
                 mgr.start(initializer=_parent_watchdog)
                 self._manager = mgr
                 self._progress = mgr.dict()
                 self._cancel = mgr.dict()
             self._pool = pool = ProcessPoolExecutor(max_workers=self.workers, mp_context=ctx,
                                                     initializer=_init_worker, initargs=(self._progress, self._cancel))
+            self.performance.reset_workers()
             self._broken = False
             if self._housekeeper is None:
                 self._stop.clear()
@@ -514,7 +542,7 @@ class JobManager:
         with self._lock:
             if self._join(job):
                 return job
-        data = self.cache.get(key)
+        data = self.cache.get(key) if kind != "performance_calibrate" else None
         if data is not None:
             job.status, job.progress, job.message, job.result, job.cached = "done", 1.0, "cached", data, True
             job.started = job.finished = job.created
@@ -562,7 +590,8 @@ class JobManager:
                 self._complete(run, ("cancelled",))
                 return
             try:
-                fut = pool.submit(_run_job, run.id, run.kind, run.payload, run.warns)
+                fut = pool.submit(_run_job, run.id, run.kind, run.payload, run.warns,
+                                  min((job.created for job in run.jobs), default=time.time()))
             except (BrokenProcessPool, RuntimeError):
                 self._mark_broken(pool)
                 if attempt:
@@ -646,7 +675,16 @@ class JobManager:
         except Exception:  # noqa: BLE001 - manager gone during shutdown
             pass
         if out[0] == "ok":
-            self.cache.put(run.key, out[1])
+            if run.kind != "performance_calibrate":
+                self.cache.put(run.key, out[1])
+            # A cancelled run can complete before its next cancellation check.
+            # Only learn when at least one live client still accepts this result.
+            if len(out) > 2 and out[2].get("complete", True) and run.jobs and any(job.status not in FINAL for job in run.jobs):
+                try:
+                    calibration = jsonutil.loads(out[1]) if run.kind == "performance_calibrate" else None
+                    self.performance.record(run.kind, run.payload, run.key, out[2], calibration)
+                except Exception:
+                    log.exception("could not record performance timing")
         elif out[0] == "error" and out[2]:
             log.warning("job %s (%s) failed: %s\n%s", run.id, run.kind, out[1], out[2])
         with self._lock:
@@ -700,7 +738,7 @@ class JobManager:
         with self._lock:
             if job.status in ("queued", "running"):
                 job.status = "running"
-                job.started = job.started or time.time()
+                job.started = job.started or (float(rec[2]) if len(rec) > 2 else time.time())
                 job.progress, job.message = float(rec[0]), str(rec[1])
 
     def wait(self, job: Job, timeout: float) -> Job:
@@ -759,6 +797,142 @@ class JobManager:
         for j in self.list():
             out[j.status] = out.get(j.status, 0) + 1
         return out
+
+    # ---- performance: lightweight host estimates, no compute imports -------------------------
+    def performance_snapshot(self) -> dict:
+        out = self.performance.snapshot()
+        counts = self.counts()
+        out["queue"] = dict(running=counts["running"], waiting=counts["queued"], workers=self.workers)
+        return out
+
+    @staticmethod
+    def _estimate_supported(kind: str, payload: dict) -> str | None:
+        if kind != "circuit":
+            return None
+        if payload.get("mode", "deterministic") not in ("deterministic", "stochastic"):
+            return "mode must be deterministic or stochastic"
+        custom = payload.get("bench") == "custom"
+        elements = (payload.get("netlist") or {}).get("elements", []) if custom else []
+        if not isinstance(elements, list) or any(not isinstance(el, dict) for el in elements):
+            return "netlist.elements must be an array of objects"
+        if custom and not elements:
+            return "회로에 소자를 배치해 주세요."
+        stl = [el for el in elements if el.get("type") == "STL"]
+        devices = [el.get("device") or {} for el in stl] if custom else [payload.get("device") or {}]
+        method = ((payload.get("tran") if custom else payload.get("solver")) or {}).get("method", "BE") or "BE"
+        simple = any(isinstance(device, dict) and device.get("model") == "simple" for device in devices)
+        extended = any(isinstance(el.get("nodes"), dict) and
+                       any(pin in el["nodes"] for pin in ("bg", "b")) for el in stl)
+        if (simple or extended) and (method != "BE" or payload.get("mode") == "stochastic"):
+            return "Simple Model과 5단자 회로는 결정론적 BE 해석을 지원합니다."
+        return None
+
+    def estimate(self, request: Any) -> dict:
+        from server.performance import MAX_GROUP
+        if not isinstance(request, dict) or not isinstance(request.get("jobs"), list):
+            raise ValueError("performance estimate requires a jobs array")
+        jobs = request["jobs"]
+        if not 1 <= len(jobs) <= MAX_GROUP:
+            raise ValueError(f"performance estimate requires 1 to {MAX_GROUP} jobs")
+        items, keys = [], set()
+        for index, spec in enumerate(jobs):
+            if not isinstance(spec, dict):
+                raise ValueError("each performance job must be an object")
+            key = spec.get("key", str(index))
+            deps = spec.get("depends_on", [])
+            if not isinstance(key, str) or not key or len(key) > 64 or key in keys:
+                raise ValueError("performance job keys must be unique short strings")
+            if not isinstance(deps, list) or len(deps) > MAX_GROUP or any(not isinstance(dep, str) for dep in deps):
+                raise ValueError("depends_on must be an array of job keys")
+            keys.add(key)
+            kind = spec.get("kind")
+            if not isinstance(kind, str) or kind not in ALL_KINDS or kind == "performance_calibrate":
+                raise ValueError("unknown or unsupported performance compute kind")
+            try:
+                norm, warns = payloads.normalize(kind, spec.get("payload"))
+                reason = self._estimate_supported(kind, norm)
+                if reason:
+                    raise ValueError(reason)
+                cache_key = self.cache_key(kind, norm, warns)
+                item = self.performance.estimate_one(kind, norm, cache_key)
+                if self.cache.contains(cache_key):
+                    item.update(cached=True, setup_unknown=False, source="observed", confidence="high",
+                                estimate=dict(low_s=0.0, seconds=0.0, high_s=0.0))
+                else:
+                    with self._lock:
+                        shared = self._inflight.get(cache_key)
+                        started = min((job.started for job in shared.jobs if job.started), default=None) if shared else None
+                    if shared and not shared.done:
+                        elapsed = max(0.0, time.time() - started) if started else 0.0
+                        item["joined"] = True
+                        item["_run_key"] = cache_key
+                        item["estimate"] = {name: max(0.0, value - elapsed) if value is not None else None
+                                            for name, value in item["estimate"].items()}
+                item["warnings"] = warns
+            except (ValueError, TypeError, AttributeError) as exc:
+                item = dict(kind=kind, model="unknown", family=kind, supported=False, reason=str(exc),
+                            cached=False, joined=False, setup_unknown=False,
+                            estimate=dict(low_s=None, seconds=None, high_s=None),
+                            source="reference", confidence="low")
+            item.update(key=key, depends_on=deps)
+            items.append(item)
+        # Validate dependencies even when one estimate is unavailable.
+        remaining, resolved = list(items), set()
+        while remaining:
+            ready = [item for item in remaining if set(item["depends_on"]) <= resolved]
+            if not ready:
+                raise ValueError("performance jobs contain an unknown or cyclic dependency")
+            for item in ready:
+                remaining.remove(item)
+                resolved.add(item["key"])
+        initial = {name: [0.0] * self.workers for name in ("low_s", "seconds", "high_s")}
+        queue_unknown = False
+        inflight_finishes = {}
+        with self._lock:
+            inflight = list(self._inflight.values())
+        for run in inflight:
+            if run.done or not run.jobs:
+                continue
+            if run.kind == "performance_calibrate":
+                queue_unknown = True
+                continue
+            current = self.performance.estimate_one(run.kind, run.payload, run.key)
+            started = min((job.started for job in run.jobs if job.started), default=None)
+            elapsed = max(0.0, time.time() - started) if started else 0.0
+            queue_unknown |= current.get("setup_unknown", True)
+            finishes = {}
+            for name, lanes in initial.items():
+                duration = current["estimate"][name]
+                if duration is None:
+                    queue_unknown = True
+                    continue
+                lane = min(range(self.workers), key=lambda i: lanes[i])
+                lanes[lane] += max(0.0, duration - elapsed)
+                finishes[name] = lanes[lane]
+            inflight_finishes[run.key] = finishes
+        for item in items:
+            run_key = item.pop("_run_key", None)
+            if run_key:
+                item["inflight_finish"] = inflight_finishes.get(run_key, {})
+        compute = {name: schedule(items, self.workers, field=name) for name in initial}
+        total = {name: schedule(items, self.workers, initial=lanes, field=name) for name, lanes in initial.items()}
+        queue = {name: max(0.0, total[name] - compute[name])
+                 if total[name] is not None and compute[name] is not None else None for name in initial}
+        counts = self.counts()
+        queue.update(running=counts["running"], waiting=counts["queued"], unknown=queue_unknown)
+        setup_unknown = any(item.get("setup_unknown", False) for item in items if not item.get("cached"))
+        source = "reference" if any(item["source"] == "reference" for item in items) else (
+            "calibrated" if any(item["source"] == "calibrated" for item in items) else "observed")
+        confidence = min((item["confidence"] for item in items), key={"low": 0, "medium": 1, "high": 2}.get)
+        setup = dict(low_s=0.0, seconds=None if setup_unknown else 0.0,
+                     high_s=None if setup_unknown else 0.0, unknown=setup_unknown,
+                     note="첫 실행·새 조건의 컴파일·준비 시간은 별도입니다." if setup_unknown else "준비된 계산 작업 기준입니다.")
+        return dict(host=self.performance.host, items=items, total=total, compute=compute, setup=setup, queue=queue,
+                    cached=all(item.get("cached") for item in items), confidence=confidence, source=source,
+                    supported=all(item["supported"] for item in items),
+                    warnings=["브라우저 CPU가 아닌 연결된 계산 서버 기준입니다.",
+                              "범위는 계산량 추정이며, 적응 시간 간격·수렴 상태·동시 사용량에 따라 달라집니다.",
+                              "네트워크 전송·그래프 렌더링은 포함하지 않습니다."])
 
     # ---- housekeeping ------------------------------------------------------------------------
     def _housekeeping(self) -> None:

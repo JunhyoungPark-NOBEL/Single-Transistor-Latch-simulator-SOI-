@@ -1,0 +1,19 @@
+name: biristor-studio
+services:
+  studio:
+    build: .
+    image: biristor-studio:local
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file:
+      - ${STUDIO_ENV_FILE:-/etc/biristor-studio/server.env}
+    environment:
+      STL_WORKERS: ${STUDIO_WORKERS:-2}
+      PORT: "8000"
+    ports:
+      - "${STUDIO_BIND_IP:-127.0.0.1}:${STUDIO_PORT:-8000}:8000"
+    volumes:
+      - studio-cache:/app/server/.cache
+volumes:
+  studio-cache:

@@ -33,24 +33,24 @@
       "parameter": "Lg_nm",
       "value": 200,
       "latch": true,
-      "VLU": 2.642526847463238,
-      "VLD": 1.2454271671149584,
+      "VLU": 2.6503799721367964,
+      "VLD": 2.149015109482515,
       "warnings": []
     },
     {
       "parameter": "Lg_nm",
       "value": 300,
       "latch": true,
-      "VLU": 3.406562730449133,
-      "VLD": 1.8147692176153778,
+      "VLU": 3.4489717949580854,
+      "VLD": 2.4734580192484157,
       "warnings": []
     },
     {
       "parameter": "Lg_nm",
       "value": 400,
       "latch": true,
-      "VLU": 3.5821381338382667,
-      "VLD": 2.242348327262464,
+      "VLU": 3.6095375589967023,
+      "VLD": 2.5556220033219597,
       "warnings": []
     },
     {
@@ -65,8 +65,8 @@
       "parameter": "Lg_nm",
       "value": 700,
       "latch": true,
-      "VLU": 3.8967992639074094,
-      "VLD": 3.1815469229644124,
+      "VLU": 3.8230623100870016,
+      "VLD": 2.6466205262735913,
       "warnings": []
     },
     {
@@ -175,9 +175,11 @@
       "parameter": "Nbody_cm3",
       "value": 1e+17,
       "latch": true,
-      "VLU": 3.8488251127163684,
-      "VLD": 2.871677478394909,
-      "warnings": []
+      "VLU": 4.080700087175886,
+      "VLD": 3.9442355086267042,
+      "warnings": [
+        "V_LU = 4.0807 V exceeds the sweep maximum 4 V: the quasi-static sweep never latches"
+      ]
     },
     {
       "parameter": "Nbody_cm3",
@@ -191,8 +193,8 @@
       "parameter": "Nbody_cm3",
       "value": 3e+17,
       "latch": true,
-      "VLU": 3.6633911907012484,
-      "VLD": 2.574677794394072,
+      "VLU": 3.632867465890284,
+      "VLD": 2.2467432933945286,
       "warnings": []
     }
   ],
@@ -318,60 +320,9 @@
     },
     {
       "geometry": {
-        "Nbody_cm3": 2e+16
-      },
-      "error": "geometry-domain-unavailable: this L/Nbody combination fully depletes the lateral neutral base assumed by this compact model; increase L or Nbody"
-    },
-    {
-      "geometry": {
-        "Nbody_cm3": 2e+18
-      },
-      "error": "geometry-domain-unavailable: the avalanche-field table for this Nbody (2e+18 cm^-3) ends at a reverse bias of 1.24 V (< 3 V); lower Nbody"
-    },
-    {
-      "geometry": {
         "Nbody_cm3": 1e+19
       },
       "error": "geometry-domain-unavailable: the specified Nbody is outside the finite avalanche-field domain of this compact model"
     }
-  ],
-  "input_errors": [
-    {
-      "device": {
-        "geometry": {
-          "Lg_nm": 100
-        }
-      },
-      "error": "geometry-domain-unavailable: L = 100 nm fully depletes the lateral neutral base assumed by this compact model at Nbody = 2.3e+17 cm^-3 (L must exceed 154 nm); increase L or Nbody"
-    },
-    {
-      "device": {
-        "geometry": {
-          "Lg_nm": 400,
-          "Nbody_cm3": 3e+16
-        }
-      },
-      "error": "geometry-domain-unavailable: L = 400 nm fully depletes the lateral neutral base assumed by this compact model at Nbody = 3e+16 cm^-3 (L must exceed 412 nm); increase L or Nbody"
-    },
-    {
-      "device": {
-        "geometry": {
-          "EOT_nm": 100,
-          "Tbox_nm": 10,
-          "Tsi_nm": 5
-        },
-        "vbg": 4.0
-      },
-      "error": "geometry-domain-unavailable: back-gate coupling beyond the linear (depleted back-interface) range; reduce |V_BG| or EOT/Tbox (EOT/(Tbox + Tsi/3) x |V_BG| = 34.3 V > 2 V)"
-    },
-    {
-      "device": {
-        "geometry": {
-          "Nbody_cm3": 2e+18
-        }
-      },
-      "error": "device.geometry.Nbody_cm3 must be within [3e+16, 1.1e+18]"
-    }
-  ],
-  "emitter_injection_scaling": "area only (fixed n+ source/drain)"
+  ]
 }

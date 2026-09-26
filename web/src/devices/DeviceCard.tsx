@@ -1,41 +1,41 @@
+import { modelLabel } from "../params/model";
 // Compact device identity and explicit reset to the single default device.
 import { useState } from "react";
 import { useT } from "../i18n";
 import { useStore } from "../state/store";
 import { resolveBackGate } from "../params/geometry";
 import { clone, deepEqual } from "../utils/object";
-import { sciText } from "../utils/format";
-import { geometryFromDevice, stochOf, type Geometry, type LibDevice } from "./library";
+import { geometryFromDevice, isSupportedTechnology, stochOf, type Geometry, type LibDevice } from "./library";
 import { MAX_USER_DEVICES, useDeviceLib } from "./store";
 import "./devices.css";
+import { SubText } from "../plots/SubText";
 
 
 const SEP = "\u2009·\u2009";
 
 export function GeometryLine({ g }: { g: Geometry }) {
   const f = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
-  return (
-    <>
-      L {f(g.Lg_nm)} nm{SEP}W {f(g.W_nm)} nm{SEP}T<sub>Si</sub> {f(g.Tsi_nm)} nm{SEP}EOT {f(g.EOT_nm)} nm{SEP}T<sub>box</sub> {f(g.Tbox_nm)} nm{SEP}N<sub>body</sub> {sciText(g.Nbody_cm3)} cm⁻³
-    </>
-  );
+  return <SubText text={`L ${f(g.Lg_nm)} nm${SEP}W ${f(g.W_nm)} nm${SEP}T<sub>Si</sub> ${f(g.Tsi_nm)} nm${SEP}EOT ${f(g.EOT_nm)} nm${SEP}T<sub>box</sub> ${f(g.Tbox_nm)} nm${SEP}N<sub>body</sub> ${g.Nbody_cm3.toExponential(2).replace("e+", "e")} cm⁻³`} />;
 }
 
 /** Load a library device into the Device tab parameters (device block + stochastic local-state settings). */
-export function loadDeviceIntoParams(d: LibDevice) {
+export function loadDeviceIntoParams(d: LibDevice): boolean {
+  if (!isSupportedTechnology(d.technology)) return false;
   const st = useStore.getState();
   if (d.builtin && (d.device.preset === "paper" || d.device.preset === "photo")) {
     st.loadPreset(d.device.preset);
-    return;
+    return true;
   }
   useStore.setState((s) => ({
     preset: d.device.preset,
+    mode: d.device.model === "simple" ? "deterministic" : s.mode,
     params: {
       ...s.params,
       device: clone({ ...d.device, geometry: geometryFromDevice(d.device) }),
       stochastic: { ...s.params.stochastic, local_state: clone(d.stochastic.local_state), carrier_noise: d.stochastic.carrier_noise, ld_carrier_noise: d.stochastic.ld_carrier_noise },
     },
   }));
+  return true;
 }
 
 export function SaveDeviceForm({ onDone }: { onDone: (d: LibDevice | null) => void }) {
@@ -76,7 +76,7 @@ export function SaveDeviceForm({ onDone }: { onDone: (d: LibDevice | null) => vo
         <span>{t("schematic.dev.notes")}</span>
         <textarea className="input text" rows={2} value={notes} maxLength={2000} placeholder={t("schematic.dev.notesPh")} onChange={(e) => setNotes(e.target.value)} />
       </label>
-      <p className="dev-hint">{t.lang === "ko" ? "현재 형상·보정값·확률 설정을 저장합니다." : "Saves geometry, calibration and noise settings."}</p>
+      <p className="dev-hint">{t.lang === "ko" ? "현재 모델·형상·보정값을 저장합니다." : "Saves the model, geometry and calibration."}</p>
       <div className="dev-actions">
         <button type="button" className="btn sm ghost" onClick={() => onDone(null)}>
           {t("schematic.dev.cancel")}
@@ -96,11 +96,11 @@ export function DeviceCard() {
   const load = useStore((s) => s.loadPreset);
   const saved = useDeviceLib((s) => s.devices);
   const current = { ...device, geometry: geometryFromDevice(device), vbg: resolveBackGate(device.vbg) };
-  const matched = saved.find((d) => deepEqual({ ...d.device, geometry: geometryFromDevice(d.device), vbg: resolveBackGate(d.device.vbg) }, current));
+  const matched = saved.find((d) => isSupportedTechnology(d.technology) && deepEqual({ ...d.device, geometry: geometryFromDevice(d.device), vbg: resolveBackGate(d.device.vbg) }, current));
   const reference = meta.presets.paper.device;
   const modified = !deepEqual(current, { ...reference, geometry: geometryFromDevice(reference), vbg: resolveBackGate(reference.vbg) });
   return <section className="preset-card dev-card compact" data-testid="preset-card">
-    <div className="dev-head"><span className="preset-head">{matched?.name ?? "Device 1"}</span><span className="tech-chip">FDSOI</span></div>
-    {modified && <div className="preset-note" data-testid="preset-label"><span className="chg" /><span>{matched ? (t.lang === "ko" ? "저장된 소자" : "Saved device") : (t.lang === "ko" ? "수정됨" : "Modified")}</span><button type="button" className="link-btn" data-testid="preset-paper" title={t.lang === "ko" ? "치수·보정값·바이어스를 모두 Device 1 값으로 되돌립니다" : "Restore every value (geometry, calibration, bias) to Device 1"} onClick={() => load("paper")}>{t.lang === "ko" ? "Device 1로 되돌리기" : "Back to Device 1"}</button></div>}
+    <div className="dev-head"><span className="preset-head">{matched?.name ?? "Device 1"}{modified && !matched ? " ·" : ""}</span><span className="tech-chip">{modelLabel(device)} · FDSOI</span></div>
+    {modified && <div className="preset-note" data-testid="preset-label"><span className="chg" /><span>{matched ? (t.lang === "ko" ? "저장된 소자" : "Saved device") : (t.lang === "ko" ? "수정됨" : "Modified")}</span><button type="button" className="link-btn" data-testid="preset-paper" onClick={() => load("paper")}>{t("reset")}</button></div>}
   </section>;
 }

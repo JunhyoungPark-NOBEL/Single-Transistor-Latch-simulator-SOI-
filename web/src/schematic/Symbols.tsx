@@ -8,7 +8,7 @@ import { fmtSI } from "./si";
 
 const Z = "M0 -40 V-26 L7 -22 L-7 -14 L7 -6 L-7 2 L7 10 L-7 18 L0 22 V40"; // resistor zigzag
 
-function Body({ kind, polarity }: { kind: ElKind; polarity?: string }) {
+function Body({ kind, polarity, legacy3 }: { kind: ElKind; polarity?: string; legacy3?: boolean }) {
   switch (kind) {
     case "R":
       return <path d={Z} className="sch-stroke" />;
@@ -62,6 +62,7 @@ function Body({ kind, polarity }: { kind: ElKind; polarity?: string }) {
           <path d="M0 -40 H31 V-16 H0 M0 40 H-31 V16 H0 M-40 0 H-24" className="sch-stroke" />
           <circle r={24} className="sch-stroke sch-fill" />
           <path d="M0 -16 H13 L0 16 H-13 Z M0 -16 H31 M-31 16 H0" className="sch-accent" />
+          {!legacy3 && <path d="M-50 -30 H-28 V-13 H-20 M22 10 H50" className="sch-stroke" />}
         </>
       );
     case "LABEL":
@@ -145,17 +146,17 @@ function ElementViewImpl({ el, selected, hovered, flagged, ghost, probing }: Ele
     );
   }
   const lines = elementText(el);
-  const off = TEXT_OFF[el.kind] ?? 20;
+  const off = el.kind === "STL" && el.stlTerminalMode !== "legacy3" ? 64 : TEXT_OFF[el.kind] ?? 20;
   // horizontal parts (comparator) carry their text above the body, the vertical ones to the right
-  const o = el.kind === "CMP" ? rotatePt(0, -off, el.rot, el.mirror) : rotatePt(off, 0, el.rot, el.mirror);
+  const o = el.kind === "CMP" ? rotatePt(0, -off, el.rot, el.mirror) : rotatePt(off, el.kind === "STL" && el.stlTerminalMode !== "legacy3" ? -24 : 0, el.rot, el.mirror);
   let texts: { x: number; y: number; anchor: "start" | "middle" | "end"; t: string; k: number }[] = [];
   if (lines.length) {
     if (Math.abs(o.x) >= Math.abs(o.y)) {
       const anchor = o.x >= 0 ? "start" : "end";
-      texts = lines.map((t, k) => ({ x: el.x + o.x, y: el.y - (lines.length - 1) * 7 + k * 14 + 4, anchor, t, k }));
+      texts = lines.map((t, k) => ({ x: el.x + o.x, y: el.y + o.y - (lines.length - 1) * 7 + k * 14 + 4, anchor, t, k }));
     } else {
       const below = o.y > 0;
-      texts = lines.map((t, k) => ({ x: el.x, y: below ? el.y + o.y + 12 + k * 14 : el.y + o.y - 6 - (lines.length - 1 - k) * 14, anchor: "middle", t, k }));
+      texts = lines.map((t, k) => ({ x: el.x + o.x, y: below ? el.y + o.y + 12 + k * 14 : el.y + o.y - 6 - (lines.length - 1 - k) * 14, anchor: "middle", t, k }));
     }
   }
   const signs =
@@ -168,11 +169,11 @@ function ElementViewImpl({ el, selected, hovered, flagged, ghost, probing }: Ele
       : null;
   const pinLetters =
     el.kind === "STL" || el.kind === "MOS" || el.kind === "BJT"
-      ? ([["D", 7, -30], ["G", -33, -6], ["S", 7, 34]] as const).map(([l, x, y]) => {
+      ? ([...[["D", 7, -30], ["G", -33, -6], ["S", 7, 34]], ...(el.kind === "STL" && el.stlTerminalMode !== "legacy3" ? [["BG", -45, -39], ["B", 41, 0]] : [])] as [string, number, number][]).map(([l, x, y]) => {
           const p = rotatePt(x, y, el.rot, el.mirror);
           return (
             <text key={l} x={el.x + p.x} y={el.y + p.y + 3} textAnchor="middle" className="sch-pin-letter">
-              {el.kind === "BJT" ? ({ D: "C", G: "B", S: "E" } as const)[l] : l}
+              {el.kind === "BJT" ? ({ D: "C", G: "B", S: "E" } as Record<string, string>)[l] : l}
             </text>
           );
         })
@@ -180,7 +181,7 @@ function ElementViewImpl({ el, selected, hovered, flagged, ghost, probing }: Ele
   return (
     <g className={cls} data-el={ghost ? undefined : el.id} data-kind={ghost ? undefined : el.kind}>
       <g transform={tf}>
-        <Body kind={el.kind} polarity={el.mos?.polarity ?? el.bjt?.polarity} />
+        <Body kind={el.kind} polarity={el.mos?.polarity ?? el.bjt?.polarity} legacy3={el.stlTerminalMode === "legacy3"} />
       </g>
       {signs}
       {pinLetters}

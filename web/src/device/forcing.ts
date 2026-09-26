@@ -7,10 +7,8 @@ import type { ParamRoot } from "../params/schema";
 export type ForcingMode = "vscm" | "csvm";
 export interface CsvmSettings { current_A: number; capacitance_F: number; duration_s: number }
 export const DEFAULT_CSVM: CsvmSettings = { current_A: 1e-9, capacitance_F: 1e-12, duration_s: 15e-3 };
-// duration_s ≤ 2 s (interim cap): at the default 1 nA / 1 pF that is already ~1,800 latch cycles, near the solver's
-// step budget; the server refuses longer runs with "circuit-step-budget:" (translated in api/geometryPolicy.ts)
 export const CSVM_LIMITS: Record<keyof CsvmSettings, readonly [number, number]> = {
-  current_A: [1e-15, 1], capacitance_F: [1e-18, 1], duration_s: [1e-9, 2],
+  current_A: [1e-15, 1], capacitance_F: [1e-18, 1], duration_s: [1e-9, 10],
 };
 const STORAGE_KEY = "stl-device-forcing:v1";
 
@@ -62,6 +60,6 @@ export function csvmPayload(params: ParamRoot, mode: Mode, settings: CsvmSetting
       ld_carrier_noise: stochastic.ld_carrier_noise, local_state: stochastic.local_state, local_state_override: true,
     } } : {}),
     detect: { i_threshold_A: 1e-8, hysteresis: 10 },
-    probes: ["V(drain)", "I(X1.d)"],
+    probes: ["V(drain)", "I(X1.d)", "X1.vb"],
   };
 }

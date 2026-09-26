@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { BUILTIN_META } from "../state/presets";
-import { builtinDevices, calibPart, exportLibraryJson, geometryLine, parseLibraryJson, uniqueName, validateDevice } from "./library";
+import { builtinDevices, calibPart, exportLibraryJson, geometryLine, isSupportedTechnology, parseLibraryJson, uniqueName, validateDevice } from "./library";
 import { parseStoredDevices, useDeviceLib, validationBase } from "./store";
 import { REFERENCE_GEOMETRY } from "../params/geometry";
 import { stlRefFor } from "../schematic/store";
 import { defaultDoc, exportDocJson, parseDoc } from "../schematic/persist";
 import { loadDeviceIntoParams } from "./DeviceCard";
 import { useStore } from "../state/store";
+import { buildRequest } from "../schematic/netlist";
+import { extractNets } from "../schematic/nets";
+import { runErc } from "../schematic/erc";
 
 afterEach(() => {
   useDeviceLib.setState({ devices: [] });
@@ -37,6 +40,7 @@ describe("device library", () => {
     expect(d.stochastic.local_state.sigma).toBe(0.2);
     expect(d.geometry.Lg_nm).toBe(500);
     expect(validateDevice({ name: "x" }, base)).toBeNull();
+    expect(validateDevice({ name: "Unknown technology", technology: "unknown", device: base.device }, base)).toBeNull();
     expect(validateDevice({ name: "", device: {} }, base)).toBeNull();
     expect(validateDevice({ id: "builtin:paper", name: "copy", device: {} }, base)!.id).not.toBe("builtin:paper");
   });
@@ -54,6 +58,34 @@ describe("device library", () => {
     expect(new Set(parseStoredDevices(JSON.stringify({ v: 1, devices: [d, d] })).map((x) => x.id)).size).toBe(2);
     expect(parseStoredDevices("garbage")).toEqual([]);
   });
+  it.each(["PDSOI", "Bulk"])("preserves imported %s records without loading, placement or FDSOI conversion", (technology) => {
+    const raw = { id: `unsupported-${technology}`, name: technology, technology, device: { ...base.device, vg: -1.23 } };
+    const imported = parseLibraryJson(JSON.stringify(raw), base).devices[0];
+    expect(imported.technology).toBe(technology);
+    expect(isSupportedTechnology(imported.technology)).toBe(false);
+    expect(parseStoredDevices(exportLibraryJson([imported]))[0].technology).toBe(technology);
+    useDeviceLib.getState().importMany([imported]);
+    const before = useStore.getState().params;
+    expect(loadDeviceIntoParams(imported)).toBe(false);
+    expect(useStore.getState().params).toBe(before);
+    expect(() => stlRefFor(imported.id)).toThrow("Only FDSOI is supported");
+    useDeviceLib.getState().update(imported.id, { technology: "FDSOI", device: base.device });
+    expect(useDeviceLib.getState().devices[0].technology).toBe(technology);
+    expect(useDeviceLib.getState().devices[0].device.vg).toBe(-1.23);
+    useDeviceLib.getState().rename(imported.id, "Archived device");
+    expect(useDeviceLib.getState().devices[0].name).toBe("Archived device");
+  });
+
+  it.each(["PDSOI", "Bulk"])("retains unsupported %s circuit snapshots but blocks compilation and running", (technology) => {
+    const d = defaultDoc();
+    d.elements = [{ id: "stl-unsupported", name: "X1", kind: "STL", x: 0, y: 0, rot: 0, stl: { libId: "external", name: "Imported device", technology, device: base.device } }];
+    const restored = parseDoc(JSON.parse(exportDocJson(d)))!;
+    expect(restored.elements[0].stl?.technology).toBe(technology);
+    const conn = extractNets(restored);
+    expect(runErc(restored, conn)).toContainEqual(expect.objectContaining({ code: "unsupportedTechnology", level: "error", elementIds: ["stl-unsupported"] }));
+    expect(() => buildRequest(restored, conn, "deterministic", null)).toThrow("Only FDSOI is supported");
+  });
+
   it("makes names unique", () => {
     expect(uniqueName("A", ["a"])).toBe("A (2)");
     expect(uniqueName("A (2)", ["A", "A (2)"])).toBe("A (3)");

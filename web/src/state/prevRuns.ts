@@ -27,8 +27,8 @@ export const usePrevRuns = create<PrevRunsState>(() => ({ cur: {}, prev: {} }));
  * null: initialisation). A preset or mode change empties both maps; the result then on screen is not a
  * baseline, only the next completed run is.
  */
-export function nextPrevRuns(st: PrevRunsState, next: Pick<State, "results" | "preset" | "mode">, before: Pick<State, "results" | "preset" | "mode"> | null): PrevRunsState {
-  const reset = !!before && (next.preset !== before.preset || next.mode !== before.mode);
+export function nextPrevRuns(st: PrevRunsState, next: Pick<State, "results" | "preset" | "mode"> & Partial<Pick<State, "params">>, before: Pick<State, "results" | "preset" | "mode"> & Partial<Pick<State, "params">> | null): PrevRunsState {
+  const reset = !!before && (next.preset !== before.preset || next.mode !== before.mode || (next.params?.device.model ?? "detailed") !== (before.params?.device.model ?? "detailed"));
   let cur = reset ? {} : st.cur;
   let prev = reset ? {} : st.prev;
   for (const k of PREV_SLOTS) {
@@ -49,7 +49,7 @@ export function nextPrevRuns(st: PrevRunsState, next: Pick<State, "results" | "p
 if (typeof window !== "undefined") {
   usePrevRuns.setState(nextPrevRuns(usePrevRuns.getState(), useStore.getState(), null));
   useStore.subscribe((s, p) => {
-    if (s.results === p.results && s.preset === p.preset && s.mode === p.mode) return;
+    if (s.results === p.results && s.preset === p.preset && s.mode === p.mode && s.params.device.model === p.params.device.model) return;
     const st = usePrevRuns.getState();
     const n = nextPrevRuns(st, s, p);
     if (n !== st) usePrevRuns.setState(n, true);

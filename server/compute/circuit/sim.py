@@ -9,6 +9,7 @@ import numpy as np
 
 from server.engine_bridge import MODEL, ct
 from server.geometry_model import PACK_SIZE, pack_p
+from server.simple_model import is_simple
 
 from . import mna as K
 
@@ -106,7 +107,7 @@ class SolverConfig:
 
 @dataclass
 class RunOutput:
-    rec: np.ndarray                 # (n, 1 + (N-1) + nV + 7 nS + nC) decimated recording (empty with rec_sink)
+    rec: np.ndarray                 # (n, 1 + (N-1) + nV + 7 nS + nC + 3 nS) recording; final triplets are Ig, Ibg, Ib (empty with rec_sink)
     events: np.ndarray              # (n, 6) kind, stl, t, v_ds, v_src, I
     samples: np.ndarray             # (n_samp, 1 + 3 nS) t, (I_D, v_ds, reported latch flag) per STL; NaN = not reached
     steps: int
@@ -175,10 +176,24 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
     ci, cf = cfg.arrays(net, t_end, main_wave)
     nn, nv, ns, nc = net["n_nodes"], net["nV"], net["nS"], net["nC"]
     n = nn - 1 + nv + 2 * ns
+    simple = any(is_simple(p) for p in P)
+    if simple:
+        from .stochastic import SIMPLE_NOISE_ERROR, SIMPLE_METHOD_ERROR
+        if cfg.stochastic:
+            raise ValueError(SIMPLE_NOISE_ERROR)
+        if cfg.method != 0:
+            raise ValueError(SIMPLE_METHOD_ERROR)
+    body_nodes = np.asarray(net.get("sB", np.full(ns, -1)), dtype=np.int64)
+    bg_nodes = np.asarray(net.get("sBG", np.full(ns, -1)), dtype=np.int64)
+    ports = (body_nodes >= 0) | (bg_nodes >= 0)
+    if np.any(ports) and cfg.stochastic:
+        raise ValueError("five-terminal-stochastic-unavailable: connected BG/B requires deterministic mode")
+    if np.any(ports) and cfg.method != 0:
+        raise ValueError("five-terminal-method-unavailable: connected BG/B requires BE integration")
     P = np.ascontiguousarray(P, dtype=np.float64).copy()
     # Bench callers can supply raw geometry vectors, whereas custom
     # netlists already carry packed per-device electrostatic lookup tables.
-    if ns and 26 < P.shape[1] < PACK_SIZE:
+    if ns and ((26 < P.shape[1] < PACK_SIZE) or (np.any(ports) and P.shape[1] == 26)):
         P = np.vstack([pack_p(p, force=True) for p in P])
     Pbase = P.copy()
     x = np.zeros(n)
@@ -190,16 +205,19 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
     ls = np.zeros((ns, 2)) if ls_init is None else np.ascontiguousarray(ls_init, dtype=np.float64).reshape(ns, 2).copy()
     ss = np.zeros((ns, K.N_SS))
     part = np.zeros((ns, K.N_PART))
+    part[:, K.P_BNODE] = body_nodes
+    part[:, K.P_BGNODE] = bg_nodes
+    part[:, K.P_PORTS] = ports
     # cells whose V_GS can move (source not grounded, or gate not held by a constant voltage source to ground) get
     # the d/dV_GS columns in their Jacobian; the benches (grounded source, DC gate source) do not
     for k in range(ns):
-        part[k, K.P_VGSJ] = 1.0 if _vgs_moves(net, k) else 0.0
+        part[k, K.P_VGSJ] = 1.0 if ports[k] or _vgs_moves(net, k) else 0.0
     sens = np.zeros((ns, n))
     cv = np.zeros(nc)
     cI = np.zeros(nc)
     sf = np.zeros(K.N_SF)
     si = np.zeros(K.N_SI, np.int64)
-    W = 1 + (nn - 1) + nv + 7 * ns + nc
+    W = 1 + (nn - 1) + nv + 7 * ns + nc + 3 * ns
     rec = np.zeros((REC_CAP, W))
     evb = np.zeros((EV_CAP, K.N_EVC))
     nsamp = len(net["samp"])
@@ -267,6 +285,10 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
         from .element import stl_eval
         for k in range(ns):
             ku = nn - 1 + nv + 2 * k
+            # Free-body folds do not diagnose stability after adding a body load
+            # or clamp. Explicit initial='zero' remains available for that network.
+            if body_nodes[k] >= 0:
+                continue
             if win[k, K.W_UI] < x[ku] < win[k, K.W_UJ]:
                 pk = Pdc[k].copy()
                 pk[11] = (x[a["sG"][k] - 1] if a["sG"][k] > 0 else 0.0) - (x[a["sS"][k] - 1] if a["sS"][k] > 0 else 0.0)
@@ -281,6 +303,9 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
         hint = " or start from discharged capacitors (tran.initial = 'zero')" if (used == "op" and nc) else ""
         if ns == 0:
             raise ValueError(f"DC operating point at t = 0 did not converge (check transistor polarity, bias and connections{hint})")
+        if simple:
+            raise ValueError("DC operating point at t = 0 did not converge: Simple Model is a forward-operating "
+                             f"STL approximation requiring -0.05 V <= r < VBR; check the bias and body load{hint}")
         raise ValueError("DC operating point at t = 0 did not converge (check the bias: the STL model is "
                          f"valid only where the source barrier and the neutral base exist{hint})")
     ok = K.init_state(x, ci, cf, a["rA"], a["rB"], a["rG"], a["cA"], a["cB"], a["cC"], a["vA"], a["vB"], a["vW"],
@@ -314,6 +339,8 @@ def simulate(net: dict, cfg: SolverConfig, P: np.ndarray, t_end: float, main_wav
         stl_eval(x[ku], x[ku + 1], P[k], na, vbi, rg, fg, table, ev0)
         row[c:c + 7] = [x[ku], x[ku + 1], ev0[3], ev0[1], ev0[2], ls[k, 0], ls[k, 1]]
         c += 7
+    for k in range(ns):
+        row[c + nc + 3 * k:c + nc + 3 * k + 3] = part[k, [K.P_IGTERM, K.P_IBGTERM, K.P_IBTERM]]
     row[c:c + nc] = cI                           # capacitor currents at t = 0 (0 at the DC operating point)
     if rec_sink is not None:
         rec_sink(row[None, :].copy(), np.zeros((0, K.N_EVC)))

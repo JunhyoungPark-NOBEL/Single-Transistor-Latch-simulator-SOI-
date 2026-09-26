@@ -1,6 +1,7 @@
+import { hasSimpleModel, SIMPLE_LIVE_REQUIRED } from "../params/model";
 // Job orchestration: backend selection (HTTP or mock), compute jobs per result key, run groups for the
 // Run button, auto-run, and lazy loading of measured data / design map.
-import { ApiError, httpBackend, JobAborted, runJob, type Backend } from "../api/client";
+import { ApiError, authenticateServer, configureHttpBackend, httpBackend, JobAborted, readServerSession, retireHttpBackend, runJob, type Backend } from "../api/client";
 import { translate } from "../i18n";
 import { checkResult } from "../api/guards";
 import { normalizeDesignMap, normalizeMeasured } from "../api/measured";
@@ -16,95 +17,177 @@ import { useStore } from "./store";
 import { useLayout } from "./layout";
 import { csvmPayload, useForcing } from "../device/forcing";
 import { GEOMETRY_LIVE_REQUIRED, geometryError, hasChangedGeometry } from "../api/geometryPolicy";
+import { connectionError, getSessionToken, selectEndpoint, setSessionToken, useConnection } from "../api/connection";
+import { usePrevRuns } from "./prevRuns";
 
-let backend: Backend = httpBackend;
+const offlineBackend: Backend = {
+  isMock: false,
+  health: async () => ({ ok: false }),
+  meta: async () => { throw new Error("connection-required"); },
+  submit: async () => { throw new Error("connection-required"); },
+  job: async () => { throw new Error("connection-required"); },
+  cancel: async () => undefined,
+  measured: async () => { throw new Error("connection-required"); },
+  designMap: async () => { throw new Error("connection-required"); },
+};
+let backend: Backend = offlineBackend;
 let mockBackend: Backend | null = null;
-/** Static snapshot (snapshot/index.json next to the page) — probed once, used instead of the demo backend. */
 let snapshotProbe: Promise<Snapshot | null> | null = null;
-let snapshotBackend: Backend | null = null;
 let markReady: () => void = () => undefined;
-/** Resolves once the first backend probe finished (HTTP or mock chosen). */
+/** Resolves after the initial connection attempt, including the offline state. */
 export const backendReady: Promise<void> = new Promise((r) => (markReady = r));
 const tokens = new Map<string, number>();
 let tokenSeq = 0;
+let backendEpoch = 0;
+let probeInFlight: Promise<void> | null = null;
 
-export function getBackend(): Backend {
-  return backend;
+export function getBackend(): Backend { return backend; }
+export function getBackendEpoch(): number { return backendEpoch; }
+export async function awaitBackendReady(): Promise<void> {
+  await backendReady;
+  while (probeInFlight) await probeInFlight;
 }
 
-function useMock(forced: boolean) {
+/** Every active request keeps its old backend; late completions are discarded. */
+function invalidateConnection(): number {
+  backendEpoch++;
+  tokens.clear();
+  retireHttpBackend();
+  useStore.setState({ results: {}, activeRun: null, measured: { status: "idle" }, designMap: { status: "idle" }, health: null });
+  usePrevRuns.setState({ cur: {}, prev: {} });
+  return backendEpoch;
+}
+
+/** A revoked session or lost transport cannot remain labelled as a live connection. */
+export function reportConnectionFailure(error: unknown, epoch: number): void {
+  if (epoch !== backendEpoch || !(error instanceof ApiError) || ![0, 401, 403].includes(error.status)) return;
+  invalidateConnection();
+  backend = offlineBackend;
+  useStore.setState({ backend: "offline" });
+  const auth = error.status === 401 || error.status === 403;
+  if (auth) setSessionToken(null);
+  useConnection.setState({ status: auth ? "auth-required" : "offline", error: error.message });
+}
+
+function useMock(): void {
   mockBackend ??= createMockBackend();
   backend = mockBackend;
-  useStore.setState({ backend: forced ? "mock" : "offline", forcedMock: forced, health: { ok: true, version: "mock", workers: 0 } });
+  useStore.setState({ backend: "mock", forcedMock: true, health: { ok: true, version: "mock", workers: 0 } });
+  useConnection.setState({ status: "demo", error: null });
 }
 
-/** Backend unreachable: use the static snapshot when the page ships one, else the demo backend. */
-async function useSnapshotOrMock(): Promise<void> {
+/** Offline recordings are exact requests only. Missing results are never synthesized. */
+async function useSnapshotOrOffline(epoch: number, error: string): Promise<void> {
+  backend = offlineBackend;
+  useStore.setState({ backend: "offline", forcedMock: false, health: null });
+  useConnection.setState({ status: "offline", error });
+  if (useConnection.getState().endpoint) return;
   snapshotProbe ??= loadSnapshot();
   const snap = await snapshotProbe;
-  if (!snap) {
-    useMock(false);
-    return;
-  }
-  snapshotBackend ??= createSnapshotBackend(snap, { fallback: () => (mockBackend ??= createMockBackend()) });
-  backend = snapshotBackend;
-  useStore.setState({ backend: "snapshot", forcedMock: false, health: await snapshotBackend.health() });
+  if (epoch !== backendEpoch || !snap) return;
+  const recorded = createSnapshotBackend(snap, { fallback: () => offlineBackend, exactOnly: true });
+  recorded.isCurrent = () => epoch === backendEpoch;
+  backend = recorded;
+  useStore.setState({ backend: "snapshot", forcedMock: false, health: await recorded.health() });
+  useConnection.setState({ status: "snapshot", error: null });
   if (snap.index.meta?.presets) useStore.getState().setMeta(snap.index.meta);
 }
 
 function forcedMockFromUrl(): boolean {
+  if (!import.meta.env.DEV) return false;
   try {
     const q = new URLSearchParams(window.location.search);
     return q.get("mock") === "1" || q.get("mock") === "true";
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
-/** Probe /api/health; switch to the HTTP backend when it answers, otherwise to the mock backend. */
-export function initBackend(): Promise<void> {
-  return probeBackend().finally(() => markReady());
+/** Explicit reconnect, or the initial probe. This also retires jobs from an earlier connection. */
+export function initBackend(password?: string): Promise<void> {
+  const epoch = invalidateConnection();
+  const endpoint = useConnection.getState().endpoint;
+  backend = configureHttpBackend({ endpoint, token: getSessionToken() });
+  const task = probeBackend(epoch, password).finally(() => {
+    markReady();
+    if (probeInFlight === task) probeInFlight = null;
+  });
+  probeInFlight = task;
+  return task;
 }
 
-async function probeBackend(): Promise<void> {
-  if (forcedMockFromUrl()) {
-    useMock(true);
-    return;
-  }
-  useStore.setState({ backend: "checking" });
+export async function connectToServer(endpoint: string, password?: string): Promise<void> {
+  selectEndpoint(endpoint);
+  await initBackend(password);
+  const current = useStore.getState();
+  if (current.backend === "online" && current.autoRun && current.tab === "device" && current.mode === "deterministic") void runDeterministic();
+}
+
+async function probeBackend(epoch: number, password?: string): Promise<void> {
+  if (forcedMockFromUrl()) { useMock(); return; }
+  useStore.setState({ backend: "checking", forcedMock: false });
+  useConnection.setState({ status: "checking", error: null });
+  const target = httpBackend;
+  const config = { endpoint: useConnection.getState().endpoint, token: getSessionToken() };
   try {
-    const h = await httpBackend.health();
-    if (!h || !h.ok) throw new Error("unhealthy");
-    const wasMock = backend !== httpBackend; // mock or snapshot data → reload measured data from the server
-    backend = httpBackend;
-    useStore.setState({ backend: "online", health: h, ...(wasMock ? { measured: { status: "idle" as const }, designMap: { status: "idle" as const } } : {}) });
-    try {
-      const meta = (await httpBackend.meta()) as Meta;
-      if (meta && meta.presets) useStore.getState().setMeta(meta);
-    } catch {
-      /* keep built-in presets */
+    const h = await target.health() as Awaited<ReturnType<Backend["health"]>> & { access_gate?: string; auth_required?: boolean };
+    if (epoch !== backendEpoch) return;
+    if (!h?.ok) throw new Error("unhealthy");
+    if (h.access_gate === "misconfigured") throw new Error("server-misconfigured");
+    if (h.auth_required || h.access_gate === "on") {
+      const session = password ? await authenticateServer(config, password) : await readServerSession(config);
+      if (epoch !== backendEpoch) return;
+      if (!session.authenticated) throw new ApiError("authentication-required", 401);
+      if (password) {
+        setSessionToken(session.token ?? null);
+        backend = configureHttpBackend({ endpoint: config.endpoint, token: getSessionToken() });
+      }
     }
-  } catch {
-    await useSnapshotOrMock();
+    const connected = httpBackend;
+    try {
+      const meta = await connected.meta();
+      if (epoch !== backendEpoch) return;
+      if (meta?.presets) useStore.getState().setMeta(meta);
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) throw e;
+      // Older compatible servers may not provide metadata; bundled parameter definitions remain available.
+    }
+    if (epoch !== backendEpoch) return;
+    backend = connected;
+    useStore.setState({ backend: "online", forcedMock: false, health: h });
+    useConnection.setState({ status: "online", error: null });
+  } catch (e) {
+    if (epoch !== backendEpoch) return;
+    retireHttpBackend();
+    const message = (e as Error).message || "network error";
+    if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+      setSessionToken(null);
+      backend = offlineBackend;
+      useStore.setState({ backend: "offline", health: null });
+      useConnection.setState({ status: "auth-required", error: message });
+      return;
+    }
+    await useSnapshotOrOffline(epoch, message);
   }
 }
 
-/** Periodic health check (updates the status dot; reconnects when an offline backend comes back). */
+/** Health checks never replace real results with a demonstration curve. */
 export function startHealthPolling(intervalMs = 20000): () => void {
+  let pending = false;
   const id = setInterval(async () => {
     const s = useStore.getState();
-    if (s.forcedMock || s.backend === "snapshot") return; // snapshot: re-probe from the status dot instead
+    if (pending || probeInFlight || s.forcedMock || s.backend === "snapshot" || useConnection.getState().status === "auth-required") return;
+    pending = true;
+    const epoch = backendEpoch;
     try {
+      if (s.backend !== "online") { await initBackend(); return; }
       const h = await httpBackend.health();
-      if (!h || !h.ok) throw new Error("unhealthy");
-      if (s.backend !== "online") {
-        backend = httpBackend;
-        useStore.setState({ backend: "online", health: h, measured: { status: "idle" }, designMap: { status: "idle" } });
-        httpBackend.meta().then((m) => m?.presets && useStore.getState().setMeta(m)).catch(() => undefined);
-      } else useStore.setState({ health: h });
-    } catch {
-      if (s.backend === "online") void useSnapshotOrMock();
-    }
+      if (epoch !== backendEpoch) return;
+      if (!h?.ok) throw new Error("unhealthy");
+      useStore.setState({ health: h });
+    } catch (e) {
+      if (epoch !== backendEpoch) return;
+      const next = invalidateConnection();
+      await useSnapshotOrOffline(next, (e as Error).message || "network error");
+    } finally { pending = false; }
   }, intervalMs);
   return () => clearInterval(id);
 }
@@ -117,19 +200,22 @@ export interface RunResult<T> {
 
 /** Run one compute job into result slot `key`. A newer run of the same key supersedes (and cancels) the older one. */
 export async function runKey<T = unknown>(key: string, kind: Kind, payload: unknown): Promise<RunResult<T>> {
-  await backendReady;
+  await awaitBackendReady();
+  const epoch = backendEpoch;
+  const target = backend;
   const st = useStore.getState();
   logJob(key);
   const token = ++tokenSeq;
   tokens.set(key, token);
   const payloadKey = canonical({ kind, payload });
   const startedAt = performance.now();
-  const isMock = backend.isMock;
+  const isMock = target.isMock;
   st.patchResult(key, { status: "queued", kind, progress: 0, message: "", error: undefined, startedAt, elapsed: 0, payloadKey, token });
   try {
-    if (backend.isMock && hasChangedGeometry(payload)) throw new Error(GEOMETRY_LIVE_REQUIRED);
-    const data = await runJob<T>(backend, kind, payload, {
-      isAborted: () => tokens.get(key) !== token,
+    if (target.isMock && (hasSimpleModel(payload) || kind === "simple_calibrate")) throw new Error(SIMPLE_LIVE_REQUIRED);
+    if (target.isMock && hasChangedGeometry(payload)) throw new Error(GEOMETRY_LIVE_REQUIRED);
+    const data = await runJob<T>(target, kind, payload, {
+      isAborted: () => tokens.get(key) !== token || epoch !== backendEpoch,
       // HTTP 429: the server queue is full — say so and retry once after Retry-After instead of failing
       onBusy: (sec) => {
         if (tokens.get(key) !== token) return;
@@ -164,7 +250,8 @@ export async function runKey<T = unknown>(key: string, kind: Kind, payload: unkn
     if (tokens.get(key) !== token) return { ok: false };
     const busy = e instanceof ApiError && e.status === 429;
     const detail = (e as Error).message || String(e);
-    const msg = busy ? translate(useStore.getState().lang, "busy.failed") : geometryError(detail, useStore.getState().lang);
+    const msg = busy ? translate(useStore.getState().lang, "busy.failed") : connectionError(geometryError(detail, useStore.getState().lang), useStore.getState().lang);
+    reportConnectionFailure(e, epoch);
     useStore.getState().patchResult(key, { status: "error", error: msg, progress: 0, message: "" });
     return { ok: false };
   }
@@ -222,26 +309,18 @@ export function cancelActive() {
   useStore.setState({ activeRun: { ...ar, finishedAt: performance.now() } });
 }
 
-/** Add a key to the running group (the Run bar then waits for it too). */
-function extendGroup(id: number, key: string) {
-  const ar = useStore.getState().activeRun;
-  if (ar && ar.startedAt === id && ar.finishedAt === undefined && !ar.keys.includes(key)) useStore.setState({ activeRun: { ...ar, keys: [...ar.keys, key] } });
-}
-
 export async function runDeterministic() {
   if (useForcing.getState().forcing === "csvm") return runCsvm();
   const s = useStore.getState();
   const p = s.params;
   if (useLayout.getState().layout === "simple") {
     const gid = beginGroup(["branches"], "deterministic");
-    try {
-      const r = await runKey<BranchesResult>("branches", "branches", branchesPayload(p));
-      // no latch at this V_G: the V_G curve tells the answer bar where the latch window is
-      if (r.ok && r.data && !r.data.latch) {
-        extendGroup(gid, "vg_curve");
-        await runKeyIfChanged("vg_curve", "vg_curve", vgCurvePayload(p, useStore.getState().vgRange));
-      }
-    } finally { endGroup(gid); }
+    try { await runKey("branches", "branches", branchesPayload(p)); } finally { endGroup(gid); }
+    return;
+  }
+  if (p.device.model === "simple") {
+    const gid = beginGroup(["branches", "vg_curve"], "deterministic");
+    try { await Promise.all([runKey("branches", "branches", branchesPayload(p)), runKeyIfChanged("vg_curve", "vg_curve", vgCurvePayload(p, s.vgRange))]); } finally { endGroup(gid); }
     return;
   }
   const keys = ["branches", "charge_balance", "vg_curve"];
@@ -249,7 +328,7 @@ export async function runDeterministic() {
   const cbFixed = s.cbVd;
   const jobs: Promise<unknown>[] = [
     runKey<BranchesResult>("branches", "branches", branchesPayload(p)).then((r) => {
-      if (cbFixed == null) {
+      if (r.ok && cbFixed == null) {
         const f = r.data?.folds;
         const vd = midFold(f?.V_LU, f?.V_LD, 0.8 * p.sweep.vd_max_V);
         return runKey("charge_balance", "charge_balance", chargeBalancePayload(p, vd));
@@ -283,63 +362,14 @@ export async function runStochastic() {
   endGroup(gid);
 }
 
-/** Result slot done for exactly this request. */
-function freshFor(key: string, kind: Kind, payload: unknown): boolean {
-  const e = useStore.getState().results[key];
-  return !!e && e.status === "done" && e.data !== undefined && e.dataKey === canonical({ kind, payload });
-}
-const inFlight = (key: string) => {
-  const st = useStore.getState().results[key]?.status;
-  return st === "running" || st === "queued";
-};
-
-/**
- * "모두 보기" shows panels whose results the simple layout never computes (charge balance and V_G curve;
- * hazard in the stochastic mode). On switching to it, run the ones missing or stale for the current
- * parameters, but only once the main result (I–V branches / MC sweeps) exists for these parameters: opening
- * the layout never starts the main run by itself.
- */
-export async function fillAllLayout() {
-  const s = useStore.getState();
-  if (s.tab !== "device" || useForcing.getState().forcing === "csvm" || useLayout.getState().layout !== "all") return;
-  const p = s.params;
-  const jobs: [string, Kind, unknown][] = [];
-  if (s.mode === "deterministic") {
-    if (!freshFor("branches", "branches", branchesPayload(p))) return;
-    const f = (s.results.branches?.data as BranchesResult | undefined)?.folds;
-    const vd = s.cbVd ?? midFold(f?.V_LU, f?.V_LD, 0.8 * p.sweep.vd_max_V);
-    jobs.push(["charge_balance", "charge_balance", chargeBalancePayload(p, vd)], ["vg_curve", "vg_curve", vgCurvePayload(p, s.vgRange)]);
-  } else {
-    if (!freshFor("sweep_mc", "sweep_mc", sweepMcPayload(p))) return;
-    jobs.push(["hazard", "hazard", hazardPayload(p)]);
-  }
-  const todo = jobs.filter(([key, kind, payload]) => !freshFor(key, kind, payload) && !inFlight(key));
-  if (!todo.length) return;
-  const gid = beginGroup(todo.map(([key]) => key), runContext("device", s.mode) ?? s.mode);
-  try {
-    await Promise.all(todo.map(([key, kind, payload]) => runKey(key, kind, payload)));
-  } finally {
-    endGroup(gid);
-  }
-}
-
-/** Fill the "모두 보기" panels when the layout switches to it (App mounts this once). */
-export function startAllLayoutFill(): () => void {
-  return useLayout.subscribe((st, prev) => {
-    if (st.layout === "all" && prev.layout !== "all") void fillAllLayout();
-  });
-}
-
 /** Device CSVM uses the same live MNA/body-state solver as the free-form circuit editor. */
 export async function runCsvm() {
-  await backendReady;
+  await awaitBackendReady();
   const s = useStore.getState();
   const payload = csvmPayload(s.params, s.mode, useForcing.getState().settings);
   const gid = beginGroup(["device_csvm"], `csvm ${s.mode}`);
   try {
-    // a static snapshot may replay a recorded run of exactly this request; anything else needs the live solver
-    const recorded = s.backend === "snapshot" && !!(await snapshotProbe)?.has("circuit", payload);
-    if (s.backend !== "online" && !recorded) {
+    if (s.backend !== "online") {
       s.patchResult("device_csvm", {
         kind: "circuit", status: "error", progress: 0,
         error: s.lang === "ko" ? "CSVM은 과도 해석 서버 연결이 필요합니다." : "CSVM requires a live transient solver connection.",
@@ -420,6 +450,7 @@ export function runCurrent() {
   const s = useStore.getState();
   if (s.tab === "circuit") return circuitRunOverride ? circuitRunOverride() : runCircuit();
   if (s.tab === "validation") return runValidationIV();
+  if (s.tab !== "device") return;
   return s.mode === "stochastic" ? runStochastic() : runDeterministic();
 }
 
@@ -428,12 +459,15 @@ export async function loadMeasured(force = false) {
   const s = useStore.getState();
   if (!force && (s.measured.status === "loading" || s.measured.status === "done")) return;
   useStore.setState({ measured: { status: "loading" } });
-  await backendReady;
+  await awaitBackendReady();
+  const epoch = backendEpoch;
+  const target = backend;
   try {
-    const raw = await backend.measured();
+    const raw = await target.measured();
+    if (epoch !== backendEpoch) return;
     useStore.setState({ measured: { status: "done", data: normalizeMeasured(raw) } });
   } catch (e) {
-    useStore.setState({ measured: { status: "error", error: (e as Error).message } });
+    if (epoch === backendEpoch) useStore.setState({ measured: { status: "error", error: connectionError((e as Error).message, useStore.getState().lang) } });
   }
 }
 
@@ -441,12 +475,15 @@ export async function loadDesignMap(force = false) {
   const s = useStore.getState();
   if (!force && (s.designMap.status === "loading" || s.designMap.status === "done")) return;
   useStore.setState({ designMap: { status: "loading" } });
-  await backendReady;
+  await awaitBackendReady();
+  const epoch = backendEpoch;
+  const target = backend;
   try {
-    const raw = await backend.designMap();
+    const raw = await target.designMap();
+    if (epoch !== backendEpoch) return;
     useStore.setState({ designMap: { status: "done", data: normalizeDesignMap(raw) } });
   } catch (e) {
-    useStore.setState({ designMap: { status: "error", error: (e as Error).message } });
+    if (epoch === backendEpoch) useStore.setState({ designMap: { status: "error", error: connectionError((e as Error).message, useStore.getState().lang) } });
   }
 }
 

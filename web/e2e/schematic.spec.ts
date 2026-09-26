@@ -280,7 +280,7 @@ test.describe("schematic editor (live backend on :8000)", () => {
   test.beforeEach(async ({ request }) => {
     let ok = false;
     try {
-      const r = await request.get(`${process.env.STL_API ?? "http://127.0.0.1:8000"}/api/health`, { timeout: 3000 });
+      const r = await request.get("http://127.0.0.1:8000/api/health", { timeout: 3000 });
       ok = r.ok() && (await r.json()).ok === true;
     } catch {
       ok = false;

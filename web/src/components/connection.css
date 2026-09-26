@@ -1,0 +1,23 @@
+.connection-button { display:inline-flex;align-items:center;gap:7px;min-height:32px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text-2);font:inherit;font-size:11px;white-space:nowrap;cursor:pointer; }
+.connection-button:hover { background:var(--surface-2);border-color:var(--border-strong); }
+.connection-button:focus-visible { outline:none;box-shadow:var(--focus); }
+.connection-dot { display:inline-block;flex:0 0 6px;width:6px;height:6px;border-radius:50%;background:var(--faint); }
+.connection-dot.online { background:var(--ok); }
+.connection-dot.auth-required,.connection-dot.demo,.connection-dot.snapshot { background:var(--warn); }
+.connection-dot.checking { background:var(--accent);animation:connection-pulse 1.2s ease infinite; }
+.connection-form { display:grid;gap:16px; }
+.connection-modes { display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px; }
+.connection-modes button { border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;padding:9px;border-radius:5px;cursor:pointer; }
+.connection-modes button.selected { color:var(--text);background:var(--surface);box-shadow:var(--shadow-1); }
+.connection-field { display:grid;gap:7px;font-size:12px;color:var(--text-2); }
+.connection-field small { margin-left:5px;color:var(--muted);font-size:11px; }
+.connection-field input { width:100%;height:38px;box-sizing:border-box;background:var(--surface);border:1px solid var(--border-strong);border-radius:6px;color:var(--text);padding:8px 10px;font:inherit; }
+.connection-field input:focus { outline:none;border-color:var(--accent);box-shadow:var(--focus); }
+.connection-local-note,.connection-note { margin:0;color:var(--muted);font-size:11px;line-height:1.6; }
+.connection-result { display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px; }
+.connection-result.online { color:var(--ok); }
+.connection-error { margin:0;color:var(--err);font-size:12px;line-height:1.6;overflow-wrap:anywhere; }
+.connection-help { color:var(--muted);text-decoration:none;font-size:11px; }
+.connection-help:hover { color:var(--accent); }
+@keyframes connection-pulse { 50% { opacity:.35; } }
+@media (prefers-reduced-motion:reduce) { .connection-dot.checking { animation:none; } }

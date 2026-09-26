@@ -1,6 +1,6 @@
 // Connectivity: nets from union-find over pins, wire end points (incl. T-junctions on a wire's interior)
 // and net labels (same text = same net; "0"/"gnd" = ground). Also junction dots and unconnected pins.
-import { onWireInterior, pinPositions, ptKey, type PinPos, type Pt, type SchematicDoc, type Wire } from "./model";
+import { isOptionalStlPin, onWireInterior, pinPositions, ptKey, type PinPos, type Pt, type SchematicDoc, type Wire } from "./model";
 
 export class UnionFind {
   private parent = new Map<string, string>();
@@ -63,6 +63,17 @@ export interface Connectivity {
   junctions: Pt[];
   /** Pins with nothing else attached at their location. */
   unconnected: PinPos[];
+}
+
+/** Optional terminals with no wire, label or other pin use their intrinsic device defaults. */
+export function optionalPinConnected(elId: string, pin: string, conn: Connectivity): boolean {
+  const net = conn.pinNet.get(pinId(elId, pin));
+  return !!net && (net.wires.length > 0 || net.allPins.some((p) => p.el.id !== elId || p.pin !== pin));
+}
+
+/** Omitted BG/B pins are not independent simulator nodes. */
+export function isCircuitNet(net: NetInfo, conn: Connectivity): boolean {
+  return net.pins.some((p) => !isOptionalStlPin(p.el, p.pin) || optionalPinConnected(p.el.id, p.pin, conn));
 }
 
 export const pinId = (elId: string, pin: string) => `${elId}:${pin}`;

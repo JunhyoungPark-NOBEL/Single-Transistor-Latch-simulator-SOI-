@@ -68,18 +68,40 @@ describe("CSVM transient measurements", () => {
     expect(measured.frequency_Hz).toBe(0.5);
   });
 
-  it("does not count repeated up events without an intervening down event as oscillations", () => {
+  it("measures actual voltage cycles even when current thresholds miss down events", () => {
     const result = oscillator();
     result.events = result.events.filter((event) => event.kind === "latch_up");
-    expect(analyzeCsvm(result)).toMatchObject({ status: "no-oscillation", observedCycles: 0, frequency_Hz: null });
+    expect(analyzeCsvm(result)).toMatchObject({ source: "waveform", status: "oscillating", vTop_V: 4, vBottom_V: 2, frequency_Hz: 0.5 });
   });
 
-  it("reports a single latch as no observed oscillation, ignoring predicted summaries", () => {
+  it("recovers later cycles when only the first overshoot crosses the latch thresholds", () => {
+    const result = oscillator();
+    result.events = result.events.slice(0, 2);
+    const original = JSON.stringify(result);
+    expect(analyzeCsvm(result)).toMatchObject({ source: "waveform", status: "oscillating", vTop_V: 4, vBottom_V: 2, frequency_Hz: 0.5, cycles: 4 });
+    expect(JSON.stringify(result)).toBe(original);
+    expect(result.runs[0].signals[0].values[1]).toBe(7);
+  });
+
+  it("does not report a subharmonic when events skip alternate voltage cycles", () => {
+    const result = oscillator(20);
+    result.events = result.events.filter((event) => event.t % 4 === 1 || event.t % 4 === 2);
+    expect(analyzeCsvm(result)).toMatchObject({ source: "waveform", status: "oscillating", frequency_Hz: 0.5 });
+  });
+
+  it("does not invent voltage cycles from repeated events on a monotonic trace", () => {
+    const result = oscillator();
+    result.events = result.events.filter((event) => event.kind === "latch_up");
+    result.runs[0].signals[0].values = result.runs[0].t.map((time) => time! / 4);
+    expect(analyzeCsvm(result)).toMatchObject({ status: "no-oscillation", frequency_Hz: null });
+  });
+
+  it("keeps frequency unavailable after a single peak, ignoring predicted summaries", () => {
     const result = trace([0, 1, 2, 3, 4], [0, 4, 2.7, 2.65, 2.65], [
       { run: 0, cell: "X1", t: 1, kind: "latch_up" },
     ]);
     result.summary = [{ key: "X1.f_osc", label: { ko: "예측", en: "Prediction" }, value: 123, unit: "Hz" }];
-    expect(analyzeCsvm(result)).toMatchObject({ status: "no-oscillation", frequency_Hz: null });
+    expect(analyzeCsvm(result)).toMatchObject({ status: "insufficient-cycles", frequency_Hz: null, cycles: 0 });
   });
 
   it("does not confuse a constant voltage or numerical ripple with oscillation", () => {

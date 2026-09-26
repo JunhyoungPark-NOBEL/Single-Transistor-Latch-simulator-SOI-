@@ -3,7 +3,7 @@
 import type { Data, Layout, Shape } from "plotly.js";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Arr, BranchesResult, ChargeBalanceResult, DeviceBlock, MeasuredData, VgCurveResult } from "../api/types";
+import type { Arr, BranchesResult, ChargeBalanceResult, MeasuredData, VgCurveResult } from "../api/types";
 import { selectMoreTab } from "../components/MoreCard";
 import { NO_CSV, Panel, type PanelMenuItem } from "../components/Panel";
 import { ToolPopover } from "../components/PanelMenu";
@@ -15,12 +15,11 @@ import { SubText } from "../plots/SubText";
 import { currentAxis, HOVER_IV, type PlotPalette } from "../plots/theme";
 import { useIsAll } from "../state/layout";
 import { usePrevRun } from "../state/prevRuns";
-import { loadMeasured, runChargeBalance, runVgCurve } from "../state/runner";
+import { runChargeBalance, runVgCurve } from "../state/runner";
 import { useStore } from "../state/store";
-import { fmtSI, isNum } from "../utils/format";
-import { isReferenceGeometry, resolveBackGate } from "../params/geometry";
+import { isNum } from "../utils/format";
 import { chargeBalancePayload, midFold, round } from "../utils/payload";
-import { abs, arrowIndices, interpAt, isPaperReference, logRange, nums, pick, pos, rangeWithin, useCurrentKey, useDeviceKeys, useEntry, usePalette } from "./common";
+import { abs, arrowIndices, interpAt, logRange, nums, pick, pos, rangeWithin, useCurrentKey, useDeviceKeys, useEntry, usePalette } from "./common";
 
 export function Seg<V extends string>({ value, options, onChange, label }: { value: V; options: { v: V; label: string }[]; onChange: (v: V) => void; label: string }) {
   return (
@@ -115,59 +114,25 @@ export const ROW_LEGEND: Partial<Layout>["legend"] = { orientation: "h", x: 0, x
 
 type Ann = NonNullable<Partial<Layout>["annotations"]>[number];
 
-/** Boxed "V_LU 3.704 V" / "V_LD 2.598 V" labels at the two folds (quantity colours), both up-left of their fold:
- *  the HRS branch comes into V_LU from below-left and the LRS branch leaves V_LD to the right, so that corner is
- *  empty. V_LD sits higher (−48 px vs −24 px) so the two boxes never share a row, even in the linear view on a
- *  phone-width plot where both folds are near zero current. */
-function foldAnnotations(f: BranchesResult["folds"], c: PlotPalette, yv: (v: number) => number): Ann[] {
-  const out: Ann[] = [];
-  if (isNum(f.V_LU) && isNum(f.I_LU) && f.I_LU > 0)
-    out.push({ x: f.V_LU, y: yv(f.I_LU), xref: "x", yref: "y", text: `V<sub>LU</sub> ${f.V_LU.toFixed(3)} V`, showarrow: true, arrowhead: 0, arrowcolor: c.hrs, ax: -62, ay: -24, font: { color: c.hrs, size: 11.5 }, bgcolor: c.surface, bordercolor: c.hrs, borderwidth: 1, borderpad: 3 });
-  if (isNum(f.V_LD) && isNum(f.I_LD) && f.I_LD > 0)
-    out.push({ x: f.V_LD, y: yv(f.I_LD), xref: "x", yref: "y", text: `V<sub>LD</sub> ${f.V_LD.toFixed(3)} V`, showarrow: true, arrowhead: 0, arrowcolor: c.lrs, ax: -58, ay: -48, font: { color: c.lrs, size: 11.5 }, bgcolor: c.surface, bordercolor: c.lrs, borderwidth: 1, borderpad: 3 });
-  return out;
-}
-
-/** Vertical jump arrow (data coordinates) from (x, from) to (x, to). */
-function jumpArrow(x: number, from: number, to: number, color: string, yv: (v: number) => number): Ann {
-  return {
-    x, y: yv(to), ax: x, ay: yv(from), xref: "x", yref: "y", axref: "x", ayref: "y", text: "", showarrow: true,
-    arrowhead: 2, arrowsize: 1.1, arrowwidth: 1.8, arrowcolor: color, standoff: 2, startstandoff: 7,
-  };
-}
-
-/** The measured median of the reference record applies only to the reference device at its recorded bias. */
-function measuredApplies(d: DeviceBlock): boolean {
-  return d.preset === "paper" && isPaperReference(d) && isReferenceGeometry(d.geometry) && resolveBackGate(d.vbg) === 0;
-}
-
-// ---------------------------------------------------------------- I_D–V_D voltage sweep (hero)
+// ---------------------------------------------------------------- I_D–V_D voltage sweep
 export function IvPanel() {
   const t = useT();
   const c = usePalette();
   const params = useStore((s) => s.params);
-  const measured = useStore((s) => s.measured);
   const { entry, data } = useEntry<BranchesResult>("branches");
   const prev = usePrevRun<BranchesResult>("branches");
   const { branches: key } = useDeviceKeys();
   const [log, setLog] = useState(true);
   const [showPrev, setShowPrev] = useState(false);
-  // the measured median of the reference record: behind ⋯, off by default
-  const [showMeas, setShowMeas] = useState(false);
   const isAll = useIsAll();
   const L = (k: keyof typeof DEV) => t.l(DEV[k]);
   const ghost = showPrev && prev && prev.dataKey !== entry?.dataKey ? prev.data : undefined;
   const [offer, setOffer] = useState<{ vd: number; x: number; y: number } | null>(null);
   const vmax = params.sweep.vd_max_V;
-  const measKind = measuredApplies(params.device) ? "paper" : null;
-  useEffect(() => {
-    if (showMeas && measKind && measured.status === "idle") void loadMeasured();
-  }, [showMeas, measKind, measured.status]);
 
   const plot = useMemo(() => {
     if (!data) return undefined;
     const Y = (a: Arr) => log ? pos(a) : nums(a);
-    const yv = (v: number) => (log ? Math.log10(v) : v);
     const traces: Data[] = [];
     if (ghost) {
       const x: (number | null)[] = [];
@@ -178,7 +143,6 @@ export function IvPanel() {
       }
       traces.push({ x, y, type: "scatter", mode: "lines", name: L("leg.prev"), line: { color: c.ghost, width: 1.5, dash: "dot" }, meta: NO_CSV as never, connectgaps: false, hovertemplate: `${HOVER_IV}<extra>${L("leg.prev")}</extra>` });
     }
-    if (showMeas && measKind) traces.push(...measuredIvTraces(t, c, measured.data, measKind, 0, { band: false, log, name: L("leg.measMedian") }));
     for (const [dir, xy, color, name] of [
       ["up", data.double_sweep.up, c.hrs, L("leg.up")],
       ["down", data.double_sweep.down, c.lrs, L("leg.down")],
@@ -190,71 +154,22 @@ export function IvPanel() {
       traces.push({ x: pick(x, idx), y: pick(y, idx), type: "scatter", mode: "markers", legendgroup: dir, showlegend: false, hoverinfo: "skip", meta: NO_CSV as never,
         marker: { symbol: "arrow", size: 8, color, angleref: "previous", line: { width: 0 } } as never });
     }
-    const ann: Ann[] = [];
-    const shapes: Partial<Shape>[] = [];
-    const f = data.folds;
-    // a fold above the sweep peak: widen the axis so it stays in view, and mark where the sweep turns back
-    const sweepTop = data.vd_max_V ?? vmax;
-    const beyond = data.latch && isNum(f.V_LU) && f.V_LU > sweepTop + 1e-9;
-    if (beyond) {
-      // the low-current branch continues past the sweep peak up to the fold the sweep never reaches
-      const hx: (number | null)[] = [];
-      const hy: (number | null)[] = [];
-      data.HRS.vd.forEach((v, i) => {
-        if (typeof v === "number" && v >= sweepTop - 0.05) {
-          hx.push(v);
-          hy.push(Y([data.HRS.id[i]])[0]);
-        }
-      });
-      if (hx.length > 1) traces.push({ x: hx, y: hy, type: "scatter", mode: "lines", line: { color: c.hrs, width: 1.3, dash: "dot" }, showlegend: false, meta: NO_CSV as never, name: L("leg.hrs"), hovertemplate: `${HOVER_IV}<extra>${L("leg.hrs")}</extra>` });
-      shapes.push({ type: "line", xref: "x", yref: "paper", x0: sweepTop, x1: sweepTop, y0: 0, y1: 1, line: { color: c.warn, width: 1.2, dash: "dot" } });
-      ann.push({ x: sweepTop, y: 1, xref: "x", yref: "paper", yanchor: "bottom", xanchor: "right", text: subs(fill(L("foot.vdmax"), { v: String(sweepTop) })), showarrow: false, font: { size: 11, color: c.warn } });
-    }
-    if (data.latch && isNum(f.V_LU) && isNum(f.V_LD)) {
-      traces.push({
-        x: [f.V_LU, f.V_LD], y: Y([f.I_LU, f.I_LD]), type: "scatter", mode: "markers", name: "folds", showlegend: false, meta: NO_CSV as never,
-        marker: { symbol: "diamond", size: 10, color: [c.hrs, c.lrs], line: { color: c.surface, width: 1.5 } },
-        hovertemplate: "V<sub>D</sub> = %{x:.4f} V<br>I<sub>D</sub> = %{y:.3~s}A<extra>fold</extra>",
-      });
-      // the jumps: ↑ at V_LU (HRS → LRS), ↓ at V_LD (LRS → HRS); none when the sweep never reaches V_LU
-      if (!beyond) {
-        const top = interpAt(data.LRS.vd, data.LRS.id, f.V_LU);
-        if (isNum(f.I_LU) && f.I_LU > 0 && isNum(top) && top > f.I_LU * 1.5) ann.push(jumpArrow(f.V_LU, f.I_LU, top, c.hrs, yv));
-      }
-      const bottom = interpAt(data.HRS.vd, data.HRS.id, f.V_LD);
-      if (isNum(f.I_LD) && f.I_LD > 0 && isNum(bottom) && bottom > 0 && bottom < f.I_LD / 1.5) ann.push(jumpArrow(f.V_LD, f.I_LD, bottom, c.lrs, yv));
-      ann.push(...foldAnnotations(f, c, yv));
-    }
     const yr = log ? logRange(traces.map(tr => (tr as { y?: (number | null)[] }).y)) : undefined;
     const layout: Partial<Layout> = {
-      xaxis: { title: { text: t("axis.vd") }, range: [0, Math.max(sweepTop, beyond && isNum(f.V_LU) ? f.V_LU : 0) + (beyond ? 0.15 : 0.05)], zeroline: false },
+      xaxis: { title: { text: t("axis.vd") }, range: [0, (data.vd_max_V ?? vmax) + 0.05], zeroline: false },
       yaxis: { ...currentAxis(log, log ? t("axis.idAbs") : t("axis.id")), ...(yr ? { range: yr } : {}) },
-      shapes,
-      annotations: ann,
       margin: { l: 66, r: 20, t: 34, b: 48 },
       legend: ROW_LEGEND,
     };
     return { data: traces, layout };
-  }, [data, ghost, log, c, t, vmax, showMeas, measKind, measured.data]);
-
-  const f = data?.folds;
-  const foot = !data ? undefined : !data.latch ? (
-    L("foot.nolatch")
-  ) : isNum(f?.I_LU) || isNum(f?.I_LD) ? (
-    <SubText text={subs(fill(L("foot.ifold"), { lu: fmtSI(f?.I_LU, "A", 3), ld: fmtSI(f?.I_LD, "A", 3) }))} />
-  ) : undefined;
-  const menu: PanelMenuItem[] = [
-    ...(measKind ? [{ kind: "check" as const, id: "meas", label: L("menu.meas"), checked: showMeas, onChange: setShowMeas, testId: "toggle-measured" }] : []),
-    { kind: "check", id: "prev", label: L("menu.prev"), checked: showPrev, onChange: setShowPrev, testId: "iv-prev" },
-  ];
+  }, [data, ghost, log, c, t, vmax]);
 
   return <Panel
     id="iv" primary title={L("iv.title")} topic="charge-balance"
     entry={entry} hasData={!!data} currentKey={key} csvName="idvd_sweep" plot={plot}
     warnings={data?.warnings}
-    foot={foot}
     toolbar={data ? <LogSeg t={t} log={log} setLog={setLog} /> : undefined}
-    menu={data ? menu : undefined}
+    menu={data ? [{ kind: "check", id: "prev", label: L("menu.prev"), checked: showPrev, onChange: setShowPrev, testId: "iv-prev" }] : undefined}
     onPlotClick={isAll && data ? ({ x, clientX, clientY }) => (x >= 0.05 && x <= vmax ? setOffer({ vd: round(x, 3), x: clientX, y: clientY }) : setOffer(null)) : undefined}
   >
     {offer && <CbOffer t={t} {...offer} onClose={() => setOffer(null)} />}
@@ -347,7 +262,7 @@ export function ComponentsPanel() {
         x: nums(cv.vd), y: log ? pos(abs(cv.comp?.[k.key])) : abs(cv.comp?.[k.key]), type: "scatter", mode: "lines", name,
         visible: top.has(i) ? true : "legendonly",
         line: { color: c.categorical[i], width: k.loss ? 1.6 : 2, dash: k.loss ? "dash" : "solid" },
-        hovertemplate: `V<sub>D</sub> = %{x:.3f} V<br>|I| = %{y:.3~s}A<extra>${name}</extra>`,
+        hovertemplate: `<i>V</i><sub>D</sub> = %{x:.3f} V<br>|I| = %{y:.3~s}A<extra>${name}</extra>`,
       } as Data;
     });
     const shown = traces.filter((_, i) => top.has(i)).map((tr) => (tr as { y?: (number | null)[] }).y);
@@ -480,7 +395,7 @@ export function ChargeBalancePanel() {
         data ? (
           <div className="slider-inline">
             <label className="tb-label mono" htmlFor="cb-vd">
-              V<sub>D</sub> = {vd.toFixed(3)} V
+              <i>V</i><sub>D</sub> = {vd.toFixed(3)} V
             </label>
             <input id="cb-vd" type="range" min={0.05} max={vmax} step={0.005} value={Math.min(vmax, vd)} onChange={(e) => onVd(Number(e.target.value))} aria-label="V_D" data-testid="cb-vd" />
           </div>
@@ -511,12 +426,12 @@ export function VgPanel() {
     const vlu = nums(data.V_LU);
     const above = vlu.map((v) => v != null && v > vmax + 1e-9);
     const traces: Data[] = [
-      { x: vg, y: nums(data.V_LD), type: "scatter", mode: "lines+markers", name: "V<sub>LD</sub>", line: { color: c.lrs, width: 2 }, marker: { size: 4 }, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>V<sub>LD</sub> = %{y:.4f} V<extra></extra>" },
+      { x: vg, y: nums(data.V_LD), type: "scatter", mode: "lines+markers", name: "<i>V</i><sub>LD</sub>", line: { color: c.lrs, width: 2 }, marker: { size: 4 }, hovertemplate: "<i>V</i><sub>G</sub> = %{x:.2f} V<br><i>V</i><sub>LD</sub> = %{y:.4f} V<extra></extra>" },
       {
-        x: vg, y: vlu, type: "scatter", mode: "lines+markers", name: "V<sub>LU</sub>", line: { color: c.hrs, width: 2 }, fill: "tonexty", fillcolor: c.neutralSoft,
+        x: vg, y: vlu, type: "scatter", mode: "lines+markers", name: "<i>V</i><sub>LU</sub>", line: { color: c.hrs, width: 2 }, fill: "tonexty", fillcolor: c.neutralSoft,
         // points above V_D,max: hollow grey markers (the sweep turns back before them)
         marker: { size: above.map((a) => (a ? 5 : 4)), color: above.map((a) => (a ? c.surface : c.hrs)), line: { width: above.map((a) => (a ? 1.2 : 0)), color: c.muted } } as never,
-        hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>V<sub>LU</sub> = %{y:.4f} V<extra></extra>",
+        hovertemplate: "<i>V</i><sub>G</sub> = %{x:.2f} V<br><i>V</i><sub>LU</sub> = %{y:.4f} V<extra></extra>",
       },
     ];
     const shapes: Partial<Shape>[] = [];

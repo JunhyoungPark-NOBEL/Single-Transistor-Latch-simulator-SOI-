@@ -2,6 +2,7 @@
 // mock/offline mode. The live values from the backend always replace these when available.
 import type { CalibBlock, DeviceBlock, DeviceGeometry, ExtBlock, Meta, PresetDef, PresetId, StochasticBlock } from "../api/types";
 import { clone } from "../utils/object";
+import { SIMPLE_DEFAULTS } from "../params/model";
 import { REFERENCE_GEOMETRY, resolveGeometry } from "../params/geometry";
 
 export const RESPONSIVITY_PA_PER_MW = 0.7500000000000002;
@@ -49,6 +50,8 @@ export const NEUTRAL_EXT: ExtBlock = {
 
 const DEVICE_BASE: DeviceBlock = {
   preset: "paper",
+  model: "detailed",
+  simple: { ...SIMPLE_DEFAULTS },
   geometry: { ...REFERENCE_GEOMETRY },
   vg: -2.0,
   vbg: 0,

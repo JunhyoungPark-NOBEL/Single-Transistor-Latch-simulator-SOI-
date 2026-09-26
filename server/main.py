@@ -8,7 +8,6 @@ from __future__ import annotations
 import importlib.util
 import logging
 import math
-import mimetypes
 import os
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -20,7 +19,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.concurrency import run_in_threadpool
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import FileResponse, HTMLResponse, Response
 
 from server import auth, jsonutil, params
@@ -29,17 +27,13 @@ from server.compute import data as data_mod
 from server.jobs import ALL_KINDS, EXTRA_KINDS, JobManager, QueueFull
 from server.payloads import CAPS
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "1.0.0"
 ROOT = Path(__file__).resolve().parents[1]
 WEB_DIST = Path(os.environ.get("STL_WEB_DIST") or (ROOT / "web" / "dist"))
 MAX_WAIT_S = 60.0
 MAX_BODY_BYTES = int(float(os.environ.get("STL_MAX_BODY_KB", "256")) * 1024)   # real payloads are a few kB
 
 log = logging.getLogger("stl.api")
-
-# FileResponse guesses the type from the extension; python:3.11-slim has no /etc/mime.types entry for woff2
-# (it would be served as application/octet-stream)
-mimetypes.add_type("font/woff2", ".woff2")
 
 
 class JSONResponse(Response):
@@ -118,22 +112,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="STL simulator API", version=APP_VERSION, default_response_class=JSONResponse, lifespan=lifespan)
 
-_origins = [o.strip() for o in os.environ.get(
-    "STL_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173"
-).split(",") if o.strip()]
+_origins = auth.cors_origins()
 app.add_middleware(BodySizeLimit, max_bytes=MAX_BODY_BYTES)
 # Optional password gate (server/auth.py): pass-through unless STL_ACCESS_PASSWORD is set; then everything except
 # /login, /logout, /api/health and the favicon — API, SPA, static files, /docs, /redoc, /openapi.json — needs a
 # session cookie. Outside BodySizeLimit so unauthenticated bodies are refused before they are buffered.
 app.add_middleware(auth.AccessGate)
-app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_credentials=False,
+                   allow_methods=["GET", "HEAD", "POST", "DELETE", "OPTIONS"],
+                   allow_headers=["Content-Type", "Authorization"], expose_headers=["Retry-After"])
 app.add_middleware(GZipMiddleware, minimum_size=2048)
-# Optional Host-header allow-list (outermost): STL_ALLOWED_HOSTS="127.0.0.1,localhost" (the local installer kit sets it)
-# answers 400 to any other Host, so a web page that rebinds its own DNS name to 127.0.0.1 cannot read this server
-# from the browser (DNS rebinding). Unset = no check (deployments behind a proxy set their own domain here).
-_allowed_hosts = [h.strip() for h in os.environ.get("STL_ALLOWED_HOSTS", "").split(",") if h.strip()]
-if _allowed_hosts:
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts, www_redirect=False)
 
 
 @app.exception_handler(ValueError)
@@ -191,9 +179,9 @@ def _kind_available(kind: str) -> bool:
 @app.get("/api/health")
 def health() -> Any:
     """{ok, version, workers} (+ app_version, engine_version, job counts, access_gate "on" | "off")."""
-    return JSONResponse(dict(ok=True, version=manager.engine_version[:12], app_version=APP_VERSION,
+    return JSONResponse(dict(ok=True, product="STL simulator", version=manager.engine_version[:12], app_version=APP_VERSION,
                              engine_version=manager.engine_version, workers=manager.workers, jobs=manager.counts(),
-                             access_gate=auth.state_name()))
+                             access_gate=auth.state_name(), auth_required=auth.STATE.config is not None))
 
 
 @app.get("/api/meta")
@@ -209,6 +197,24 @@ def meta() -> Any:
 # ---------------------------------------------------------------------------------------------
 # jobs
 # ---------------------------------------------------------------------------------------------
+@app.get("/api/performance")
+def performance() -> Any:
+    """Reference table and anonymized timing evidence from this compute host."""
+    return JSONResponse(manager.performance_snapshot())
+
+
+@app.post("/api/performance/estimate")
+def performance_estimate(payload: dict[str, Any] = Body(...)) -> Any:
+    """Cheap workload estimate; never executes a model or compiles a kernel."""
+    return JSONResponse(manager.estimate(payload))
+
+
+@app.post("/api/performance/calibrate")
+async def performance_calibrate(request: Request, wait: float = Query(0.0)) -> Any:
+    """Explicit bounded worker calibration. Returns the usual pollable job handle."""
+    return await _submit("performance_calibrate", {}, wait, _client(request))
+
+
 async def _submit(kind: str, payload: Any, wait: float, client: str) -> Any:
     """Validate + submit in a worker thread, then long-poll on the event loop (no thread held while waiting:
     blocking waits used to exhaust the 40-thread pool and stall every other endpoint)."""

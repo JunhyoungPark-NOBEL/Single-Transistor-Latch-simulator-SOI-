@@ -14,7 +14,7 @@ import { SubText } from "../plots/SubText";
 import { usePrevRun } from "../state/prevRuns";
 import { useStore } from "../state/store";
 import { fmtDuration, fmtSI, isNum } from "../utils/format";
-import { branchesPayload, sweepMcPayload, vgCurvePayload } from "../utils/payload";
+import { branchesPayload, sweepMcPayload } from "../utils/payload";
 import { describe, diffSeries } from "../stats/describe";
 import { isStale, useCurrentKey, useEntry } from "./common";
 import "./device.css";
@@ -107,11 +107,7 @@ export function KpiStrip() {
   const { entry: be, data: br } = useEntry<BranchesResult>("branches");
   const { entry: me, data: mc } = useEntry<SweepMCResult>("sweep_mc");
   const prevBr = usePrevRun<BranchesResult>("branches");
-  const vgEntry = useStore((s) => s.results.vg_curve);
-  const vgRange = useStore((s) => s.vgRange);
-  const vgKey = useCurrentKey("vg_curve", useMemo(() => vgCurvePayload(params, vgRange), [params, vgRange]));
-  // the V_G curve only counts for the current device (it does not depend on the sidebar V_G)
-  const vgc = vgEntry?.dataKey === vgKey ? (vgEntry.data as VgCurveResult | undefined) : undefined;
+  const vgc = useStore((s) => s.results.vg_curve?.data as VgCurveResult | undefined);
   const vgNow = params.device.vg;
   const prevMc = usePrevRun<SweepMCResult>("sweep_mc");
   const bKey = useCurrentKey("branches", useMemo(() => branchesPayload(params), [params]));
@@ -141,14 +137,14 @@ export function KpiStrip() {
     const tip = (lines: (string | false | null | undefined)[]) => lines.filter(Boolean).join("\n") || undefined;
     const common = br ? [isNum(br.iph_A) ? `I_PH = ${fmtSI(br.iph_A, "A", 3)}` : null, runtime(br.runtime_s, be?.cached)] : [];
     const noLatchVal = <span className="ans-nolatch">{t.l(DEV["kpi.nolatch"])}</span>;
-    // no fold pair at this V_G (a higher V_D,max cannot help): say where the latch window is, from the V_G curve
+    // no latch: say where the latch window is (from the V_G curve), or that the sweep stops too early
     const w = vgc?.window;
     const noLatchHint =
-      w && isNum(w.vg_low) && isNum(w.vg_high) && (vgNow < w.vg_low || vgNow > w.vg_high)
-        ? fill(t.l(DEV["kpi.nolatch.window"]), { lo: signed(w.vg_low, 2), hi: signed(w.vg_high, 2) })
-        : vgc && !(w && isNum(w.vg_low) && isNum(w.vg_high))
-          ? t.l(DEV["kpi.nolatch.none"])
-          : t.l(DEV["kpi.nolatch.hint"]);
+      w && isNum(w.vg_low) && isNum(w.vg_high)
+        ? vgNow < w.vg_low || vgNow > w.vg_high
+          ? fill(t.l(DEV["kpi.nolatch.window"]), { lo: signed(w.vg_low, 2), hi: signed(w.vg_high, 2) })
+          : t.l(DEV["kpi.nolatch.vdmax"])
+        : t.l(DEV["kpi.nolatch.hint"]);
     const beyondSub = (
       <span className="ans-hint" data-testid="kpi-vlu-beyond" title={t.l(DEV["kpi.beyondVdmax.hint"]).replace(/[{}]/g, "")}>
         <SubText text={subs(fill(t.l(DEV["kpi.beyondVdmax"]), { v: String(sweepTop) }))} />

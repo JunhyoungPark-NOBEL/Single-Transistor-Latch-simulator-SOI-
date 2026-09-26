@@ -26,7 +26,8 @@ import numpy as np
 from numba import njit
 
 from server.engine_bridge import MODEL, ct, m
-from server.geometry_model import constants_from_p, gate_charge_offset, pack_p
+from server.geometry_model import constants_from_p, gate_charge_offset, pack_p, body_potential
+from server.simple_model import is_simple
 
 ACTION_INDEX = {"gidl": 9, "local_avalanche": 23, "junction": 19, "multiplication": 20}
 ACTION_UNIT = {"gidl": "V", "local_avalanche": "1", "junction": "V", "multiplication": "1"}
@@ -35,6 +36,11 @@ GEOMETRY_NOISE_ERROR = (
     "geometry-stochastic-unavailable: Geometry scaling currently supports deterministic VSCM/CSVM; "
     "the carrier-noise kernel is calibrated only at the reference geometry."
 )
+SIMPLE_NOISE_ERROR = (
+    "simple-stochastic-unavailable: Simple Model currently supports deterministic simulation only; "
+    "the first-order body reservoir has no validated carrier-noise or local-state model."
+)
+SIMPLE_METHOD_ERROR = "simple-method-unavailable: Simple Model currently supports BE integration only."
 
 
 @dataclass
@@ -89,10 +95,10 @@ def draw_local_states(cfg: LocalStateConfig, n_stl: int, seed: int, run: int) ->
 
 # ---- feasibility -----------------------------------------------------------------------
 def _state_charge(z, u, p):
+    if is_simple(p):
+        return z[13]
     _lch, _width, _tsi, area, cox, na, _vbi = constants_from_p(p)
-    psi = u - m.VT * np.log1p(z[10])
-    if len(p) < 32:   # reference cell: legacy expression (bit-identical)
-        return m.COX_F * (psi - p[11]) + (z[13] - m.COX_F * u) + m.Q * MODEL.na * m.AREA_CM2 * z[11]
+    psi = body_potential(u,p)
     return cox * psi + gate_charge_offset(p) + (z[13] - cox * u) + m.Q * na * area * z[11]
 
 
@@ -126,6 +132,7 @@ def branch_profile(p: np.ndarray, grid: int = 301) -> dict | None:
     total event rate, and z = |Q - Q_saddle| / SD(Q) (barrier to the saddle on the unstable branch in
     units of the stationary charge fluctuation, SD^2 = D tau/2, D = q^2 (unit + L + II M2/M1))."""
     p = pack_p(np.asarray(p, float))
+    simple = bool(is_simple(p))
     args = (p, MODEL.na, MODEL.vbi, MODEL.rg, MODEL.fg, MODEL.table)
     cl, gap = classify_checked(p, grid)
     rv, pmf = np.asarray(ct.cf.rv, float), np.asarray(ct.cf.pmf, float)
@@ -141,14 +148,14 @@ def branch_profile(p: np.ndarray, grid: int = 301) -> dict | None:
         parts = [("HRS", b[:i + 1]), ("LRS", b[j:])]
         U = b[i:j + 1]
         Vs, Qs = [], []
-        for row in U:
+        for row in ([] if simple else U):
             z = m.components(row[17], row[18], *args)
             if np.isfinite(z[0]):
                 Vs.append(row[0])
                 Qs.append(_state_charge(z, row[17], p))
         o = np.argsort(Vs)
         Vs, Qs = np.asarray(Vs)[o], np.asarray(Qs)[o]
-    out = dict(folds=folds, latch=cl is not None, gap=bool(gap),
+    out = dict(folds=folds, latch=cl is not None, gap=bool(gap), noise_supported=not simple,
                u_fold=(float(b[i, 17]), float(b[j, 17])) if cl is not None else (np.inf, np.inf))
     # quasi-static I-V of the stable branches (sorted by V_D; used by the quasi-static drive walk of
     # current-biased / high-impedance cells, ``oscillator.qs_drive``)
@@ -195,15 +202,16 @@ def branch_profile(p: np.ndarray, grid: int = 301) -> dict | None:
             G = (z0[1] - z0[3] - z0[16]) / m.Q
             L = (z0[5] + z0[6] + z0[7]) / m.Q
             unit = (z0[8] + z0[9] + z0[18]) / m.Q
-            pk = np.array([np.interp(r, rv, pmf[:, k]) for k in range(1, pmf.shape[1])])
-            m1, m2 = float(pk @ ks[1:]), float(pk @ ks[1:] ** 2)
-            D = m.Q ** 2 * (unit + L + max(G - unit, 0.0) * (m2 / m1 if m1 > 0 else 1.0))
             zb = np.inf
-            if Vs is not None and len(Vs) > 1 and Vs[0] <= vd <= Vs[-1] and tau < 1e29:
-                zb = abs(q0 - np.interp(vd, Vs, Qs)) / np.sqrt(D * tau / 2.0)
+            if not simple:
+                pk = np.array([np.interp(r, rv, pmf[:, k]) for k in range(1, pmf.shape[1])])
+                m1, m2 = float(pk @ ks[1:]), float(pk @ ks[1:] ** 2)
+                D = m.Q ** 2 * (unit + L + max(G - unit, 0.0) * (m2 / m1 if m1 > 0 else 1.0))
+                if Vs is not None and len(Vs) > 1 and Vs[0] <= vd <= Vs[-1] and tau < 1e29:
+                    zb = abs(q0 - np.interp(vd, Vs, Qs)) / np.sqrt(D * tau / 2.0)
             V.append(vd)
             T.append(tau)
-            R.append(G + L)
+            R.append(0.0 if simple else G + L)
             Z.append(zb)
         if not V:
             V, T, R, Z = [0.0], [1.0], [0.0], [np.inf]

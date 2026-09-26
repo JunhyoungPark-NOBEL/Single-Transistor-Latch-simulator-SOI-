@@ -1,7 +1,7 @@
 // Validation of stored / imported schematic documents (never throws; junk falls back to defaults).
 import type { LocalStateBlock } from "../api/types";
 import { sanitizeDevice, sanitizeLocal } from "../devices/library";
-import { validationBase } from "../devices/store";
+import { useDeviceLib, validationBase } from "../devices/store";
 import { DEFAULT_CIRCUIT_STOCH } from "../params/benches";
 import { clone } from "../utils/object";
 import { DEFAULT_CMP, DEFAULT_MOS, DEFAULT_DIODE, DEFAULT_BJT, DOC_VERSION, GRID, newId, type ElKind, type Rot, type SchematicDoc, type SElement, type StlRef, type Wire } from "./model";
@@ -34,12 +34,13 @@ function parseStl(v: unknown): StlRef | undefined {
   return {
     libId: typeof v.libId === "string" ? v.libId.slice(0, 80) : "current",
     name: typeof v.name === "string" ? v.name.slice(0, 80) : "STL",
+    technology: typeof v.technology === "string" ? v.technology.slice(0, 40) : useDeviceLib.getState().devices.find((d) => d.id === v.libId)?.technology,
     device: sanitizeDevice(base.device, v.device),
     local_state: isObj(v.local_state) ? sanitizeLocal(base.stochastic.local_state, v.local_state) : undefined,
   };
 }
 
-function parseElement(v: unknown): SElement | null {
+function parseElement(v: unknown, legacy = false): SElement | null {
   if (!isObj(v)) return null;
   const kind = KINDS.find((k) => k === v.kind);
   if (!kind || !fin(v.x) || !fin(v.y)) return null;
@@ -59,6 +60,7 @@ function parseElement(v: unknown): SElement | null {
   if (kind === "V" || kind === "I") el.wave = parseWave(v.wave) ?? { kind: "dc", value: kind === "V" ? 1 : 1e-9 };
   if (kind === "STL") {
     el.stl = parseStl(v.stl);
+    if (legacy || v.stlTerminalMode === "legacy3") el.stlTerminalMode = "legacy3";
     el.light = v.light == null ? null : parseWave(v.light);
   }
   const numericModel = <T extends object>(raw: unknown, defaults: T): T => {
@@ -96,7 +98,7 @@ export function parseDoc(v: unknown): SchematicDoc | null {
   d.name = typeof src.name === "string" ? src.name.slice(0, 80) : "";
   const ids = new Set<string>();
   for (const x of src.elements.slice(0, 200)) {
-    const el = parseElement(x);
+    const el = parseElement(x, !fin(src.v) || src.v < 2);
     if (!el) continue;
     if (ids.has(el.id)) el.id = newId();
     ids.add(el.id);

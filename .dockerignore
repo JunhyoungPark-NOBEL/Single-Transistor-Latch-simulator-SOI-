@@ -8,7 +8,12 @@
 **/.ruff_cache
 *.log
 .env
+.env.*
+**/server.env
+**/*secrets*.env
 .venv
+.studio-launch.lock
+vendor/*.exe
 venv
 server/.cache
 engine/photo_extension/photo_nodes
@@ -20,12 +25,12 @@ web/dist
 web/test-results
 web/playwright-report
 web/.vite
-# lab-server kit: the image needs none of it (and a local deploy/lab/stl.env would hold secrets)
-deploy/lab
+web/review
+web/snapshot
+web/dist-artifact
+web/.tsbuildinfo
+**/*.tsbuildinfo
 # legacy Streamlit app (not part of the web simulator image)
 app.py
 config.toml
 requirements.txt
-# local installer kit sources and built kits: not part of the app image
-deploy/local
-dist-local

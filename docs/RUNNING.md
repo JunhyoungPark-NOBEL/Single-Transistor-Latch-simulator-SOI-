@@ -1,170 +1,61 @@
-# Running the STL web simulator / STL 웹 시뮬레이터 실행
+# STL simulator 실행과 개발
 
-The service is one Python process (FastAPI + uvicorn) that owns a pool of compute worker processes
-(numba engine) and serves the built React frontend. API details: `docs/API.md`.
+사용자 설치와 연구실 서버 연결은 [STUDIO_START_KO.md](../STUDIO_START_KO.md)를 먼저 확인합니다.
 
-서비스는 하나의 Python 프로세스(FastAPI + uvicorn)이며, 그 안에서 계산 작업 프로세스 풀(numba 엔진)을
-운영하고 빌드된 React 프런트엔드를 함께 제공한다. API 세부 사항은 `docs/API.md` 참고.
+## 로컬 실행
 
-연구실 구성원이 자기 컴퓨터(Windows/macOS/Linux)에 Docker로 설치하는 방법(비밀번호로 잠긴 설치 키트)은
-`docs/LOCAL_INSTALL.md`, 키트 만들기는 같은 문서 7절 참고. Lab members installing on their own computers: see
-`docs/LOCAL_INSTALL.md` (password-protected Docker installer kit; building a kit: section 7).
-
----
-
-## 한국어
-
-### 1. 준비물
-- Python ≥ 3.11, Node 22 + npm (프런트엔드 빌드/개발 시).
-- Python 패키지: `pip install -r server/requirements.txt`
-  (numpy, scipy, numba, fastapi, uvicorn[standard], orjson, pytest, httpx).
-- 최초 1회 numba 컴파일(약 10–60 s)을 미리 해 두려면: `python3 scripts/warmup.py`
-  (엔진 스모크 테스트: `python3 engine/stl_api.py`, 기대값은 `engine/docs/VALIDATION.md`).
-- numba 캐시는 `server/__pycache__/numba/<stamp>`에 저장된다. `<stamp>`는 `server/**/*.py`(tests 제외)와
-  `engine/**/*.py`의 해시 앞 12자리다. 코드를 받아 오거나(`git pull`) 고치면 새 폴더에서 다시 컴파일하므로, 예전 캐시를
-  손으로 지울 필요가 없다. 이전 stamp 폴더는 다음 실행 때 지워진다. 환경변수 `NUMBA_CACHE_DIR`를 직접 주면 그 경로를
-  그대로 쓴다(이때는 코드가 바뀌어도 캐시를 새로 만들지 않으므로 빈 폴더를 줄 것).
-
-### 2. 로컬 개발
 ```bash
-scripts/dev.sh          # 백엔드 :8000 (server/ 수정 시 자동 재시작) + Vite :5173 (/api → :8000 프록시)
-scripts/dev.sh api      # 백엔드만
-scripts/dev.sh web      # 프런트엔드만 (API_PORT의 백엔드 사용)
-```
-브라우저에서 http://127.0.0.1:5173 을 연다. 백엔드만 직접 실행하려면
-`uvicorn server.main:app --port 8000` (uvicorn `--workers`는 쓰지 말 것 — 계산 풀은 프로세스 안에 있으며,
-병렬도는 `STL_WORKERS`로 조절한다). `server/`의 `.py`를 고치면 자동 재시작과 함께 numba 커널을 다시 컴파일하므로
-첫 계산이 수십 초 걸릴 수 있다.
-
-### 3. 프로덕션 빌드 (Docker 없이)
-```bash
-cd web && npm ci && npm run build && cd ..        # web/dist 생성
-pip install -r server/requirements.txt
-python3 scripts/warmup.py                          # numba 캐시·FPT 노드 캐시 채우기
-STL_WORKERS=3 uvicorn server.main:app --host 0.0.0.0 --port 8000
-```
-`web/dist`가 있으면 서버가 `/`에서 프런트엔드를 제공한다(SPA fallback). 없으면 안내 페이지가 나온다.
-
-### 4. Docker
-```bash
-docker build -t stl-websim .
-docker run --rm -p 8000:8000 -e STL_WORKERS=2 stl-websim     # http://localhost:8000
-```
-다단계 빌드: `node:22-slim`에서 `web/` 빌드 → `python:3.11-slim` 런타임. 빌드 중 `scripts/warmup.py`가
-numba 커널(엔진 + 회로 시뮬레이터)을 컴파일하고 엔진 캐시를 채운다. 컨테이너는 uid 1000 사용자로 실행되며 `/app`은 쓰기
-가능해야 한다(numba 캐시 `server/__pycache__/numba/<stamp>`, FPT 노드 `engine/photo_extension/photo_nodes/`,
-결과 캐시 `server/.cache/`). 결과 캐시를 유지하려면 `-v stl-cache:/app/server/.cache`를 붙인다. numba 캐시는 이
-볼륨 밖(이미지 안)에 있으므로 새 이미지는 항상 자기 커널을 쓴다.
-
-### 5. 배포 메모
-- **메모리**: 작업 프로세스 하나당 약 150–250 MB(numba + 엔진). 512 MB 플랜에서는 `STL_WORKERS=1`.
-- **Render**: Docker 서비스로 만들고 포트는 `PORT` 환경변수를 따른다(Dockerfile의 `CMD`가 처리).
-  헬스 체크 경로 `/api/health`. 무료 플랜은 유휴 시 잠들기 때문에 첫 요청이 느리다.
-- **Fly.io**: `fly launch`(Dockerfile 감지) 후 `fly.toml`에서 `internal_port = 8000`,
-  `[[vm]] memory = "1gb"`, 환경변수 `STL_WORKERS`. 머신 자동 정지를 쓰면 캐시는 볼륨에 둔다.
-- **Hugging Face Spaces**: SDK = Docker. README 머리말에 `app_port: 8000` (또는 `PORT=7860` 환경변수로
-  맞춤). Space는 uid 1000으로 실행하므로 Dockerfile의 사용자 설정을 그대로 쓰면 된다. CPU basic
-  (2 vCPU)에서는 `STL_WORKERS=1`–`2`.
-- 역방향 프록시 뒤에서는 긴 요청 대신 폴링을 쓰므로 타임아웃 문제는 없다(요청당 최대 대기 60 s).
-- 공개 배포 보호 장치: 요청 본문 256 KiB 제한(413), 대기 작업 수 제한(429, 클라이언트당 16 / 전체 64),
-  10분 동안 조회되지 않은 작업 자동 취소, 작업 프로세스가 죽으면(OOM 등) 풀을 즉시 재시작하고 해당 작업을
-  재시도, API 프로세스가 강제 종료되면 작업 프로세스도 스스로 종료. Docker `CMD`는 `--proxy-headers`를 쓰므로
-  클라이언트 구분은 `X-Forwarded-For` 기준이다(프록시 없이 직접 노출하면 이 헤더는 위조 가능 — 그때는 전체 한도만 믿을 것).
-
-### 6. 환경변수
-| 변수 | 기본값 | 의미 |
-|---|---|---|
-| `STL_WORKERS` | CPU − 1 (affinity/cgroup 반영), 최소 1 | 계산 작업 프로세스 수 |
-| `STL_CACHE_DIR` | `server/.cache/results` | 디스크 결과 캐시 |
-| `STL_DISK_CACHE_MB` | 1024 | 디스크 결과 캐시 한도(실행 중에도 유지, 가장 오래 안 쓴 것부터 삭제) |
-| `STL_MEM_CACHE_MB` | 256 | 메모리 결과 캐시(LRU) 한도 |
-| `STL_JOB_RESULTS_MB` | 64 | 끝난 작업이 메모리에 붙잡는 결과 크기 한도(나머지는 캐시에서 다시 읽음) |
-| `STL_NODE_CACHE_MB` | 1024 | 확률 노드 캐시 `server/.cache/stochastic` 한도 |
-| `STL_MAX_PENDING` | 64 | 대기+실행 중 작업 수 한도(전체, 초과 시 429) |
-| `STL_MAX_PENDING_PER_CLIENT` | 16 | 클라이언트(주소)당 대기+실행 중 작업 수 한도(초과 시 429) |
-| `STL_ABANDON_S` | 600 | 이 시간 동안 아무도 조회하지 않은 작업은 취소(0 = 끄기) |
-| `STL_MAX_BODY_KB` | 256 | 요청 본문 최대 크기(초과 시 413) |
-| `STL_PREWARM` | 1 | 시작 시 모든 작업 프로세스를 미리 띄움 |
-| `STL_MP_CONTEXT` | `spawn` | multiprocessing 시작 방식 |
-| `STL_CORS_ORIGINS` | localhost:5173, :4173 | 허용 origin(쉼표 구분) |
-| `STL_WEB_DIST` | `web/dist` | 빌드된 프런트엔드 경로 |
-| `NUMBA_CACHE_DIR` | `server/__pycache__/numba/<stamp>` | numba 캐시 경로(직접 주면 stamp 없이 그대로 사용) |
-| `PORT` | 8000 | Docker 실행 포트 |
-
-### 7. 테스트
-```bash
-python3 -m pytest server/tests -q                  # 전체 (약 5 분, 작업 프로세스 2개; 코드를 바꾼 뒤 첫 실행은 numba 컴파일로 더 걸림)
-python3 -m pytest server/tests -q -m "not slow"    # 빠른 테스트만
-python3 scripts/warmup.py --validate               # VALIDATION.md 빠른 검증을 콘솔에 출력
+python launch.py
+python launch.py --check
 ```
 
----
+첫 실행만 `.venv` 설치가 필요합니다. 브라우저는 서버의 실제 health 응답 후 열립니다. 기존 환경을 명시적으로 쓰려면 `--use-current-python`을 추가합니다. `--no-install`은 환경 생성과 패키지 설치를 생략합니다. `--host` 기본값은 `127.0.0.1`, `--port` 기본값은 `8000`입니다.
 
-## English
+## 화면 개발
 
-### 1. Requirements
-- Python ≥ 3.11; Node 22 + npm for the frontend.
-- `pip install -r server/requirements.txt` (numpy, scipy, numba, fastapi, uvicorn[standard], orjson, pytest, httpx).
-- Pre-compile the numba kernels once (10–60 s): `python3 scripts/warmup.py`. Engine smoke test:
-  `python3 engine/stl_api.py` (expected numbers in `engine/docs/VALIDATION.md`).
-- The numba cache lives in `server/__pycache__/numba/<stamp>`, where `<stamp>` is the first 12 hex digits of a hash
-  over `server/**/*.py` (tests excluded) and `engine/**/*.py`. After a pull or an edit the kernels are recompiled into a
-  new folder, so stale caches never need wiping by hand; older stamp folders are removed on the next start. An explicit
-  `NUMBA_CACHE_DIR` is used as given (it is not stamped: give an empty folder).
+Python 3.11 이상, Node.js 22가 필요합니다.
 
-### 2. Local development
 ```bash
-scripts/dev.sh          # backend :8000 (auto-reload on server/ edits) + Vite :5173 (proxies /api → :8000)
-scripts/dev.sh api      # backend only
-scripts/dev.sh web      # frontend only (uses the backend on API_PORT)
+python launch.py --setup-only
+cd web
+npm ci
+npm run dev
 ```
-Open http://127.0.0.1:5173. Backend alone: `uvicorn server.main:app --port 8000`. Do not use uvicorn
-`--workers`: the compute pool lives inside the process; scale with `STL_WORKERS`. Editing a `.py` file in `server/`
-restarts the backend and recompiles the numba kernels, so the first computation afterwards can take tens of seconds.
 
-### 3. Production build without Docker
+별도 터미널에서 가상 환경 Python으로 `python -m uvicorn server.main:app --port 8000`을 실행합니다. Vite 화면은 `http://127.0.0.1:5173`에서 API를 프록시합니다. 배포 화면은 `npm run build`로 생성합니다.
+
+API는 **하나의 uvicorn 프로세스**가 계산 작업 프로세스 풀을 관리합니다. `--workers`를 uvicorn에 주지 말고 `STL_WORKERS`를 사용합니다. API import는 numba/엔진을 불러오지 않습니다. 계산 프로세스의 관리 통신은 임의 키로 인증한 private loopback TCP를 사용합니다.
+
+## 주요 환경변수
+
+| 변수 | 의미 |
+|---|---|
+| `STL_WORKERS` | 계산 프로세스 수. 제공 launcher와 Docker의 기본값 2 |
+| `STL_CACHE_DIR` | 결과 캐시 경로. 기본 `server/.cache/results` |
+| `STL_DISK_CACHE_MB` / `STL_MEM_CACHE_MB` | 디스크/메모리 결과 캐시. 기본 1024/256 MB |
+| `STL_NODE_CACHE_MB` / `STL_JOB_RESULTS_MB` | 확률 노드/완료 결과 캐시. 기본 1024/64 MB |
+| `STL_MAX_PENDING` / `STL_MAX_PENDING_PER_CLIENT` | 전체/접속지별 대기+실행 작업 수. 기본 64/16 |
+| `STL_ABANDON_S` | 조회가 끊긴 작업 자동 취소. 기본 600초 |
+| `STL_MAX_BODY_KB` | 요청 본문 한도. 기본 256 KiB |
+| `STL_PREWARM` | 시작 시 계산 프로세스 준비. 기본 1 |
+| `STL_WEB_DIST` | 빌드된 프런트엔드 경로 |
+| `STL_CORS_ORIGINS` | 원격 연결을 허용할 화면 origin의 쉼표 구분 목록 |
+| `STL_ACCESS_PASSWORD` | 서버 로그인 비밀번호 |
+| `STL_REQUIRE_PASSWORD` | 1이면 비밀번호 미설정 시 503으로 닫힘 |
+| `STL_SESSION_SECRET` | 서버 재시작 시 같은 origin의 로그인 쿠키를 유지할 키 |
+| `STL_TRUST_PROXY` | 신뢰하는 프록시 hop 수. 직접 노출은 0 |
+| `FORWARDED_ALLOW_IPS` | uvicorn이 신뢰하는 프록시 주소 |
+| `PORT` | launcher/Docker의 기본 실행 포트. 기본 8000 |
+
+## 검사
+
 ```bash
-cd web && npm ci && npm run build && cd ..        # creates web/dist
-pip install -r server/requirements.txt
-python3 scripts/warmup.py                          # numba + FPT-node caches
-STL_WORKERS=3 uvicorn server.main:app --host 0.0.0.0 --port 8000
+python -m pytest tests/test_launcher.py -q
+python -m pytest server/tests -m "not slow" -q
+cd web
+npm run typecheck
+npm test
+npm run e2e
 ```
-When `web/dist` exists the server serves it at `/` with SPA fallback; otherwise a short help page.
 
-### 4. Docker
-```bash
-docker build -t stl-websim .
-docker run --rm -p 8000:8000 -e STL_WORKERS=2 stl-websim     # http://localhost:8000
-```
-Multi-stage: `node:22-slim` builds `web/`, `python:3.11-slim` runs the API; `scripts/warmup.py` runs at build
-time so the numba kernels (engine and circuit simulator) and the FPT node for the validation are cached in the
-image. The container runs as
-uid 1000 and needs `/app` writable (numba caches in `server/__pycache__/numba/<stamp>`, FPT nodes in
-`engine/photo_extension/photo_nodes/`, results in `server/.cache/`). Mount `-v stl-cache:/app/server/.cache`
-to keep the result cache across restarts; the numba cache stays in the image, outside that volume, so a new image
-always runs its own kernels.
-
-### 5. Hosting notes
-- **Memory**: ~150–250 MB per worker process (numba + engine). Use `STL_WORKERS=1` on 512 MB plans.
-- **Render**: Docker web service; the `CMD` honours `PORT`; health check path `/api/health`. Free instances
-  sleep when idle (first request after a sleep is slow).
-- **Fly.io**: `fly launch` detects the Dockerfile; set `internal_port = 8000`, `[[vm]] memory = "1gb"`,
-  env `STL_WORKERS`. With auto-stop machines, put the result cache on a volume.
-- **Hugging Face Spaces**: SDK Docker, `app_port: 8000` in the README front matter (or set `PORT=7860`).
-  Spaces run as uid 1000, matching the Dockerfile user. CPU basic (2 vCPU): `STL_WORKERS=1`–`2`.
-- The UI polls jobs (≤ 60 s per request), so proxy time-outs are not an issue.
-- Public-deployment guards: 256 KiB request bodies (413), bounded job queue (429; 16 per client address,
-  64 in total), jobs nobody polled for 10 min are cancelled, a crashed worker (OOM, segfault) restarts the
-  pool at once and the affected jobs are retried, and workers exit by themselves if the API process is
-  killed. The Docker `CMD` runs uvicorn with `--proxy-headers`, so clients are told apart by
-  `X-Forwarded-For` (spoofable when the container is exposed without a proxy; the global limit still holds).
-
-### 6. Environment variables
-See the table in the Korean section above (same variables) or `docs/API.md`.
-
-### 7. Tests
-```bash
-python3 -m pytest server/tests -q                  # everything (~5 min with 2 workers; longer right after a code change: numba recompiles)
-python3 -m pytest server/tests -q -m "not slow"    # quick subset
-python3 scripts/warmup.py --validate               # print the fast VALIDATION.md checks
-```
+최초 계산은 numba 컴파일이 추가됩니다. 선택적으로 `python scripts/warmup.py --quick`을 실행해 기준 소자 커널을 준비할 수 있습니다. Docker는 빌드 시 이 빠른 준비를 수행하며 회로 커널은 첫 회로 계산 시 준비합니다.

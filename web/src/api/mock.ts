@@ -1,3 +1,4 @@
+import { hasSimpleModel, SIMPLE_LIVE_REQUIRED } from "../params/model";
 // Offline demo backend. Deterministic, plausible-looking fixtures that follow the result shapes of
 // docs/WEB_CONTRACT.md §2/§4 (folds at 3.70 / 2.60 V for the reference calibration at V_G = −2 V). These are
 // NOT model results — the UI shows a "demo data" banner whenever this backend is active. The HRS current follows
@@ -637,12 +638,12 @@ export function mockDesignMapRaw(): unknown {
 
 // ---------------------------------------------------------------- mock backend (in-memory jobs)
 const RUNTIME_MS: Partial<Record<Kind, number>> = {
-  branches: 450, charge_balance: 250, vg_curve: 900, hazard: 1300, sweep_mc: 1500, vg_curve_stochastic: 2600,
+  simple_calibrate: 0, branches: 450, charge_balance: 250, vg_curve: 900, hazard: 1300, sweep_mc: 1500, vg_curve_stochastic: 2600,
   circuit: 1200, validation: 1500,
 };
 const MESSAGES: Partial<Record<Kind, string>> = {
   branches: "classify: tracing branch", hazard: "FPT nodes", sweep_mc: "sweeping cycles", vg_curve: "V_G points",
-  vg_curve_stochastic: "V_G nodes", circuit: "transient", validation: "checks", charge_balance: "lattice",
+  simple_calibrate: "HRS calibration", vg_curve_stochastic: "V_G nodes", circuit: "transient", validation: "checks", charge_balance: "lattice",
 };
 
 // bench "custom" (user-drawn circuits, §6): the mini MNA mock is loaded on demand (keeps the main chunk small)
@@ -651,6 +652,7 @@ let customMod: CustomMod | null = null;
 const isCustom = (kind: Kind, payload: unknown) => kind === "circuit" && (payload as { bench?: string } | null)?.bench === "custom";
 
 function compute(kind: Kind, payload: unknown): unknown {
+  if (hasSimpleModel(payload) || kind === "simple_calibrate") throw new Error(SIMPLE_LIVE_REQUIRED);
   if (hasChangedGeometry(payload)) throw new Error(GEOMETRY_LIVE_REQUIRED);
   const p = payload as never;
   if (isCustom(kind, payload)) {

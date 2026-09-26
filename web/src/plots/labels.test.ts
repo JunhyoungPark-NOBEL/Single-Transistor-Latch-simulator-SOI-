@@ -4,10 +4,10 @@ import { signed, subs, withUnit } from "./labels";
 
 describe("plot label helpers", () => {
   it("turns server symbols into Plotly subscripts", () => {
-    expect(subs("V_LU (drain node)")).toBe("V<sub>LU</sub> (drain node)");
-    expect(subs("ΔQ_B")).toBe("ΔQ<sub>B</sub>");
-    expect(subs("X1 V_D at latch-up")).toBe("X1 V<sub>D</sub> at latch-up");
-    expect(subs("V(n001)")).toBe("V(n001)");
+    expect(subs("V_LU (drain node)")).toBe("<i>V</i><sub>LU</sub> (drain node)");
+    expect(subs("ΔQ_B")).toBe("<i>ΔQ</i><sub>B</sub>");
+    expect(subs("X1 V_D at latch-up")).toBe("X1 <i>V</i><sub>D</sub> at latch-up");
+    expect(subs("V(n001)")).toBe("<i>V</i>(n001)");
   });
   it("formats units and signs", () => {
     expect(withUnit("Delay", "s")).toBe("Delay (s)");
@@ -31,7 +31,7 @@ describe("axis.* dictionary", () => {
     }
   });
   it("puts units last in parentheses: Name symbol (unit)", () => {
-    for (const k of ["axis.vd", "axis.vg", "axis.idAbs", "axis.icomp", "axis.cb.u", "axis.vlu", "axis.dmap.L"] as const)
+    for (const k of ["axis.vd", "axis.vg", "axis.idAbs", "axis.icomp", "axis.cb.u", "axis.vlu", "axis.power", "axis.dmap.L"] as const)
       for (const s of [BRAND_STRINGS[k].ko, BRAND_STRINGS[k].en]) expect(s, k).toMatch(/ \((V|A|fC|mW|nm)\)$/);
     expect(BRAND_STRINGS["axis.vd"].en).toBe("Drain voltage V<sub>D</sub> (V)");
     expect(BRAND_STRINGS["axis.count"]).toEqual({ ko: "빈도", en: "Count" });

@@ -16,9 +16,19 @@ impact-ionisation clusters + losses) applied as an explicit tau-leap. The quasi-
 reproduced within 0.25 mV on a 0.4 V/s ramp, and the stochastic V_LU distribution agrees with the
 exact compound-jump backward equation (FPT) within the Monte-Carlo error.
 
+
+**2026-09-25 확장 — 5단자 자유 회로.** 새 STL은 D·S·G·BG·B 단자를 제공합니다.
+G와 BG에 DC·PULSE·PWL·SINE 전압원을 연결할 수 있고, B에는 R·C를 연결할 수 있습니다.
+BG 미연결 시 소자에 저장된 `vbg`, B 미연결 시 부유 바디를 사용합니다.
+B는 바디 **접점**이며 `u = V(B) − V(S)`입니다. 정전기적 바디 퍼텐셜 `ψ_B`와
+접점 전압은 동일한 양이 아니므로 `X1.vb`와 `X1.vbody`(`X1.u`)로 구분합니다.
+BG/B 외부 연결은 현재 결정론적 BE만 지원합니다. 기존 3단자 회로의 적분/잡음 경로는 유지합니다.
+아래의 기존 벤치 수치와 3단자 전류 근사는 이 확장의 검증 수치로 해석하지 않습니다.
+구현 계약과 이전 회로의 배선 보존은 `WEB_CONTRACT.md` §6.4를 참고하세요.
+
 ---
 
-## 1. 소자 수식 / Element formulation
+## 1. 기존 3단자 소자 수식 / Legacy three-terminal formulation
 
 > **KO.** STL 소자는 단자 D, G, S와 내부 미지수 u(소스–바디 준페르미 분리), r(드레인 접합 역바이어스)를
 > 갖는다. 매 시점 두 식을 푼다: E1 V_D(u,r) = v_D − v_S, E2 전하식 Q(u,r) − Q_c − θhF(u,r) = 0.
@@ -596,7 +606,10 @@ reached pulses only), `bit` (comparator value 0/1 per clock, first 8 runs, reach
 | `I(R1)`, `I(C1)` | A | current | through the element from its first to its second node; `I(C1)` is the companion current of the integration formula (BE: C Δv/h, TRAP: 2C Δv/h − i_n) |
 | `I(V1)`, `I(I1)` | A | current | through the source from its + (first) to its − (second) node (SPICE: a source delivering power has I(V1) < 0); `I(I1)` = the wave value |
 | `I(X1.d)`, `I(X1.s)`, `I(X1.g)` | A | current | into the STL terminals: I(X1.d) = I_D, I(X1.s) = −I_D, I(X1.g) = 0 (ideal gate: the gate–body displacement current is not stamped, §9) |
-| `X1.u`, `X1.r` | V | state | internal unknowns |
+| `X1.u`, `X1.r` | V | state | internal unknowns; `u` is the source-relative ohmic body-contact voltage |
+| `X1.vbody` | V | voltage | body-contact voltage relative to source (same physical quantity as `u`) |
+| `X1.vb` | V | voltage | electrostatic body potential `ψ_B`, distinct from contact voltage `u` |
+| `I(X1.bg)`, `I(X1.b)` | A | current | currents into back-gate/body contact, when supported by the five-terminal solver |
 | `X1.q_b` | C | charge | ΔQ_B = Q(t) − Q(0) |
 | `X1.dphi`, `X1.dphi_E` | V or 1 | state | local-state deviations (stochastic, cell with local states) |
 | `I(CMP1)` | A | current | comparator output current through its source, out → ground (SPICE sign: delivering power < 0) |

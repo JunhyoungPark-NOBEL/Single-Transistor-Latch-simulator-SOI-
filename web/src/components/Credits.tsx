@@ -1,7 +1,7 @@
-// About chip + About popover. The chip ("정보" / "About") sits at the right end of the sticky context strip
-// (never over plots or the Run bar). Clicking opens a small non-modal About card anchored under it: logo,
-// device + model scope, the reduced credit "KAIST · NOBEL 연구실" (no personal names, same as the server login
-// page) and the app/engine version from GET /api/health.
+// Credits corner + About popover. The credits sit at the right end of the sticky context strip (never over
+// plots or the Run bar): the full attribution at ≥ 1280 px, "KAIST · NOBEL Lab ⓘ" below (CSS). Clicking
+// opens a small non-modal About card anchored under it: logo, description, device + model scope, lab /
+// advisor / institution / developer, and the app/engine version from GET /api/health.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../i18n";
@@ -82,6 +82,7 @@ function About({ anchor, onClose }: { anchor: HTMLElement | null; onClose: (refo
 
   const rows: [string, ReactNode][] = [
     [t("brand.about.lab"), t("brand.about.lab.value")],
+    [t("brand.about.institution"), t("brand.about.institution.value")],
     [t("brand.about.version"), <VersionLine key="v" />],
   ];
 
@@ -102,7 +103,7 @@ function About({ anchor, onClose }: { anchor: HTMLElement | null; onClose: (refo
       <div className="about-device">
         <div className="about-device-head">
           {/* the device's equivalent symbol (floating-base NPN), small and monochrome in the brand colour */}
-          <BiristorGlyph size={20} title={t("brand.about.glyph")} className="about-glyph" style={{ color: "var(--det-strong)", flex: "none" }} />
+          <BiristorGlyph size={20} title={t("brand.about.glyph")} className="about-glyph" style={{ color: "var(--logo-b)", flex: "none" }} />
           <span className="tech-chip">{t("brand.tech")}</span>
           <span className="about-device-geom">
             <Sub text={t("brand.about.device.value").replace(/^FDSOI · /, "")} />
@@ -125,7 +126,7 @@ function About({ anchor, onClose }: { anchor: HTMLElement | null; onClose: (refo
   );
 }
 
-/** About chip for the mode strip; opens the About card. */
+/** Credits chip for the mode strip; opens the About card. */
 export function Credits() {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -143,11 +144,12 @@ export function Credits() {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={t("brand.credits.aria")}
-        title={t("brand.credits.aria")}
+        title={t("brand.credits.full")}
         onClick={() => setOpen((o) => !o)}
         data-testid="credits-chip"
       >
-        <span className="credits-text">{t("brand.credits.full")}</span>
+        <span className="credits-text full">{t("brand.credits.full")}</span>
+        <span className="credits-text short">{t("brand.credits.short")}</span>
         <svg className="credits-i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden focusable="false">
           <circle cx="12" cy="12" r="9" />
           <path d="M12 11v5.5M12 7.6v.01" />

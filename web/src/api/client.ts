@@ -2,6 +2,7 @@
 // the store: POST /api/compute/{kind}?wait=…, then poll GET /api/jobs/{id}, cancel with DELETE.
 import type { Health, JobStatus, Kind, Meta } from "./types";
 import { createRecorder } from "./snapshot";
+import { getSessionToken, isRemoteEndpoint, useConnection } from "./connection";
 
 /** Dev-only snapshot recorder (localStorage["stl-websim:record"] = "1"; scripts/record-snapshot.mjs). Null in builds. */
 const recorder = import.meta.env.DEV ? createRecorder() : null;
@@ -10,6 +11,8 @@ const rec = <T,>(name: "health" | "meta" | "measured" | "design_map", p: Promise
 
 export interface Backend {
   readonly isMock: boolean;
+  /** A retired connection must never deliver a result into the newly selected server. */
+  isCurrent?: () => boolean;
   health(): Promise<Health>;
   meta(): Promise<Meta>;
   submit(kind: Kind, payload: unknown, wait?: number): Promise<JobStatus>;
@@ -62,15 +65,21 @@ export function errorMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
-async function request<T>(method: string, url: string, body?: unknown, timeoutMs = 30000): Promise<T> {
+export interface HttpConfiguration { endpoint: string; token?: string | null }
+
+export async function request<T>(method: string, path: string, body?: unknown, timeoutMs = 30000, config: HttpConfiguration = { endpoint: useConnection.getState().endpoint, token: getSessionToken() }): Promise<T> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
+    const headers: Record<string, string> = {};
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (config.token) headers.Authorization = `Bearer ${config.token}`;
+    const res = await fetch(`${config.endpoint}${path}`, {
       method,
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: ctl.signal,
+      credentials: isRemoteEndpoint(config.endpoint) ? "omit" : "same-origin",
     });
     const text = await res.text();
     let data: unknown = null;
@@ -90,18 +99,37 @@ async function request<T>(method: string, url: string, body?: unknown, timeoutMs
   }
 }
 
-export const httpBackend: Backend = {
+/** Captures endpoint and credentials for the lifetime of every submitted job. */
+export function createHttpBackend(config: HttpConfiguration): Backend {
+  const call = <T,>(method: string, path: string, body?: unknown, timeout?: number) => request<T>(method, path, body, timeout, config);
+  return {
   isMock: false,
-  health: () => rec("health", request<Health>("GET", "/api/health", undefined, 4000)),
-  meta: () => rec("meta", request<Meta>("GET", "/api/meta")),
-  submit: (kind, payload, wait = 1.5) => request<JobStatus>("POST", `/api/compute/${kind}?wait=${wait}`, payload, 60000),
-  job: (id) => request<JobStatus>("GET", `/api/jobs/${encodeURIComponent(id)}`),
+  health: () => rec("health", call<Health>("GET", "/api/health", undefined, 4000)),
+  meta: () => rec("meta", call<Meta>("GET", "/api/meta")),
+  submit: (kind, payload, wait = 1.5) => call<JobStatus>("POST", `/api/compute/${kind}?wait=${wait}`, payload, 60000),
+  job: (id) => call<JobStatus>("GET", `/api/jobs/${encodeURIComponent(id)}`),
   cancel: async (id) => {
-    await request<unknown>("DELETE", `/api/jobs/${encodeURIComponent(id)}`);
+    await call<unknown>("DELETE", `/api/jobs/${encodeURIComponent(id)}`);
   },
-  measured: () => rec("measured", request<unknown>("GET", "/api/data/measured", undefined, 60000)),
-  designMap: () => rec("design_map", request<unknown>("GET", "/api/data/design_map", undefined, 60000)),
-};
+  measured: () => rec("measured", call<unknown>("GET", "/api/data/measured", undefined, 60000)),
+  designMap: () => rec("design_map", call<unknown>("GET", "/api/data/design_map", undefined, 60000)),
+  };
+}
+
+let httpGeneration = 0;
+export let httpBackend: Backend = createHttpBackend({ endpoint: useConnection.getState().endpoint });
+httpBackend.isCurrent = () => httpGeneration === 0;
+export function configureHttpBackend(config: HttpConfiguration): Backend {
+  const generation = ++httpGeneration;
+  httpBackend = createHttpBackend(config);
+  httpBackend.isCurrent = () => generation === httpGeneration;
+  return httpBackend;
+}
+export function retireHttpBackend(): void { httpGeneration++; }
+
+export interface ServerSession { authenticated: boolean; token?: string | null; expires_in?: number; access_gate?: string }
+export const readServerSession = (config: HttpConfiguration) => request<ServerSession>("GET", "/api/session", undefined, 4000, config);
+export const authenticateServer = (config: HttpConfiguration, password: string) => request<ServerSession>("POST", "/api/session", { password }, 10000, config);
 
 export class JobAborted extends Error {
   constructor() {
@@ -157,8 +185,15 @@ export async function runJob<T>(backend: Backend, kind: Kind, payload: unknown, 
 }
 
 async function runJobCore<T>(backend: Backend, kind: Kind, payload: unknown, opt: RunOptions): Promise<T> {
+  const originalAbort = opt.isAborted;
+  opt = { ...opt, isAborted: () => backend.isCurrent?.() === false || !!originalAbort?.() };
+  if (opt.isAborted?.()) throw new JobAborted();
   const pollMs = opt.pollMs ?? 400;
   let st = await submitWithRetry(backend, kind, payload, opt);
+  if (opt.isAborted?.()) {
+    if (st.status === "queued" || st.status === "running") backend.cancel(st.job_id).catch(() => undefined);
+    throw new JobAborted();
+  }
   opt.onStatus?.(st);
   let failures = 0;
   while (st.status === "queued" || st.status === "running") {
@@ -177,6 +212,10 @@ async function runJobCore<T>(backend: Backend, kind: Kind, payload: unknown, opt
     } catch (e) {
       if (++failures > 5) throw e;
       continue;
+    }
+    if (opt.isAborted?.()) {
+      if (st.status === "queued" || st.status === "running") backend.cancel(st.job_id).catch(() => undefined);
+      throw new JobAborted();
     }
     opt.onStatus?.(st);
   }

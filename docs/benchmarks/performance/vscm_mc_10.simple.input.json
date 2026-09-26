@@ -1,0 +1,15 @@
+{
+  "device": {
+    "preset": "paper",
+    "numerics": {
+      "grid": 601
+    },
+    "model": "simple"
+  },
+  "stochastic": {
+    "n_cycles": 10,
+    "seed": 404,
+    "n_traces": 4,
+    "engine": "auto"
+  }
+}

@@ -20,12 +20,13 @@ function DetLayout() {
   const t = useT();
   const results = useStore((s) => s.results);
   const keys = useDeviceKeys();
+  const simple = useStore((s) => s.params.device.model === "simple");
   const tabs: MoreTab[] = [
     { id: "vg", label: t.l(DEV["tab.vg"]), plainLabel: t.l(DEV["tab.vg.plain"]), title: t("p.vg.desc"), panel: <VgPanel />, status: entryStatus(results.vg_curve, keys.vg_curve) },
     { id: "components", label: t.l(DEV["tab.components"]), title: t("p.comp.desc"), panel: <ComponentsPanel />, status: entryStatus(results.branches, keys.branches) },
     { id: "charge-balance", label: t.l(DEV["tab.cb"]), title: t("p.cb.desc"), panel: <ChargeBalancePanel />, status: entryStatus(results.charge_balance, keys.charge_balance) },
   ];
-  return <FocusLayout testId="panels-deterministic" scope="device-det" hero={<IvPanel />} tabs={tabs} defaultTab="vg" side allOrder={["hero", "components", "charge-balance", "vg"]} />;
+  return <FocusLayout testId="panels-deterministic" scope="device-det" hero={<IvPanel />} tabs={simple ? tabs.filter((item) => item.id === "vg") : tabs} defaultTab="vg" side allOrder={["hero", "components", "charge-balance", "vg"]} />;
 }
 
 function StoLayout() {

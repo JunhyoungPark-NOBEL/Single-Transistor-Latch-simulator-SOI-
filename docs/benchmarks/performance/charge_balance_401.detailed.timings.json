@@ -1,0 +1,52 @@
+{
+  "first": {
+    "wall_s": 0.038252518002991565,
+    "cpu_s": 0.03824615899999628,
+    "reported_s": 0.03824515698943287,
+    "solver": null,
+    "warnings": [],
+    "engine": null
+  },
+  "warm": [
+    {
+      "wall_s": 0.03885010500380304,
+      "cpu_s": 0.03884458900000709,
+      "reported_s": 0.03884527800255455,
+      "solver": null,
+      "warnings": [],
+      "engine": null
+    },
+    {
+      "wall_s": 0.03840285399928689,
+      "cpu_s": 0.03840506499999208,
+      "reported_s": 0.03839852700184565,
+      "solver": null,
+      "warnings": [],
+      "engine": null
+    },
+    {
+      "wall_s": 0.03921708599955309,
+      "cpu_s": 0.039219445999989944,
+      "reported_s": 0.03921247000107542,
+      "solver": null,
+      "warnings": [],
+      "engine": null
+    },
+    {
+      "wall_s": 0.03909770799509715,
+      "cpu_s": 0.03909961799999451,
+      "reported_s": 0.03909283099346794,
+      "solver": null,
+      "warnings": [],
+      "engine": null
+    },
+    {
+      "wall_s": 0.03906757199729327,
+      "cpu_s": 0.03906472699999597,
+      "reported_s": 0.039063385003828444,
+      "solver": null,
+      "warnings": [],
+      "engine": null
+    }
+  ]
+}

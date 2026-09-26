@@ -69,6 +69,8 @@
 .gp-h { font-size: 11px; font-weight: 750; letter-spacing: .02em; color: var(--muted); margin-bottom: 2px; }
 .gp-intuitive { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text); }
 .gp.sheet .gp-intuitive { font-size: 13.5px; }
+.gp-compact-effects { display: grid; gap: 7px; margin-top: 12px; }
+.gp-reference { font-size: 10.5px; color: var(--text-2); }
 .gp .gchips-lead, .gp .gchips-step, .gp .gchip-mean, .gp .gchip[data-dir="flat"] .gchip-arrow, .gp .gchip[data-dir="flat"] .gchip-mag { color: var(--text-2); }
 .gp .gp-foot { border-top: 1px solid var(--border); padding-top: 9px; margin-top: 10px; }
 .gp-effects { margin: 0; padding: 0 0 0 16px; font-size: 12.5px; line-height: 1.5; }
@@ -91,7 +93,7 @@
 .gp-tech { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.45; color: var(--text-2); }
 .gp-tech.solo { margin-top: 0; padding-top: 0; border-top: 0; color: var(--text); }
 .gp-tech-help { margin: 0; }
-.gp-tech-meta { margin-top: 4px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gp-tech-meta { margin-top: 3px; font-size: 11px; color: var(--muted); font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .gp-tech-meta .code-chip { font-size: 10.5px; padding: 0 5px; margin-right: 4px; }
 .gp-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
 .gp-more { font-size: 12px; font-weight: 650; color: var(--accent-strong); text-decoration: none; }
@@ -121,8 +123,6 @@
 .grow-name h4, .grow-name h5 { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--text); display: inline-flex; align-items: baseline; gap: 6px; }
 .grow-name .grow-sym { font-size: 13px; color: var(--text); }
 .grow-name .badge { font-size: 10px; padding: 0 6px; }
-.grow-def { margin: 1px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--text-2); }
-.grow-def .code-chip { font-size: 10.5px; padding: 0 5px; margin-left: 6px; }
 .grow-easy { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text); }
 .grow-easy.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; cursor: pointer; }
 .grow-expand { display: block; margin-top: 1px; font-size: 11px; }

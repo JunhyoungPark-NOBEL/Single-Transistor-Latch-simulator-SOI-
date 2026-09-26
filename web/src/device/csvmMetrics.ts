@@ -97,15 +97,15 @@ function eventCycles(samples: Sample[], events: CustomEvent[]): { cycles: Cycle[
   return { cycles, unresolved };
 }
 
-/** Prominent peak-to-peak cycles, used only when the solver supplies no STL events. */
+/** Prominent peak-to-peak cycles, independent of current-threshold event detection. */
 function waveformCycles(samples: Sample[], settlingTime: number): { cycles: Cycle[]; peaks: number } {
   const tail = samples.filter((sample) => sample.t >= settlingTime);
-  let low = Infinity, high = -Infinity, magnitude = 0;
-  for (const sample of tail) {
-    low = Math.min(low, sample.v);
-    high = Math.max(high, sample.v);
-    magnitude = Math.max(magnitude, Math.abs(sample.v));
-  }
+  // A cold-start outlier must not set the prominence for every later oscillation.
+  // Percentiles only set the detector's threshold; extrema use unmodified samples.
+  const levels = tail.map((sample) => sample.v).sort((a, b) => a - b);
+  const low = levels[Math.floor((levels.length - 1) * 0.05)];
+  const high = levels[Math.ceil((levels.length - 1) * 0.95)];
+  const magnitude = Math.max(Math.abs(low), Math.abs(high));
   // 0.1 mV absolute / 0.01% relative floor rejects flat-trace numerical ripple.
   const prominence = Math.max(1e-4, magnitude * 1e-4, (high - low) * 0.05);
   const peaks: number[] = [];
@@ -177,12 +177,20 @@ export function analyzeCsvm(result: CustomCircuitResult, options: CsvmMetricsOpt
     && (event.kind === "latch_up" || event.kind === "latch_down")
     && event.t >= samples[0].t && event.t <= samples.at(-1)!.t,
   ).sort((a, b) => a.t - b.t);
-  const wave = events.length ? null : waveformCycles(samples, settlingTime);
+  const wave = waveformCycles(samples, settlingTime);
   const detected = events.length ? eventCycles(samples, events) : null;
-  const candidates = detected ? detected.cycles : wave!.cycles;
-  const retained = candidates.slice(discard).filter((cycle) => cycle.start >= settlingTime);
+  const keep = (cycles: Cycle[]) => cycles.slice(discard).filter((cycle) => cycle.start >= settlingTime);
+  const eventRetained = keep(detected?.cycles ?? []);
+  const waveRetained = keep(wave.cycles);
+  // Fixed current thresholds can detect the first overshoot, then miss later
+  // voltage cycles. They must never veto resolved oscillations in V_D(t).
+  // Prefer events only when they resolve at least as many retained cycles.
+  const useEvents = !!detected && (eventRetained.length >= waveRetained.length)
+    && (detected.cycles.length > 0 || wave.cycles.length === 0);
+  const candidates = useEvents ? detected!.cycles : wave.cycles;
+  const retained = useEvents ? eventRetained : waveRetained;
   const observed = candidates.length;
-  const activity = observed > 0 || (wave?.peaks ?? 0) > 0
+  const activity = observed > 0 || wave.peaks > 0
     || (events.some((e) => e.kind === "latch_up") && events.some((e) => e.kind === "latch_down"));
   const status = retained.length >= required ? "oscillating" : activity ? "insufficient-cycles" : "no-oscillation";
   const period = retained.length >= required ? mean(retained.map((cycle) => cycle.end - cycle.start)) : null;
@@ -196,70 +204,14 @@ export function analyzeCsvm(result: CustomCircuitResult, options: CsvmMetricsOpt
     observedCycles: observed,
     status,
     reason: status === "oscillating"
-      ? L(`${retained.length}주기 · 시작 구간 제외`, `${retained.length} cycles · startup excluded`)
+      ? L(`${retained.length}주기 · 초기 구간 제외`, `${retained.length} cycles · startup excluded`)
       : status === "insufficient-cycles"
         ? detected?.unresolved
-          ? L("파형 해상도가 부족합니다", "Waveform resolution too low")
-          : L("관측한 주기가 부족합니다 · 시간을 늘려 주세요", "Too few cycles observed · run longer")
+          ? L("파형 해상도 부족", "Waveform resolution too low")
+          : L("관측 주기 부족 · 시간을 늘려주세요", "Too few cycles · increase duration")
         : L("발진이 관측되지 않았습니다", "No oscillation observed"),
     windowStart_s: retained[0]?.start ?? null,
     windowEnd_s: retained.at(-1)?.end ?? null,
-    source: events.length ? "events" : "waveform",
+    source: useEvents ? "events" : "waveform",
   };
-}
-
-/**
- * Server notes of a CSVM run in the reader's language. The solver writes them for a general netlist, prefixed
- * with the cell name ("X1: relaxation oscillator — …"). For the device CSVM (one cell, current source, C_drain)
- * the expected ones are rephrased, the always-present "current-biased above the HRS" start-up note is dropped,
- * and any other note keeps its text without the cell prefix.
- */
-export function csvmNotes(warnings: readonly string[] | undefined, lang: keyof L10n): string[] {
-  const ko = lang === "ko";
-  const out: string[] = [];
-  for (const raw of warnings ?? []) {
-    const w = raw.replace(/^X\d+:\s*/, "");
-    if (/^current-biased above the HRS/.test(w)) continue;
-    let m = w.match(/^relaxation oscillator .*quasi-static period ≈ ([^\s(]+\s*\S*?) \(~(\d+) latch-ups/);
-    if (m) {
-      out.push(ko
-        ? `완화 발진: 드레인 전압이 V_LD와 V_LU 사이를 오갑니다 (준정적 예상 주기 ≈ ${m[1]}, 계산 시간 안에 래치업 약 ${m[2]}회).`
-        : `Relaxation oscillation: the drain voltage saws between V_LD and V_LU (quasi-static period ≈ ${m[1]}, about ${m[2]} latch-ups in the run).`);
-      continue;
-    }
-    m = w.match(/^high-impedance drive .*crosses the HRS.*settles near V_DS ≈ ([-\d.e+]+) V/);
-    if (m) {
-      out.push(ko
-        ? `구동 전류가 작아 드레인 전압이 약 ${m[1]} V에서 멈추고 래치업되지 않습니다 (발진 없음).`
-        : `The drive current is too small: the drain settles near ${m[1]} V without latching (no oscillation).`);
-      continue;
-    }
-    if (/^high-impedance drive .*crosses the LRS/.test(w)) {
-      out.push(ko
-        ? "구동 전류가 커서 한 번 래치업된 뒤 그대로 켜져 있습니다 (발진 없음)."
-        : "The drive current holds the latch: the cell latches once and stays on (no oscillation).");
-      continue;
-    }
-    m = w.match(/^no latch window at V_GS = ([-\d.e+]+) V/);
-    if (m) {
-      out.push(ko ? `V_G = ${m[1].replace("-", "−")} V에서는 래치 창이 없어 래치업되지 않습니다.` : `No latch window at V_G = ${m[1].replace("-", "−")} V: no latch-up expected.`);
-      continue;
-    }
-    m = w.match(/^estimated run time ~(\d+) s/);
-    if (m) {
-      out.push(ko ? `예상 계산 시간 약 ${m[1]}초` : `Estimated run time about ${m[1]} s`);
-      continue;
-    }
-    if (/^estimated ~.* close to solver\.max_steps/.test(w)) {
-      out.push(ko ? "계산 스텝 수가 한도에 가깝습니다. 계산이 끝 시간 전에 멈출 수 있습니다." : "The step count is close to the solver limit; the run may stop before the end time.");
-      continue;
-    }
-    m = w.match(/^(\d+) run\(s\) did not reach t_stop/);
-    if (m) {
-      out.push(ko ? "계산이 끝 시간에 도달하지 못했습니다 (스텝 한도·수렴). 지표는 도달한 구간에서만 구했습니다." : "The run did not reach the end time (step budget or convergence); the metrics use the part that was computed.");
-      continue;
-    }
-    out.push(w);
-  }
-  return out;
 }

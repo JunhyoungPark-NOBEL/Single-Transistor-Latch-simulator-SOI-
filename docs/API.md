@@ -26,6 +26,9 @@ HTTP surface, the backend-core result details and the data endpoints.
 | GET | `/api/jobs/{job_id}?wait=0` | `JobStatus`; optional long-poll `wait` (s, ≤ 60) |
 | DELETE | `/api/jobs/{job_id}` | cancel → `JobStatus` with `status: "cancelled"` |
 | GET | `/api/jobs` | the caller's recent jobs (same client address; `JobStatus` without `result`, oldest first; the server keeps the last ~200 finished jobs). Other clients' job ids are not listed. |
+| GET | `/api/performance` | Reference catalog, current compute-host identity and calibration, aggregated timing evidence and queue counts |
+| POST | `/api/performance/estimate` | `{jobs:[{key,kind,payload,depends_on?}]}` → estimated time ranges for the actual worker pool; does not execute the model |
+| POST | `/api/performance/calibrate?wait=0` | Fixed real-worker calibration, returned as a pollable `JobStatus`; bypasses result caching |
 | GET | `/api/data/measured` | measured data, see below |
 | GET | `/api/data/design_map` | design map, see below |
 | GET/POST | `/api/branches`, `/api/folds`, `/api/hazard`, `/api/sweeps`, `/api/vg_curve` | handoff-name aliases of `/api/compute/{branches, folds, hazard, sweep_mc, vg_curve}`; POST takes the payload, GET takes query parameters (below) |
@@ -53,7 +56,7 @@ If a worker process crashes (segfault, OOM kill), the pool is restarted at once 
 retried; a job that crashes a worker twice ends with `status: "error"`.
 
 **Kinds:** `branches`, `charge_balance`, `vg_curve`, `hazard`, `sweep_mc`, `vg_curve_stochastic`,
-`circuit`, `validation` (contract) and `folds` (backend-core extra, folds only). Unknown kind → 404.
+`circuit`, `validation`, `simple_calibrate`, `performance_calibrate` (contract) and `folds` (backend-core extra, folds only). Unknown kind → 404.
 
 **Deduplication and cache.** An identical payload that is still queued/running is attached to the running
 computation but gets its **own** `job_id`: cancelling one client's job does not cancel the other's (the
@@ -75,6 +78,18 @@ longer cached …"` and should be submitted again). The stochastic package's nod
 `preset`, `vg` (V), `iph_pA` (→ light mode `iph`) or `power_mW` (→ mode `power`), `grid`, `dg`, `de`
 (→ `state.delta_phi_G0_V/E0_V`), `vd_max`, `rate`, `dv` (→ `sweep`), `n`, `seed` (`/api/sweeps`: `n_cycles`,
 `seed`; `/api/vg_curve`: points), `vg_min`, `vg_max`, `wait` (default 2 s). Example: `GET /api/folds?vg=-1.8`.
+
+## Performance estimates
+
+`GET /api/performance` returns `{catalog, host, calibration, observations, warm_workers, queue}`. Host identity is opaque; profiles are separated by host, engine version, Python and numerical dependency versions, CPU capacity and thread configuration. Records expire after 30 days. A remote connection measures the remote Python compute host, not the browser's CPU.
+
+The estimate endpoint accepts 1–8 jobs. Each job payload passes the same normalisation used for computation; `key` identifies a node and `depends_on` expresses dependencies inside the small group. Jobs without dependencies can share the available workers. Malformed groups/dependency cycles return 422. Unsupported job settings appear as unavailable items instead of fabricated timings.
+
+The response includes `items`, `total`, `compute`, `queue`, `setup`, `source`, `confidence`, `host`, and `warnings`. Time ranges use `{low_s, seconds, high_s}`; unknown components are `null`. `source` is `reference`, `calibrated`, or `observed`. `total` incorporates the estimated queue but **does not include unknown first-use preparation, transfer, or rendering**. `setup.unknown` and `queue.unknown` must remain visible to clients. The ranges are workload estimates, not statistical confidence intervals.
+
+Exact result-cache hits use `cached:true`, zero compute work and no worker queue. Joined in-flight jobs use the remaining estimate of that existing computation. Warm learning records only one successful complete computation per run; cached responses, abandoned/cancelled results, truncated transients and first-use model/table preparation are excluded.
+
+Calibration is also available as `POST /api/compute/performance_calibrate` with an empty payload. It runs fixed shipped kernels repeatedly in a worker, preserves first-call measurements separately, and returns the normal cancellable/pollable job handle. It is intentionally not served from the result cache. Calibration applies to measured model/family combinations; other combinations remain clearly labelled reference estimates until host-specific evidence is available.
 
 ## Payload normalisation and caps
 

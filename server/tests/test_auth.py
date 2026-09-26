@@ -165,6 +165,7 @@ def test_password_not_kept_in_config(gate):
 # everything protected
 # ---------------------------------------------------------------------------------------------
 API_DENIED = [
+    ("GET", "/api/performance"), ("POST", "/api/performance/estimate"), ("POST", "/api/performance/calibrate"),
     ("GET", "/api/meta"), ("POST", "/api/compute/branches"), ("POST", "/api/compute/circuit"),
     ("GET", "/api/jobs"), ("GET", "/api/jobs/abc"), ("DELETE", "/api/jobs/abc"),
     ("GET", "/api/data/measured"), ("GET", "/api/data/design_map"), ("GET", "/api/design_map"),
@@ -242,8 +243,8 @@ def test_login_page(c):
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
     t = r.text
     import re
-    assert re.sub(r"</?span>", "", t).count("KAIST · NOBEL 연구실") == 1
-    assert "지도교수" not in t and "개발" not in t          # reduced credits (owner decision D2), as in the app
+    assert "<summary>제작자</summary>" in t and "NOBEL 연구실 · KAIST" in t
+    assert "최양규" not in t and "박준형" not in t
     assert 'method="post" action="/login"' in t and 'name="password"' in t and 'type="password"' in t
     assert 'name="next" value="/circuit"' in t and 'name="remember"' in t
     assert "비밀번호" in t and "Password" in t and "prefers-color-scheme:dark" in t
@@ -594,7 +595,7 @@ def test_logout_from_another_site_asks_first(c, method, site):
     r = c.request(method, "/logout", headers={"Sec-Fetch-Site": site})
     assert r.status_code == 200 and "set-cookie" not in r.headers
     assert 'method="post" action="/logout"' in r.text and "Sign out" in r.text and "<script" not in r.text.lower()
-    assert "KAIST</span> · <span>NOBEL 연구실" in r.text and r.headers["cache-control"] == "no-store"
+    assert "NOBEL 연구실 · KAIST" in r.text and r.headers["cache-control"] == "no-store"
     assert c.get("/api/meta").status_code == 200                    # still signed in
     for own in ("same-origin", "none"):                              # own page's form / typed URL or bookmark
         r = c.request(method, "/logout", headers={"Sec-Fetch-Site": own})

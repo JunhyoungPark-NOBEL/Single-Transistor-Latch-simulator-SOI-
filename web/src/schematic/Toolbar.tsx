@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { selectMoreTab } from "../components/MoreCard";
 import { useT, type T } from "../i18n";
 import type { StrKey } from "../i18n/strings";
-import { deviceName } from "../devices/library";
+import { deviceName, isSupportedTechnology } from "../devices/library";
 import { useDeviceLib } from "../devices/store";
 import { useIsAll } from "../state/layout";
 import { useStore } from "../state/store";
@@ -29,7 +29,7 @@ export function loadTemplate(id: TemplateId, t: T) {
   const st = useSch.getState();
   const doc = templateDoc(id);
   st.replaceDoc(doc);
-  st.notify(t("schematic.file.exampleToast", { name: t(TEMPLATE_TEXT[id].title) }));
+  st.notify(t("schematic.file.loadedToast", { name: t(TEMPLATE_TEXT[id].title) }));
   const cmp = doc.elements.find((e) => e.kind === "CMP");
   // "" matches no tab → the MoreCard falls back to its defaultTab (comparator / distribution / trajectory)
   selectMoreTab(SCH_MORE_SCOPE, cmp ? `sch-cmp-${cmp.name}` : "");
@@ -217,6 +217,7 @@ export function Toolbar() {
           className="select sch-stl-select"
           value={entries.some((e) => e.id === stlChoice) ? stlChoice : entries[0]?.id}
           onChange={(e) => {
+            if (!isSupportedTechnology(entries.find((d) => d.id === e.target.value)?.technology)) return;
             st().set({ stlChoice: e.target.value });
             placeTool("STL");
           }}
@@ -225,8 +226,8 @@ export function Toolbar() {
           data-testid="tool-stl-device"
         >
           {entries.map((e) => (
-            <option key={e.id} value={e.id}>
-              {deviceName(e, lang)}
+            <option key={e.id} value={e.id} disabled={!isSupportedTechnology(e.technology)}>
+              {deviceName(e, lang)}{!isSupportedTechnology(e.technology) ? ` · ${e.technology} · ${t.lang === "ko" ? "미지원" : "Unsupported"}` : ""}
             </option>
           ))}
         </select>

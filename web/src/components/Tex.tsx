@@ -1,5 +1,7 @@
 // KaTeX rendering (cached). Inline/display; never throws — parse errors render with an error style.
 import katex from "katex";
+import { uprightTexSubscripts } from "../math/typography";
+import "../math/typography.css";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 const cache = new Map<string, string>();
@@ -14,7 +16,7 @@ export function renderTex(tex: string, display = false): string {
   if (hit !== undefined) return hit;
   let html: string;
   try {
-    html = katex.renderToString(tex, { displayMode: display, throwOnError: false, strict: "ignore", output: "htmlAndMathml", errorColor: "currentColor" });
+    html = katex.renderToString(uprightTexSubscripts(tex), { trust: (context) => context.command === "\\htmlClass", displayMode: display, throwOnError: false, strict: "ignore", output: "htmlAndMathml", errorColor: "currentColor" });
     if (html.includes('class="katex-error"')) html = `<code class="tex-error" title="KaTeX parse error">${escapeHtml(tex)}</code>`;
   } catch {
     html = `<code class="tex-error" title="KaTeX error">${escapeHtml(tex)}</code>`;

@@ -10,7 +10,7 @@
 .device-slot { width:100%; border:1px solid var(--border); border-radius:7px; min-height:67px; background:var(--surface); padding:12px; text-align:left; }
 .device-slot.empty { height:67px; display:flex; align-items:center; gap:8px; border-style:dashed; color:var(--muted); font-size:11px; background:transparent; }
 .device-slot.empty:hover { border-color:var(--accent); color:var(--accent-strong); background:var(--accent-soft); }
-.slot-number { color:var(--muted); font-size:10px; font-family:var(--mono); margin-left:auto; }
+.slot-number { color:var(--faint); font-size:10px; font-family:var(--mono); margin-left:auto; }
 .device-slot.empty .slot-number { margin:0 12px 0 0; }
 .slot-empty-plus { font-size:16px; font-weight:400; }
 .slot-heading { display:flex; align-items:center; gap:6px; }
@@ -24,27 +24,8 @@
 .shelf-manage { width:100%; margin:10px 0; }
 .shelf-export { border-top:1px solid var(--border); padding-top:14px; }
 .shelf-export > button { width:100%; }
-.shelf-local-note { display:block; font-size:11px; color:var(--muted); margin-top:12px; text-align:center; }
+.shelf-local-note { display:block; font-size:10px; color:var(--faint); margin-top:12px; text-align:center; }
 .device-shelf .dev-toast { font-size:11px; margin-top:12px; display:flex; align-items:center; gap:5px; }
 .device-shelf .dev-toast .icon-btn { flex:none; margin-left:auto; }
-.shelf-save-count { display:none; margin-left:6px; font-family:var(--mono); font-size:11px; font-weight:500; opacity:.85; }
-/* < 1280 px: the shelf moves below the results as one compact row (title + save), then the saved devices
-   only (no empty placeholders; the count sits in the save button), then manage / export */
-@media (max-width:1279px) {
-  .device-workspace { grid-template-columns:minmax(0,1fr); gap:18px; }
-  .device-shelf { position:static; border-left:0; border-top:1px solid var(--border); padding:16px 0 4px; display:flex; flex-wrap:wrap; align-items:center; gap:10px 12px; }
-  .shelf-head { margin:0; }
-  .shelf-count { display:none; }
-  .shelf-save { width:auto; height:32px; padding:0 14px; }
-  .shelf-save-count { display:inline; }
-  .shelf-caption { flex:1 1 220px; margin:0; }
-  .shelf-slots { flex-basis:100%; display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); }
-  .shelf-slots:not(:has(.filled)) { display:none; }
-  .device-slot.empty { display:none; }
-  .shelf-manage { width:auto; margin:0; }
-  .shelf-export { border-top:0; padding-top:0; }
-  .shelf-export > button { width:auto; }
-  .shelf-local-note { margin:0 0 0 auto; text-align:right; }
-  .device-shelf .dev-toast { flex-basis:100%; margin:0; }
-}
-@media (max-width:760px) { .shelf-local-note { flex-basis:100%; margin:0; text-align:left; } }
+@media (max-width:1300px) and (min-width:1101px) { .device-workspace {grid-template-columns:minmax(0,1fr) 190px;gap:16px;} .device-shelf {padding-left:14px;} }
+@media (max-width:850px) { .device-workspace {grid-template-columns:minmax(0,1fr);} .device-shelf {position:static; border-left:0; border-top:1px solid var(--border);padding:18px 0;} .shelf-slots {display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));} .shelf-save {width:auto;} .shelf-head {margin-bottom:12px;} .shelf-caption {margin-bottom:12px;} }

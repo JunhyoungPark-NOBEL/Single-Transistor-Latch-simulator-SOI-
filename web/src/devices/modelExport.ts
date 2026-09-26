@@ -5,11 +5,7 @@ import { isReferenceGeometry, resolveGeometry } from "../params/geometry";
 import { geometryLine } from "./library";
 
 export type Point = readonly [voltage: number, current: number];
-export interface ExportSelection {
-  device: DeviceBlock; sweep: SweepBlock; name?: string;
-  /** Embed the calibration descriptors and the engine vector as comments (off by default: the file is shared). */
-  includeCalibration?: boolean;
-}
+export interface ExportSelection { device: DeviceBlock; sweep: SweepBlock; name?: string }
 export type ExportFormat = "ltspice" | "verilog-a" | "sentaurus";
 export interface VerilogAExport {
   filename: string;
@@ -26,12 +22,11 @@ export interface LtspiceExport {
   modelName: string;
   maxVoltage: number;
 }
-export type ExportErrorCode = "invalid" | "range" | "noData";
+export type ExportErrorCode = "invalid" | "range" | "noData" | "simple";
 export class ModelExportError extends Error {
   constructor(public code: ExportErrorCode) { super(code); }
 }
 
-const MIN_DV = 1e-9;
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const num = (v: number) => v.toExponential(16);
 const asciiName = (s: string) => `STL_${s.replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48) || "device"}`;
@@ -43,9 +38,7 @@ function points(curve: XY): Point[] {
   for (let i = 0; i < curve.vd.length; i++) {
     const v = curve.vd[i], current = curve.id[i];
     if (!finite(v) || !finite(current) || v < 0 || current < 0) throw new ModelExportError("noData");
-    // Points closer than 1 nV to the previous one are numerical noise of the u-parameterised locus
-    // (the reference HRS has ~90 below 1 nV, down to 1e-58 V); they carry < 1e-25 A and break table parsers.
-    if (!out.length || v > out[out.length - 1][0] + MIN_DV) out.push([v, current]);
+    if (!out.length || v > out[out.length - 1][0]) out.push([v, current]);
   }
   if (out.length < 2) throw new ModelExportError("noData");
   return out;
@@ -73,6 +66,7 @@ function jsonComments(value: unknown): string {
 
 /** Only call with a live engine result for this exact selection; never with UI demo/snapshot data. */
 function prepareModelExport(selection: ExportSelection, result: BranchesResult) {
+  if (selection.device.model === "simple" || result.model === "simple") throw new ModelExportError("simple");
   const { device, sweep } = selection;
   if (!finite(sweep.vd_max_V) || sweep.vd_max_V <= 0 || !finite(sweep.rate_V_per_s) || sweep.rate_V_per_s <= 0 ||
       !finite(sweep.dv_V) || sweep.dv_V <= 0 || !finite(device.vg) || !finite(result.iph_A) ||
@@ -101,10 +95,8 @@ function prepareModelExport(selection: ExportSelection, result: BranchesResult) 
     hrs = points(result.HRS);
     lrs = points(result.LRS);
     // Close both stable segments with the same refined fold values as double_sweep().
-    if (lu! > hrs[hrs.length - 1][0] + MIN_DV) hrs.push([lu!, ilu!]);
-    else if (lu! > hrs[hrs.length - 1][0]) hrs[hrs.length - 1] = [lu!, ilu!];
-    if (ld! < lrs[0][0] - MIN_DV) lrs.unshift([ld!, ild!]);
-    else if (ld! < lrs[0][0]) lrs[0] = [ld!, ild!];
+    if (lu! > hrs[hrs.length - 1][0]) hrs.push([lu!, ilu!]);
+    if (ld! < lrs[0][0]) lrs.unshift([ld!, ild!]);
     if (hrs[0][0] !== 0 || hrs[hrs.length - 1][0] < lu! || lrs[0][0] > ld! ||
         lrs[lrs.length - 1][0] < sweep.vd_max_V || sweep.vd_max_V <= lu!) throw new ModelExportError("range");
   } else {
@@ -138,8 +130,8 @@ export function buildLtspiceExport(selection: ExportSelection, result: BranchesR
     fixed_IPH_A: result.iph_A,
     fixed_geometry: resolveGeometry(device.geometry),
     geometry_model: result.geometry_model ?? null,
-    calibration_included: !!selection.includeCalibration,
-    ...(selection.includeCalibration ? { effective_engine_p: result.p, submitted_device: device } : {}),
+    effective_engine_p: result.p,
+    submitted_device: device,
     sweep,
     folds: result.folds,
     engine_grid: result.grid ?? device.numerics.grid,
@@ -170,7 +162,7 @@ export function buildLtspiceExport(selection: ExportSelection, result: BranchesR
   } else lines.push("Bdrain D S I={Ihrs(V(D,S))}");
   lines.push(`.ends ${modelName}`, "");
   const subcircuit = [...lines,
-    "* Export metadata:",
+    "* Export metadata (submitted calibration and actual engine vector):",
     jsonComments(metadata), ""].join("\n");
   const circuit = [
     `${modelName} - quasi-static triangular ID-VD example`,
@@ -197,14 +189,13 @@ export function buildLtspiceExport(selection: ExportSelection, result: BranchesR
     `전압 범위는 **0–${maxVoltage} V**입니다. 범위 밖 테이블은 끝값으로 고정되며 역방향 전압에서는 0 A입니다. 이 동작은 외삽에 대한 물리 모델이 아닙니다.\n\n` +
     `안정 branch의 전류는 웹 시뮬레이터와 같은 log(I) 선형 보간입니다. ${result.latch ? `이상적 히스테리시스 스위치가 VLU=${lu} V와 VLD=${ld} V에서 전환합니다.` : "이 조건에서 유효한 두 fold가 없어 단일 branch를 내보냈습니다."} 초기 상태는 HRS이며 먼저 0 V에서 시작합니다.\n\n` +
     `**지원 범위:** 고정 게이트·광전류·국소 상태 평균에서 결정론적 ID–VD와 정적 히스테리시스. 캐리어 잡음, 확률적 래칭, 바디 전하의 시간 적분, 물리적 스위칭 시간, 발진 주파수, 온도·형상·게이트 스윕은 포함하지 않습니다. 상승 속도는 예제 시간축만 정합니다. 빠른 펄스나 발진 예측에는 웹의 물리 회로 엔진을 사용합니다. LTspice 바이너리 실행 검증은 아직 수행하지 않았습니다.\n\n` +
-    `**공유 전 확인:** 표에는 이 소자의 보정된 ID–VD 곡선이 그대로 담깁니다${selection.includeCalibration ? ". 보정값과 엔진 파라미터 벡터도 JSON 주석으로 들어 있습니다" : ""}. 공유 범위를 확인해 주세요.\n\n` +
     `## English\n\n` +
     `This is a **deterministic quasi-static ID–VD behavioral export**, not the full transport/body-charge solver. Fixed bias: ${fixed}. Pin order: **D S**. The gate has no external pin because its voltage is held constant.\n\n` +
     `Open \`${modelName}.cir\` in LTspice and Run. Plot \`-I(Vdrive)\` versus \`V(d)\`. For reuse, copy the complete \`.subckt … .ends\` block into \`${modelName}.lib\`, add \`.include ${modelName}.lib\`, then instantiate \`X1 drain source ${modelName}\`.\n\n` +
     `Valid drain-source range: **0–${maxVoltage} V**. Stable currents use the web solver's linear interpolation of log(I); the refined folds set a native positive-hysteresis switch. Start at 0 V in HRS. Table endpoints clamp out of range, and VDS ≤ 0 returns zero; neither behavior is a validated extrapolation.\n\n` +
     `Fixed geometry: ${geometryLine(resolveGeometry(device.geometry))}. The tables are computed at this geometry. The exported model has no tunable geometry parameters; regenerate it after changing any dimension or doping.\n\n` +
     `No carrier/local-state noise, body-charge ODE, physical switching delay, oscillator-frequency prediction, temperature scaling or variable gate bias is included. Transient time in the example only traverses the static curve; switching is instantaneous. Regenerate the export after changing calibration or fixed bias. The actual LTspice executable has not been run for validation.\n\n` +
-    `Bias, geometry, folds and server warnings are embedded as JSON comments in the .cir${selection.includeCalibration ? ", together with the calibration descriptors and the effective engine parameter vector" : ""}. The tables themselves reproduce the calibrated ID–VD curve: share the file only where that is acceptable.\n\n` +
+    `Calibration, geometry provenance and the effective engine parameter vector are embedded as JSON comments in the .cir. Server warnings are preserved there.\n\n` +
     `Native switch syntax and Vt/Vh conventions: https://www.analog.com/en/resources/analog-dialogue/articles/how-to-add-a-voltage-controlled-switch.html\n`;
   return { filename: `${modelName}.cir`, circuit, readme, subcircuit, modelName, maxVoltage };
 }
@@ -247,8 +238,8 @@ export function buildVerilogAExport(selection: ExportSelection, result: Branches
     fixed_IPH_A: result.iph_A,
     fixed_geometry: resolveGeometry(selection.device.geometry),
     geometry_model: result.geometry_model ?? null,
-    calibration_included: !!selection.includeCalibration,
-    ...(selection.includeCalibration ? { effective_engine_p: result.p, submitted_device: selection.device } : {}),
+    effective_engine_p: result.p,
+    submitted_device: selection.device,
     sweep: selection.sweep,
     folds: result.folds,
     engine_grid: result.grid ?? selection.device.numerics.grid,
@@ -261,7 +252,6 @@ export function buildVerilogAExport(selection: ExportSelection, result: Branches
     `// Fixed geometry: ${geometryLine(resolveGeometry(selection.device.geometry))}`,
     `// Supported V(D,S): 0 to ${num(maxVoltage)} V.`,
     "// Use transient voltage sweep starting at V(D,S)=0; DC hysteresis is not validated.",
-    ...(result.latch ? ["// Needs analog @(cross) event support (e.g. Spectre); OpenVAF-based flows such as ngspice OSDI cannot compile it."] : []),
     "// No physical body-charge transient, noise, temperature or variable gate bias.",
     "// Ideal instantaneous switching: do not infer CSVM frequency, Vtop or Vbottom.",
     "// Table endpoints clamp; VDS <= 0 gives zero. Out-of-range use is not validated.",
@@ -282,26 +272,22 @@ export function buildVerilogAExport(selection: ExportSelection, result: Branches
     "    I(D,S) <+ (lrs_state == 1) ? i_lrs(V(D,S)) : i_hrs(V(D,S));",
   );
   else lines.push("    I(D,S) <+ i_hrs(V(D,S));");
-  lines.push("  end", "endmodule", "", "// Export metadata:",
+  lines.push("  end", "endmodule", "", "// Export metadata (submitted calibration and actual engine vector):",
     ...JSON.stringify(metadata, null, 2).split("\n").map((line) => `// ${line}`), "");
 
   const readme = `# ${modelName}: Verilog-A export\n\n` +
     `## 한국어\n\n` +
     `현재 보정의 **결정론적 준정적 ID–VD 동작 모델**입니다. 단자는 **D, S**이며 고정 조건은 VG=${result.p[11]} V, VBG=${selection.device.vbg ?? 0} V, IPH=${result.iph_A} A입니다. 유효 VDS 범위는 0–${maxVoltage} V입니다.\n\n` +
     `형상: ${geometryLine(resolveGeometry(selection.device.geometry))}. 이 형상에서 계산한 ID–VD를 저장합니다. 형상을 바꾸면 웹에서 다시 계산하여 내보내세요.\n\n` +
-    (result.latch ? `**시뮬레이터 요구 사항:** 히스테리시스에 @(cross) 이벤트를 사용하므로 Spectre처럼 아날로그 이벤트를 지원하는 시뮬레이터가 필요합니다. OpenVAF 기반 흐름(ngspice OSDI 등)에서는 컴파일되지 않습니다.\n\n` : "") +
     `Verilog-A를 지원하는 시뮬레이터에 \`${modelName}.va\`를 모델 소스로 등록합니다. \`disciplines.vams\`는 해당 시뮬레이터의 표준 include 경로에서 찾을 수 있어야 합니다. Spectre에서는 \`ahdl_include "${modelName}.va"\`와 \`X1 (d 0) ${modelName}\`로 등록·연결할 수 있습니다. 다른 시뮬레이터는 해당 제품의 Verilog-A 등록 절차를 따릅니다. LTspice는 별도 LTspice 형식으로 내보내세요.\n\n` +
     `0 V에서 시작하는 삼각파 전압원의 **과도해석**으로 상승·하강 ID–VD를 확인합니다. ${result.latch ? `VLU=${lu} V에서 LRS, VLD=${ld} V에서 HRS로 전환합니다. 초기 전압이 VLU 미만이면 HRS, 이상이면 LRS입니다.` : "이 조건은 단일 branch이며 히스테리시스 상태를 만들지 않습니다."} 전류는 안정 branch의 log(I) 선형 보간이며, 표 범위를 넘으면 끝값으로 고정됩니다. 역방향 VDS에서는 0 A입니다.\n\n` +
     `**포함하지 않는 항목:** 바디 전하 시간 적분, 캐리어 잡음, 물리적 스위칭 지연, CSVM의 Vtop·Vbottom·주파수, 온도·형상·게이트 스윕. 시간은 정적 곡선을 따라가는 용도이며 실제 발진을 예측하지 않습니다. DC sweep 히스테리시스와 AC/잡음 해석 용도로 검증하지 않았습니다. 상용 Verilog-A 시뮬레이터 실행 검증은 수행하지 않았습니다.\n\n` +
     `이 .va 파일은 Sentaurus의 물리 소자 TCAD 입력 파일이 아닙니다. Sentaurus 물리 해석에는 별도 구조·격자·도핑 분포·접촉·물리 모델 설정이 필요하며, compact model 연동에는 버전에 맞는 지원 인터페이스와 검증이 필요합니다.\n\n` +
-    `**공유 전 확인:** 표에는 이 소자의 보정된 ID–VD 곡선이 그대로 담깁니다${selection.includeCalibration ? ". 보정값과 엔진 파라미터 벡터도 JSON 주석으로 들어 있습니다" : ""}. 공유 범위를 확인해 주세요.\n\n` +
     `## English\n\n` +
     `A standard Verilog-A **deterministic quasi-static behavioral model**, with fixed VG=${result.p[11]} V, VBG=${selection.device.vbg ?? 0} V and IPH=${result.iph_A} A. Pins: **D S**. Valid VDS: 0–${maxVoltage} V. Add the .va source through your simulator's Verilog-A integration and ensure its standard disciplines.vams is on the include path. Spectre example: \`ahdl_include "${modelName}.va"\`, then \`X1 (d 0) ${modelName}\`.\n\n` +
-    (result.latch ? `**Simulator requirement:** the hysteresis uses @(cross) events, so the model needs a simulator with analog-event support such as Spectre. It does not compile in OpenVAF-based flows (e.g. ngspice with OSDI).\n\n` : "") +
     `Run a transient triangular voltage sweep from 0 V. Stable branches use linear interpolation of log(I), with ideal threshold events from initial_step/cross. There is no artificial switching delay. Endpoint clamping and zero reverse current are numerical boundaries, not validated extrapolation.\n\n` +
     `Fixed geometry: ${geometryLine(resolveGeometry(selection.device.geometry))}. The tables are computed at this geometry. Regenerate the export after changing any dimension or doping; the .va has no tunable geometry parameters.\n\n` +
     `No body-charge ODE, carrier noise, physical switching delay, CSVM Vtop/Vbottom/frequency, or variable bias/geometry/temperature is modeled. DC-sweep hysteresis and AC/noise operation are not validated. No commercial Verilog-A simulator was executed to validate this source. This is not a Sentaurus physical-device deck, nor a claim of direct .va import into Sentaurus.\n\n` +
-    `Bias, geometry, folds and server warnings are embedded as comments in the .va${selection.includeCalibration ? ", together with the calibration descriptors and the effective engine parameter vector" : ""}. The tables themselves reproduce the calibrated ID–VD curve: share the file only where that is acceptable.\n\n` +
     `Language reference: https://www.accellera.org/images/downloads/standards/v-ams/VAMS-LRM-2023.pdf\n`;
   return { filename: `${modelName}.va`, source: lines.join("\n"), readme, modelName, maxVoltage };
 }

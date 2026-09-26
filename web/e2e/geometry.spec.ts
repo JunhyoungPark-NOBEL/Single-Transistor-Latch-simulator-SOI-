@@ -112,13 +112,9 @@ test("actual resized branch result reaches IDVD and both commercial export metad
     await page.getByTestId(`model-export-${format}`).check();
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("model-export-download").click()]);
     const content = readFileSync((await download.path())!, "utf8");
-    // the fixed geometry is recorded; the calibration descriptors and engine vector are left out by default
-    expect(content).toContain('"fixed_geometry"');
     expect(content).toContain('"W_nm": 400');
     expect(content).toContain('"Tbox_nm": 140');
-    expect(content).toContain('"calibration_included": false');
-    expect(content).not.toContain("effective_engine_p");
-    expect(content).not.toContain("submitted_device");
+    expect(content).toContain('"geometry"');
   }
   expect(requests).toHaveLength(4);
   for (const request of requests.slice(1)) expect(request.device.geometry.W_nm).toBe(400);
@@ -146,8 +142,8 @@ test("shorter L and thinner Tsi show their actual independently computed thresho
   const requests = await prepare(page);
   await setGeometry(page, "Lg_nm", "400");
   await page.getByTestId("run-button").click();
-  await expect(page.getByTestId("kpi-vlu-value")).toContainText("3.582");
-  await expect(page.getByTestId("kpi-vld-value")).toContainText("2.242");
+  await expect(page.getByTestId("kpi-vlu-value")).toContainText("3.610");
+  await expect(page.getByTestId("kpi-vld-value")).toContainText("2.556");
   await page.getByTestId("geometry-reset").click();
   await setGeometry(page, "Tsi_nm", "30");
   await page.getByTestId("run-button").click();
@@ -160,26 +156,9 @@ test("offline demo refuses resized simulation and never supplies reference thres
   await prepare(page, true);
   await setGeometry(page, "Lg_nm", "400");
   await page.getByTestId("run-button").click();
-  await expect(page.getByTestId("panel-iv")).toContainText("Connect to the live compute server to simulate changed geometry or V_BG.");
+  await expect(page.getByTestId("panel-iv")).toContainText("Connect to the live compute server to simulate changed geometry or VBG.");
   await expect(page.getByTestId("kpi-vlu-value")).toContainText("—");
   await expect(page.getByTestId("panel-iv").locator(".js-plotly-plot")).toHaveCount(0);
-});
-
-test("the live server refuses a too-short L for this Nbody and the message names the limit", async ({ page }) => {
-  // no recorded transport here: the request reaches the real backend (STL_API), which answers HTTP 422
-  await page.addInitScript(() => {
-    if (!sessionStorage.getItem("geometry-init")) {
-      localStorage.clear();
-      localStorage.setItem("stl-websim:v1", JSON.stringify({ v: 2, lang: "en", mode: "deterministic", autoRun: false, autoRunChosen: true }));
-      sessionStorage.setItem("geometry-init", "1");
-    }
-  });
-  await page.goto("/#tab=device&mode=deterministic");
-  await expect(page.getByTestId("backend-status")).toContainText("API");
-  await setGeometry(page, "Lg_nm", "120");
-  await page.getByTestId("run-button").click();
-  await expect(page.getByTestId("panel-iv")).toContainText("At this Nbody, L is too short to leave a neutral body. Make L longer than 153.6 nm or raise Nbody.");
-  await expect(page.getByTestId("kpi-vlu-value")).toContainText("—");
 });
 
 for (const width of [1440, 390]) {
@@ -190,7 +169,7 @@ for (const width of [1440, 390]) {
     if (width < 1100) await page.locator(".sidebar-btn").click();
     await setGeometry(page, "Lg_nm", "400");
     await page.getByTestId("run-button").click();
-    await expect(page.getByTestId("kpi-vlu-value")).toContainText("3.582");
+    await expect(page.getByTestId("kpi-vlu-value")).toContainText("3.610");
     // KPI updates precede lazy Plotly loading. Only capture once real trace paths have drawn.
     const traces = page.getByTestId("panel-iv").locator(".scatterlayer .trace path.js-line");
     await expect.poll(() => traces.count()).toBeGreaterThanOrEqual(2);

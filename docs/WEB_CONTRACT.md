@@ -258,7 +258,8 @@ interface CircuitResult {
   runtime_s: number; warnings: string[] }
 ```
 
-STL element model (see `engine/docs/CIRCUIT_ELEMENT_DESIGN.md`): terminals D, G, S; state Q_B;
+Legacy STL element model (see `engine/docs/CIRCUIT_ELEMENT_DESIGN.md`): terminals D, G, S; state Q_B;
+the optional BG/B deterministic extension is documented in §6.4 below.
 internal unknowns (u, r) satisfy V_D(u,r) = v_D − v_S and the charge equation
 Q(u,r;V_GS) − Q_prev = ∫F dt (+ ΔQ_noise), with
 Q(u,r) = C_ox(ψ(u) − V_GS) + Q_exc(u,r) + q N_A A L_n(u,r),  ψ = u − V_T ln(1+δ/N_A)
@@ -344,7 +345,7 @@ Request:
       { "type": "V", "name": "V1", "nodes": ["n+", "n-"], "wave": Wave },              // volts
       { "type": "I", "name": "I1", "nodes": ["n+", "n-"], "wave": Wave },              // amperes; flows n+ → (through source) → n-,
                                                                                        //   i.e. it is pushed OUT of n- into the circuit … see §6.1
-      { "type": "STL", "name": "X1", "nodes": { "d": "d", "g": "g", "s": "0" },
+      { "type": "STL", "name": "X1", "nodes": { "d": "d", "g": "g", "s": "0", "bg": "backgate", "b": "body" }, // bg/b optional
         "device": { ...device block §1... }, "light_pA": Wave | null },                 // light waveform in pA (null = device light)
       { "type": "CMP", "name": "CMP1", "nodes": { "in": "s", "out": "q" }, "v_ref": 0.1,
         "v_high": 1, "v_low": 0, "hysteresis": 0 }                                     // comparator (§6.3), extension
@@ -366,11 +367,11 @@ Node "0" (aliases "gnd", "GND") is ground; every other string is a node name.
 - `I(V1)`, `I(I1)`: current through the source from its first (+) node to its second (−) node
   (SPICE convention: a source delivering power has negative `I(V1)`). For `I` sources the `wave`
   value is exactly that current.
-- `I(X1.d)`, `I(X1.s)`, `I(X1.g)`: currents INTO the STL terminals (drain, source, gate); gate current is 0 (ideal gate, documented).
+- `I(X1.d)`, `I(X1.s)`, `I(X1.g)`, `I(X1.bg)`, `I(X1.b)`: currents INTO the respective STL terminals. The legacy ideal-gate branch has zero gate current; see §6.4 for the external BG/B extension.
 
 ### 6.2 Response
 Same `CircuitResult` as §4 (generic signals/summary/events/distributions), with:
-- signals for every probe: key `V(n)` (unit V, axis voltage), `I(name)` / `I(X1.d)` (unit A, axis current), plus per STL `X1.u`, `X1.r` (V, axis state), `X1.q_b` (C, axis charge);
+- signals for every probe: key `V(n)` (unit V, axis voltage), `I(name)` / `I(X1.d)` (unit A, axis current), plus per STL `X1.vb` (electrostatic body potential), `X1.vbody` (body-contact voltage, equal to `X1.u`), `X1.r` (V), and `X1.q_b` (C, axis charge);
 - `nodes`: list of node names; `elements`: echo of the resolved netlist (names, nodes, values, resolved waves);
 - `op`: operating point at t = 0 (node voltages, element currents) and `at(t)` is done client-side by interpolation;
 - events per STL cell (`latch_up`/`latch_down`, with `cell` = element name, `t`, `v_d`);
@@ -486,3 +487,32 @@ The schematic document format remains version 1 with additive optional `mos`, `d
 `bjt` model objects. Existing document formats and STL snapshots remain compatible. Model
 parameter help is collapsed by default, and detailed model documentation is linked using the
 application's configured base path for embedded/subpath deployments.
+
+
+### 6.4 Five-terminal editor and deterministic circuit extension (2026-09-25)
+
+STL request nodes are `{d, g, s, bg?, b?}`. Names are electrical nodes, not parameter
+labels. D/G/S remain required and retain their original pin positions. G and connected BG
+are driven by regular voltage sources (DC, PULSE, PWL, SINE), referenced to S in the device.
+An omitted `bg` uses the device snapshot's fixed `vbg`; an omitted `b` keeps the body floating.
+The editor omits untouched optional pins instead of inventing floating simulator nodes.
+
+B is the **ohmic body contact**, with `u = V(B) − V(S)` when wired. It is not the
+spatially lumped electrostatic body potential `ψ_B`; `X1.vbody`/`X1.u` and `X1.vb`
+report these separately. External R/C at B participates in circuit KCL. Body loss paths
+provide the intrinsic DC reference, so a body capacitor alone is permitted by ERC.
+An undriven insulated BG with only an external capacitor is still a floating-gate error.
+Terminal currents use the into-device sign convention. `X1.q_b` retains the relative-charge
+convention. The returned signal definitions are the authoritative definitions for the solver.
+
+External BG/B currently requires **deterministic BE**. The UI and API reject stochastic
+or TRAP for these connections; neither silently replaces the requested integration/noise model.
+Old three-terminal requests remain valid and keep their supported BE/TRAP/stochastic paths.
+The extra geometry/back-gate operating points remain model extrapolations.
+
+Schematic document version is **2**. Version 1 imports mark STL instances
+`stlTerminalMode: "legacy3"`, retaining exactly their three original connection points.
+This prevents pre-existing wires at future BG/B pin positions from becoming connected during
+migration. The inspector's “5단자 확장 / Enable 5 terminals” command explicitly expands the
+selected legacy instance; newly placed instances always have five pins. Saved v2 documents
+preserve both terminal modes. Wire coordinates and the D/G/S geometry do not move.

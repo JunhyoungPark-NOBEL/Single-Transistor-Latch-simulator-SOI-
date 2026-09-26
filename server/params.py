@@ -30,6 +30,7 @@ import copy
 import json
 from pathlib import Path
 from typing import Any
+from server.simple_config import SIMPLE_DEFAULTS, SIMPLE_KEYS, SIMPLE_PACK_SIZE, SIMPLE_VERSION, is_simple_device
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE = ROOT / "engine"
@@ -91,14 +92,8 @@ CHANNEL_SEED_OPTIONS = {
 TECHNOLOGY = "FDSOI"
 GEOMETRY: dict[str, float] = dict(Lg_nm=500.0, W_nm=200.0, Tsi_nm=50.0, EOT_nm=14.1, Tbox_nm=140.0, Nbody_cm3=NA_CM3)
 GEOMETRY_KEYS = tuple(GEOMETRY)
-# Nbody: 3e16 keeps a neutral base at the reference L (L_min = 412 nm there); above ~1.14e18 cm^-3 the finite
-# avalanche-field table ends below 3 V reverse bias (geometry_model.pack_p), so 1.1e18 is the top of the input range.
 GEOMETRY_LIMITS = dict(Lg_nm=(100., 2000.), W_nm=(20., 10000.), Tsi_nm=(5., 200.),
-                       EOT_nm=(1., 100.), Tbox_nm=(10., 1000.), Nbody_cm3=(3e16, 1.1e18))
-# |EOT/(Tbox + Tsi/3) * VBG| above this leaves the linear (depleted back-interface) coupling range
-BACKGATE_SHIFT_MAX_V = 2.0
-# smallest field-table reverse bias a changed Nbody must support (V_LU of the reference device is 3.70 V)
-FIELD_MIN_REVERSE_V = 3.0
+                       EOT_nm=(1., 100.), Tbox_nm=(10., 1000.), Nbody_cm3=(1e15, 1e19))
 GEOMETRY_TEXT = "L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm"
 TECHNOLOGIES = [
     dict(id="FDSOI", available=True),
@@ -106,25 +101,9 @@ TECHNOLOGIES = [
     dict(id="Bulk", available=False),
 ]
 
-# engine constants (process_randomness/standard_mean.py, idvd_model/mean_model.py), kept here so the API process can
-# check the geometry domain without importing the engine; server/tests/test_geometry_model.py compares them
-_Q_C = 1.602176634e-19
-_VT_V = 1.380649e-23 * 300.0 / _Q_C
-_EPS0_F_M = 8.8541878128e-12
-_NI_CM3 = 1e10
-_ND_CM3 = 1e20
-
-
-def min_length_nm(nbody_cm3: float) -> float:
-    """L (nm) at and below which no neutral lateral base is left at zero bias: 2 w_d0(Nbody) + 1 nm, with w_d0 the
-    source/drain depletion width at the built-in potential of the n+ junction (same criterion as geometry_model.pack_p)."""
-    import math
-    vbi = _VT_V * math.log(_ND_CM3 * nbody_cm3 / _NI_CM3 ** 2)
-    wd0 = math.sqrt(2 * (11.7 * _EPS0_F_M / 100) * vbi / (_Q_C * nbody_cm3))
-    return (2 * wd0 + 1e-7) * 1e7
-
-
 _DEVICE_BASE: dict[str, Any] = dict(
+    model="detailed",
+    simple=dict(SIMPLE_DEFAULTS),
     geometry=dict(GEOMETRY),
     vg=-2.0,
     vbg=0.0,
@@ -194,7 +173,10 @@ def resolve_device(device: dict | None) -> dict:
     preset = device.get("preset") or "paper"
     if preset not in PRESETS:
         raise ValueError(f"unknown preset {preset!r}")
-    return _merge(PRESETS[preset]["device"], device)
+    d = _merge(PRESETS[preset]["device"], device)
+    if d.get("model") not in ("detailed", "simple"):
+        raise ValueError("device.model must be 'detailed' or 'simple'")
+    return d
 
 
 def resolve_section(preset: str | None, name: str, value: dict | None) -> dict:
@@ -218,7 +200,26 @@ def build_p(device: dict, dg: float = 0.0, de: float = 0.0, **ext_over: float) -
     (e.g. dloc=..., dj=..., dm=...) for the non-GIDL local-state action points.
     """
     d = resolve_device(device)
+    if is_simple_device(d):
+        # Uniform packed width permits mixed Detailed/Simple circuits without
+        # building SRH or avalanche lookup tables for the Simple element.
+        p = [0.0] * SIMPLE_PACK_SIZE
+        g, sm = d["geometry"], d["simple"]
+        p[0] = float(sm["beta_ref"]) * GEOMETRY["Lg_nm"] / float(g["Lg_nm"]) * NA_CM3 / float(g["Nbody_cm3"])
+        p[1] = float(sm["tau_body_s"])
+        p[11] = float(d["vg"])
+        p[13] = iph_A(d)
+        p[26:33] = [float(g[k]) for k in GEOMETRY_KEYS] + [float(d.get("vbg", 0.0))]
+        p[34] = -1.0
+        p[36:48] = [float(sm[k]) for k in SIMPLE_KEYS]
+        return p
     c, e, s = d["calib"], dict(d["ext"], **ext_over), d["state"]
+    if float(e["aloc"]) > 0.0 and float(e["loc_carriers"]) == 2.0:
+        raise ValueError(
+            "local-avalanche-mode-unavailable: loc_carriers=2 is unsupported by the frozen "
+            "engine; its edge-only path is shadowed by the bulk branch. Disable local "
+            "avalanche or use an explicitly supported hypothesis."
+        )
     p = [float(c[k]) for k in CALIB_KEYS]
     p += [
         float(c["phi_gidl0_V"]) + float(s["delta_phi_G0_V"]) + dg,   # 9
@@ -254,35 +255,49 @@ def uses_geometry_model(device: dict) -> bool:
     return not is_reference_geometry(device) or float(device.get("vbg", 0.0)) != 0.0
 
 
-# model assumptions reported with every geometry result (and in /api/meta)
-GEOMETRY_MODEL_ASSUMPTIONS: dict[str, str] = dict(
-    backgate_coupling=("channel overdrive += EOT / (Tbox + Tsi/3) * VBG; relative VBG=0 calibration; valid while "
-                       f"|EOT / (Tbox + Tsi/3) * VBG| <= {BACKGATE_SHIFT_MAX_V:g} V (linear coupling, depleted back "
-                       "interface); larger values are refused"),
-    backgate_scope=("front-channel current only: VBG does not store holes in the body in this model, so with the "
-                    "channel off (V_G below about -1.5 V) V_LU and V_LD hardly change"),
-    emitter_injection_scaling="area only (fixed n+ source/drain)",
-    junction_lifetime_scaling="tau_j_eff = tau_j_ref * Tsi / 50nm",
-    body_capacitance_scaling="Cf + Cb - Cb0; Cb0 is reference-calibration counterterm",
-    gate_charge="Cf*(psi-VG) + (Cb-Cb0)*psi - Cb*VBG",
-    domain=("L > 2 w_d0(Nbody) + 1 nm (neutral lateral base); Nbody with an avalanche-field table reaching "
-            f"{FIELD_MIN_REVERSE_V:g} V reverse bias; |EOT / (Tbox + Tsi/3) * VBG| <= {BACKGATE_SHIFT_MAX_V:g} V"),
-)
-
-
 def geometry_model_metadata(device: dict) -> dict:
-    return dict(version="fdsoi-scaling-v1", calibrated_geometry=dict(GEOMETRY),
+    if is_simple_device(device):
+        return dict(version=SIMPLE_VERSION, model="simple", validated=False,
+                    scope="paper-inspired-first-order-unvalidated",
+                    validation_basis="illustrative starting parameters or user HRS fit; not independently validated",
+                    calibrated_geometry=dict(GEOMETRY), reference_geometry=is_reference_geometry(device),
+                    beta="bias-independent diffusion gain: beta_ref*(Lref/L)*(Nref/Nbody); W/Tsi area factors cancel",
+                    saturation_current="IS_ref*(W/Wref)*(Tsi/Tsiref)*(Lref/L)*(Nref/Nbody)",
+                    recombination="Q/tau_eff, Q=CB*(reservoir_potential-bias); no SRH shooting",
+                    lifetime="tau_ref/[(1-surface_fraction)+surface_fraction*Tsiref/Tsi]; assumed surface fraction",
+                    body_potential="reservoir w=u+ID*RLRS; B contact u is source-side body/emitter potential",
+                    backgate_assumption="passive effective gate capacitance partition; no separate back-channel",
+                    temperature_K=300.0, stochastic_supported=False,
+                    parameter_origin="accepted manuscript Table I with constant geometry-dependent beta; not Device 1 calibration")
+    # Reference dimensions alone do not establish calibration coverage: users may
+    # change VG, light, lifetimes or hypothesis parameters at the same dimensions.
+    # `validated` is a legacy field; narrowly retain it for the exact calibrated
+    # paper configuration and state what that evidence means in the payload.
+    at_calibration = is_paper_reference(device)
+    extension = uses_geometry_model(device)
+    return dict(version="fdsoi-bjt-body-bias-v2", calibrated_geometry=dict(GEOMETRY),
                 reference_geometry=is_reference_geometry(device),
                 tbox_source="nominal assumption; absent from calibration",
-                validated=not uses_geometry_model(device),
-                scope="reference-calibrated" if not uses_geometry_model(device) else "geometry-extrapolation",
-                **GEOMETRY_MODEL_ASSUMPTIONS)
+                validated=at_calibration,
+                validation_basis="reference calibration comparison; not independent predictive validation" if at_calibration else "not validated at the requested configuration",
+                scope="geometry-extrapolation" if extension else ("reference-calibrated" if at_calibration else "reference-geometry-unvalidated"),
+                surface_recombination_fraction="assumed 100% of the effective junction-SRH term; not independently extracted",
+                temperature_K=300.0,
+                backgate_coupling="delta_psi = Cb/(Cf+Cb) * VBG; effective BJT source injection P = ni^2 * exp(delta_psi/VT) * expm1(u/VT)",
+                backgate_assumption="uncalibrated lumped electrostatic BJT body-bias closure; no separate back-channel or 2D Poisson solution",
+                body_potential="psi_body = u - VT*ln(1+delta_inj/Nbody) + delta_psi; body contact voltage is u, not psi_body",
+                drain_field_approximation="original r-based collector field retained; no independent backgate-induced drain-field correction",
+                junction_lifetime_scaling="tau_j_eff = tau_j_ref * Tsi / 50nm",
+                body_capacitance_scaling="Cf + Cb - Cb0; Cb0 is reference-calibration counterterm",
+                gate_charge="Cf*(psi-VG) + (Cb-Cb0)*psi - Cb*VBG")
 
 
 def is_paper_reference(device: dict) -> bool:
     """True when the device equals the calibrated paper device at V_G = -2 V, dark, no extensions
     (the only condition covered by the calibrated (phi_G, phi_E) lookup table gate_state_lookup.npz)."""
     d = resolve_device(device)
+    if is_simple_device(d):
+        return False
     base = resolve_device({"preset": "paper"})
     same_calib = all(abs(float(d["calib"][k]) - float(base["calib"][k])) <= 1e-12 * max(1.0, abs(float(base["calib"][k])))
                      for k in base["calib"])
@@ -294,7 +309,7 @@ def is_paper_reference(device: dict) -> bool:
 def match_photo_condition(device: dict, tol_vg: float = 1e-6, tol_p: float = 1e-6) -> int | None:
     """Column index into data/raw_VLU.npy when (V_G, P) equals a measured photo-device condition."""
     d = resolve_device(device)
-    if uses_geometry_model(d):
+    if is_simple_device(d) or uses_geometry_model(d):
         return None
     light = d["light"]
     p_mw = float(light["power_mW"]) if light.get("mode") == "power" else iph_A(d) * 1e12 / RESPONSIVITY_PA_PER_MW
@@ -308,6 +323,8 @@ def meta() -> dict:
     """Payload for GET /api/meta."""
     return dict(
         presets=PRESETS,
+        models=[dict(id="detailed", label="Detailed Model"), dict(id="simple", label="Simple Model", stochastic=False)],
+        simple_model=dict(version=SIMPLE_VERSION, defaults=dict(SIMPLE_DEFAULTS), reference_geometry=dict(GEOMETRY), validated=False),
         constants=dict(NA_cm3=NA_CM3, sigma_phi_G_V=SIGMA_PHI_G_V, sigma_phi_E_V=SIGMA_PHI_E_V,
                        tau_E_s=TAU_E_S, tau_G_up_s=TAU_G_UP_S, photo_delta_phi_G0_V=PHOTO_DELTA_PHI_G0_V,
                        photo_sigma_phi_V=PHOTO_SIGMA_PHI_V, photo_gamma=PHOTO_GAMMA,
@@ -316,10 +333,8 @@ def meta() -> dict:
         technology=TECHNOLOGY,
         geometry=dict(GEOMETRY),
         geometry_limits=GEOMETRY_LIMITS,
-        geometry_model=dict(version="fdsoi-scaling-v1", calibrated_geometry=dict(GEOMETRY),
-                            tbox_source="nominal assumption; absent from calibration", validated=False,
-                            backgate_shift_max_V=BACKGATE_SHIFT_MAX_V, field_min_reverse_V=FIELD_MIN_REVERSE_V,
-                            **GEOMETRY_MODEL_ASSUMPTIONS),
+        geometry_model=dict(version="fdsoi-bjt-body-bias-v2", calibrated_geometry=dict(GEOMETRY),
+                            tbox_source="nominal assumption; absent from calibration", validated=False),
         technologies=TECHNOLOGIES,
         channel_seed_options=CHANNEL_SEED_OPTIONS,
         measured_photo_conditions=[dict(vg=vg, power_mW=p) for vg, p in MEASURED_PHOTO_CONDITIONS],

@@ -26,7 +26,7 @@ export type CustomElement =
   | {
       type: "STL";
       name: string;
-      nodes: { d: string; g: string; s: string };
+      nodes: { d: string; g: string; s: string; bg?: string; b?: string };
       device: DeviceBlock;
       light_pA: Wave | null;
       /** Extension (not in §6): the library device's local-state settings for stochastic runs. */
@@ -189,13 +189,13 @@ export function valueAt(t: Arr, values: Arr, x: number): number | null {
 
 /** Canonical probe keys (§6.1). */
 export const vKey = (node: string) => `V(${node})`;
-export const iKey = (name: string, terminal?: "d" | "g" | "s" | "c" | "b" | "e") => (terminal ? `I(${name}.${terminal})` : `I(${name})`);
+export const iKey = (name: string, terminal?: "d" | "g" | "s" | "bg" | "c" | "b" | "e") => (terminal ? `I(${name}.${terminal})` : `I(${name})`);
 
 /** Parse "V(n)" / "I(R1)" / "I(X1.d)" / "X1.u" → description. */
 export function parseProbe(key: string): { type: "V"; node: string } | { type: "I"; el: string; terminal?: string } | { type: "state"; el: string; q: string } | null {
   let m = /^V\((.+)\)$/.exec(key);
   if (m) return { type: "V", node: m[1] };
-  m = /^I\(([^.()]+)(?:\.([dgscbe]))?\)$/.exec(key);
+  m = /^I\(([^.()]+)(?:\.(bg|[dgscbe]))?\)$/.exec(key);
   if (m) return { type: "I", el: m[1], terminal: m[2] };
   m = /^([^.()]+)\.([a-z_]+)$/i.exec(key);
   if (m) return { type: "state", el: m[1], q: m[2] };

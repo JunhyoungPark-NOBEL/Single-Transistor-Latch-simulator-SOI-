@@ -1,0 +1,205 @@
+{
+  "bench": "custom",
+  "mode": "deterministic",
+  "netlist": {
+    "elements": [
+      {
+        "type": "V",
+        "name": "VG",
+        "nodes": [
+          "gate",
+          "0"
+        ],
+        "wave": {
+          "kind": "dc",
+          "value": -3
+        }
+      },
+      {
+        "type": "I",
+        "name": "I1",
+        "nodes": [
+          "0",
+          "drain"
+        ],
+        "wave": {
+          "kind": "dc",
+          "value": 1e-09
+        }
+      },
+      {
+        "type": "C",
+        "name": "C1",
+        "nodes": [
+          "drain",
+          "0"
+        ],
+        "value": 1e-12
+      },
+      {
+        "type": "STL",
+        "name": "X1",
+        "nodes": {
+          "d": "drain",
+          "g": "gate",
+          "s": "0"
+        },
+        "device": {
+          "model": "detailed",
+          "simple": {
+            "beta_ref": 2.3,
+            "tau_body_s": 2e-07,
+            "cb_ref_F": 2.646153846153846e-16,
+            "r_lrs_ref_ohm": 143000.0,
+            "is_ref_A": 6.153846153846154e-17,
+            "vbr_ref_V": 2.35,
+            "avalanche_eta": 4.0,
+            "gamma_fg": 0.2,
+            "gamma_bg": 0.0525,
+            "vfb_V": -3.35,
+            "btbt_scale": 1.0,
+            "surface_fraction": 1.0
+          },
+          "geometry": {
+            "Lg_nm": 500.0,
+            "W_nm": 200.0,
+            "Tsi_nm": 50.0,
+            "EOT_nm": 14.1,
+            "Tbox_nm": 140.0,
+            "Nbody_cm3": 2.295773162796593e+17
+          },
+          "vg": -3.0,
+          "vbg": 0.0,
+          "light": {
+            "mode": "iph",
+            "iph_pA": 0.0,
+            "power_mW": 0.0,
+            "responsivity_pA_per_mW": 0.7500000000000002
+          },
+          "calib": {
+            "beta": 7.166501201841884,
+            "tau_bulk_s": 9.266283807625294e-07,
+            "tau_junction_s": 5.358373401760838e-09,
+            "r_contact_ohm": 1.0000000009063326,
+            "l_gidl_nm": 28.754392875051614,
+            "t_access_nm": 3.312683950426714,
+            "na_access_cm3": 1.0002399957771266e+17,
+            "l_access_nm": 70.0,
+            "tau_ratio": 117.42471623552643,
+            "phi_gidl0_V": 0.0002721229842976664,
+            "phi_emitter0_V": 5.908461490149247e-05,
+            "channel_ii_scale": 1.0
+          },
+          "ext": {
+            "dibl": 0.0,
+            "gamma": 0.0,
+            "kappa": 0.0,
+            "seed_ip_pA": 0.0,
+            "seed_S": 1.0,
+            "dj": 0.0,
+            "dm": 0.0,
+            "aloc": 0.0,
+            "isat_pA": 20.0,
+            "dloc": 0.0,
+            "loc_carriers": 0,
+            "kappaF": 0.0
+          },
+          "state": {
+            "delta_phi_G0_V": 0.0,
+            "delta_phi_E0_V": 0.0
+          },
+          "numerics": {
+            "grid": 601
+          },
+          "preset": "paper"
+        }
+      }
+    ]
+  },
+  "tran": {
+    "t_stop_s": 0.015,
+    "t_start_save_s": 0,
+    "dt_max_s": 4.9999999999999996e-06,
+    "dt_min_s": 1e-15,
+    "method": "BE",
+    "reltol": 0.001
+  },
+  "detect": {
+    "i_threshold_A": 1e-08,
+    "hysteresis": 10
+  },
+  "probes": [
+    "V(drain)",
+    "I(X1.d)",
+    "X1.vb"
+  ],
+  "device": {
+    "model": "detailed",
+    "simple": {
+      "beta_ref": 2.3,
+      "tau_body_s": 2e-07,
+      "cb_ref_F": 2.646153846153846e-16,
+      "r_lrs_ref_ohm": 143000.0,
+      "is_ref_A": 6.153846153846154e-17,
+      "vbr_ref_V": 2.35,
+      "avalanche_eta": 4.0,
+      "gamma_fg": 0.2,
+      "gamma_bg": 0.0525,
+      "vfb_V": -3.35,
+      "btbt_scale": 1.0,
+      "surface_fraction": 1.0
+    },
+    "geometry": {
+      "Lg_nm": 500.0,
+      "W_nm": 200.0,
+      "Tsi_nm": 50.0,
+      "EOT_nm": 14.1,
+      "Tbox_nm": 140.0,
+      "Nbody_cm3": 2.295773162796593e+17
+    },
+    "vg": -2.0,
+    "vbg": 0.0,
+    "light": {
+      "mode": "iph",
+      "iph_pA": 0.0,
+      "power_mW": 0.0,
+      "responsivity_pA_per_mW": 0.7500000000000002
+    },
+    "calib": {
+      "beta": 7.166501201841884,
+      "tau_bulk_s": 9.266283807625294e-07,
+      "tau_junction_s": 5.358373401760838e-09,
+      "r_contact_ohm": 1.0000000009063326,
+      "l_gidl_nm": 28.754392875051614,
+      "t_access_nm": 3.312683950426714,
+      "na_access_cm3": 1.0002399957771266e+17,
+      "l_access_nm": 70.0,
+      "tau_ratio": 117.42471623552643,
+      "phi_gidl0_V": 0.0002721229842976664,
+      "phi_emitter0_V": 5.908461490149247e-05,
+      "channel_ii_scale": 1.0
+    },
+    "ext": {
+      "dibl": 0.0,
+      "gamma": 0.0,
+      "kappa": 0.0,
+      "seed_ip_pA": 0.0,
+      "seed_S": 1.0,
+      "dj": 0.0,
+      "dm": 0.0,
+      "aloc": 0.0,
+      "isat_pA": 20.0,
+      "dloc": 0.0,
+      "loc_carriers": 0,
+      "kappaF": 0.0
+    },
+    "state": {
+      "delta_phi_G0_V": 0.0,
+      "delta_phi_E0_V": 0.0
+    },
+    "numerics": {
+      "grid": 601
+    },
+    "preset": "paper"
+  }
+}

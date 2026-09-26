@@ -622,7 +622,7 @@ const ENTRIES: ParamGuide[] = [
       ["벌크(BJT) 전자가 더 많아 국소 경로의 정공 생성 ↑", "More bulk (BJT) electrons → the local path makes more holes"],
     ],
     {
-      caveat: ["a_loc > 0일 때만 효과가 있고, 2는 현재 엔진에서 1과 같습니다.", "Acts only when a_loc > 0; option 2 currently behaves like 1."],
+      caveat: ["a_loc > 0일 때만 효과가 있습니다. 경로 2는 미지원이며 활성 계산을 차단합니다.", "Acts only when a_loc > 0. Path 2 is unsupported and active computation is blocked."],
       basis: "ref 0 → 1 with a_loc = 1",
     },
   ),

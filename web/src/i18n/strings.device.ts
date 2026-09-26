@@ -26,14 +26,13 @@ export const DEV = {
   "kpi.delta.aria": { ko: "이전 계산 대비 {d}", en: "{d} compared with the previous run" },
   "kpi.nochange": { ko: "변화 없음", en: "no change" },
   "kpi.nolatch": { ko: "래치 없음", en: "No latch" },
-  // latch = false means no pair of folds at this V_G: a higher V_D,max does not help
-  "kpi.nolatch.hint": { ko: "이 V_G에서는 래치 창이 없습니다", en: "no latch window at this V_G" },
+  "kpi.nolatch.hint": { ko: "V_{D,max}를 올리거나 V_G를 더 음(−)으로", en: "raise V_{D,max} or make V_G more negative" },
   "kpi.nolatch.window": { ko: "래치 가능 범위: V_G {lo} … {hi} V", en: "latching range: V_G {lo} … {hi} V" },
-  "kpi.nolatch.none": { ko: "계산한 V_G 범위 안에는 래치 창이 없습니다", en: "no latch window in the computed V_G range" },
   // the fold exists but lies above the sweep peak: the quasi-static sweep never latches
   // the verdict first: the sub-line is one line on desktop and may be cut at its end
   "kpi.beyondVdmax": { ko: "래치업 안 됨: 스윕 최대 V_{D,max} {v} V보다 높음", en: "never latches: above V_{D,max} = {v} V" },
   "kpi.beyondVdmax.hint": { ko: "V_{D,max}를 올리면 래치업됩니다", en: "raise V_{D,max} to latch" },
+  "kpi.nolatch.vdmax": { ko: "V_{D,max}를 올려 보세요", en: "try a higher V_{D,max}" },
   "kpi.measured": { ko: "측정 {v}", en: "measured {v}" },
   "kpi.fold": { ko: "평균 모델 {v}", en: "mean model {v}" },
   "kpi.tip.runtime": { ko: "계산 {t}", en: "computed in {t}" },
@@ -42,6 +41,10 @@ export const DEV = {
 
   // ---------------------------------------------------------------- panel titles (simple layout)
   "iv.title": { ko: "I_D–V_D 스윕", en: "I_D–V_D sweep" },
+  "iv.desc": {
+    ko: "파란 선을 따라 올라가다 V_LU에서 켜지고, 빨간 선을 따라 내려오다 V_LD에서 꺼집니다.",
+    en: "Going up along the blue line the device switches on at V_LU; coming down along the red line it switches off at V_LD.",
+  },
   "hazard.title": { ko: "켜질 확률 (켜짐률 h · 생존 S)", en: "Turn-on hazard h and survival S" },
   // the hazard is carrier noise only, at the centre local state: its σ is much smaller than the MC answer's ±
   "hazard.foot": {
@@ -66,17 +69,23 @@ export const DEV = {
 
   // ---------------------------------------------------------------- plot legends and direct labels
   "leg.hrs": { ko: "HRS (저전류)", en: "HRS (low current)" },
+  "leg.lrs": { ko: "LRS (고전류)", en: "LRS (high current)" },
   "leg.meas": { ko: "측정", en: "Measured" },
   "leg.measMedian": { ko: "측정 중앙값 (100회)", en: "Measured median (100 sweeps)" },
   "leg.measBand": { ko: "측정 10–90 %", en: "Measured 10–90 %" },
   "leg.prev": { ko: "이전", en: "Previous" },
+  "leg.unstable": { ko: "불안정", en: "unstable" },
+  "leg.full": { ko: "정상상태 곡선", en: "steady states" },
   "leg.traces": { ko: "MC 궤적 {n}개", en: "{n} MC traces" },
-  "leg.up": { ko: "상향 스윕 ↑", en: "Up sweep ↑" },
-  "leg.down": { ko: "하향 스윕 ↓", en: "Down sweep ↓" },
+  "leg.up": { ko: "상향 스윕", en: "Up sweep" },
+  "leg.down": { ko: "하향 스윕", en: "Down sweep" },
+  "ann.jumpUp": { ko: "켜짐", en: "on" },
+  "ann.jumpDown": { ko: "꺼짐", en: "off" },
 
   // ---------------------------------------------------------------- ⋯ menu items
   "menu.y": { ko: "y축", en: "y-axis" },
   "menu.x": { ko: "x축", en: "x-axis" },
+  "menu.sweeps": { ko: "상향/하향 스윕", en: "Up/down sweep" },
   "menu.meas": { ko: "측정", en: "Measured" },
   "menu.band": { ko: "측정 10–90 % 띠", en: "Measured 10–90 % band" },
   "menu.prev": { ko: "이전 결과", en: "Previous result" },
@@ -92,6 +101,7 @@ export const DEV = {
   // ---------------------------------------------------------------- footnotes
   "foot.ifold": { ko: "꺾임점(fold) 전류 I_LU {lu} · I_LD {ld}", en: "Fold currents I_LU {lu} · I_LD {ld}" },
   // the measured median switches before the folds: noise-driven early escape, reproduced by the stochastic mode
+  "foot.measEarly": { ko: "측정은 잡음 때문에 fold보다 조금 일찍 스위칭합니다 (확률적 모드에서 재현됨)", en: "the measured sweeps switch a little before the folds because of noise (the stochastic mode reproduces this)" },
   "foot.vdmax": { ko: "V_{D,max} {v} V", en: "V_{D,max} {v} V" },
   "foot.nolatch": { ko: "이 조건에서는 래치가 생기지 않습니다 (fold 쌍 없음).", en: "No latch at this condition (no pair of folds)." },
   "foot.components": {

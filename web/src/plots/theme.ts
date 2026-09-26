@@ -13,25 +13,25 @@ export interface PlotPalette {
 }
 
 const LIGHT: PlotPalette = {
-  text: "#0f172a", text2: "#3b4658", muted: "#6b7587", grid: "#eceef2", axis: "#c9ced6", zero: "#d5d9e0", surface: "#ffffff", border: "#e2e5eb",
-  hrs: "#2563eb", lrs: "#dc2626", unstable: "#94a3b8", meas: "#111827", measBand: "rgba(17,24,39,0.10)",
-  det: "#0d9488", sto: "#7c3aed", stoSoft: "rgba(124,58,237,0.16)", detSoft: "rgba(13,148,136,0.14)", up: "#0d9488", down: "#b45309", warn: "#b45309",
-  categorical: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
-  sequential: ["#f0f5fd", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"],
-  hrsSoft: "rgba(37,99,235,0.14)", lrsSoft: "rgba(220,38,38,0.12)", neutralSoft: "rgba(100,116,139,0.10)", ghost: "#8b95a5",
+  text: "#172c46", text2: "#435a73", muted: "#607286", grid: "#edf1f7", axis: "#bbcbdc", zero: "#d5deea", surface: "#ffffff", border: "#dce4ef",
+  hrs: "#245eac", lrs: "#087f83", unstable: "#8b9aad", meas: "#293849", measBand: "rgba(41,56,73,0.10)",
+  det: "#245eac", sto: "#986215", stoSoft: "rgba(152,98,21,0.13)", detSoft: "rgba(36,94,172,0.11)", up: "#245eac", down: "#087f83", warn: "#986215",
+  categorical: ["#245eac", "#087f83", "#b87719", "#9d4972", "#5368a4", "#318667", "#b25745", "#697b8f"],
+  sequential: ["#f0f5fc", "#d9e8fb", "#b4d1f5", "#8ab9eb", "#5697d5", "#3379bd", "#245eac", "#194c91"],
+  hrsSoft: "rgba(36,94,172,0.10)", lrsSoft: "rgba(8,127,131,0.10)", neutralSoft: "rgba(102,121,141,0.09)", ghost: "#8b9aad",
 };
 const DARK: PlotPalette = {
-  text: "#e7eaf0", text2: "#b7bfcc", muted: "#8a93a3", grid: "#232833", axis: "#3a4250", zero: "#2f3642", surface: "#161920", border: "#2a303b",
-  hrs: "#60a5fa", lrs: "#f87171", unstable: "#7c8799", meas: "#e5e7eb", measBand: "rgba(229,231,235,0.12)",
-  det: "#2dd4bf", sto: "#a78bfa", stoSoft: "rgba(167,139,250,0.18)", detSoft: "rgba(45,212,191,0.16)", up: "#2dd4bf", down: "#fbbf24", warn: "#fbbf24",
-  categorical: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#2f9e2f", "#9085e9", "#e66767"],
-  sequential: ["#161f33", "#0d366b", "#184f95", "#256abf", "#3987e5", "#6da7ec", "#9ec5f4", "#cde2fb"],
-  hrsSoft: "rgba(96,165,250,0.18)", lrsSoft: "rgba(248,113,113,0.16)", neutralSoft: "rgba(148,163,184,0.12)", ghost: "#6b7587",
+  text: "#e8eff7", text2: "#b7c8db", muted: "#91a6bd", grid: "#263a50", axis: "#4b637e", zero: "#354b63", surface: "#182536", border: "#2c4056",
+  hrs: "#8ab9f5", lrs: "#65c9c3", unstable: "#6b819a", meas: "#e8eff7", measBand: "rgba(232,239,247,0.12)",
+  det: "#8ab9f5", sto: "#edbf70", stoSoft: "rgba(237,191,112,0.14)", detSoft: "rgba(138,185,245,0.14)", up: "#8ab9f5", down: "#65c9c3", warn: "#edbf70",
+  categorical: ["#8ab9f5", "#65c9c3", "#edbf70", "#dfa0bd", "#a8b3e9", "#91caa5", "#e7a491", "#b7c8db"],
+  sequential: ["#172b45", "#213b5c", "#275384", "#3379bd", "#5697d5", "#8ab9eb", "#b4d1f5", "#d9e8fb"],
+  hrsSoft: "rgba(138,185,245,0.13)", lrsSoft: "rgba(101,201,195,0.13)", neutralSoft: "rgba(145,166,189,0.12)", ghost: "#6b819a",
 };
 
 export const palette = (theme: Theme): PlotPalette => (theme === "dark" ? DARK : LIGHT);
 
-export const PLOT_FONT = '"Noto Sans KR Variable", "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+export const PLOT_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR Variable", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
 
 function axisDefaults(c: PlotPalette) {
   return {
@@ -44,8 +44,8 @@ function axisDefaults(c: PlotPalette) {
     showline: true,
     automargin: true,
     exponentformat: "power" as const,
-    title: { font: { size: 12, color: c.text2 }, standoff: 6 },
-    tickfont: { size: 11, color: c.muted },
+    title: { font: { size: 14, color: c.text2 }, standoff: 6 },
+    tickfont: { size: 13, color: c.muted },
   };
 }
 
@@ -65,10 +65,10 @@ export function themedLayout(theme: Theme, layout: Partial<Layout> = {}): Partia
   const base: Partial<Layout> = {
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
-    font: { family: PLOT_FONT, size: 12, color: c.text2 },
-    margin: { l: 62, r: 16, t: 36, b: 46, pad: 0 },
-    legend: { orientation: "h", x: 0, y: 1.01, xanchor: "left", yanchor: "bottom", font: { size: 11.5, color: c.text2 }, bgcolor: "rgba(0,0,0,0)", itemclick: "toggle", itemdoubleclick: "toggleothers" },
-    hoverlabel: { bgcolor: c.surface, bordercolor: c.border, font: { color: c.text, family: PLOT_FONT, size: 12 }, align: "left" },
+    font: { family: PLOT_FONT, size: 13, color: c.text2 },
+    margin: { l: 68, r: 18, t: 40, b: 52, pad: 0 },
+    legend: { orientation: "h", x: 0, y: 1.01, xanchor: "left", yanchor: "bottom", font: { size: 13, color: c.text2 }, bgcolor: "rgba(0,0,0,0)", itemclick: "toggle", itemdoubleclick: "toggleothers" },
+    hoverlabel: { bgcolor: c.surface, bordercolor: c.border, font: { color: c.text, family: PLOT_FONT, size: 13 }, align: "left" },
     hovermode: "closest",
     colorway: c.categorical,
     modebar: { bgcolor: "rgba(0,0,0,0)", color: c.muted, activecolor: c.text } as Layout["modebar"],

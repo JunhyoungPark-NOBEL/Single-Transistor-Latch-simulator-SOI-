@@ -1,0 +1,124 @@
+{
+  "first": {
+    "wall_s": 0.0027947089984081686,
+    "cpu_s": 0.002788326999997537,
+    "reported_s": 0.0027491999935591593,
+    "solver": {
+      "steps": 212,
+      "rejected": 0,
+      "newton_iters": 357,
+      "runtime_s": 0.0007130410085665062
+    },
+    "warnings": [],
+    "engine": null,
+    "t_reached_s": [
+      2e-05
+    ],
+    "saved_points": [
+      213
+    ],
+    "event_count": 0
+  },
+  "warm": [
+    {
+      "wall_s": 0.0022041909978725016,
+      "cpu_s": 0.0022052600000037614,
+      "reported_s": 0.002170140011003241,
+      "solver": {
+        "steps": 212,
+        "rejected": 0,
+        "newton_iters": 357,
+        "runtime_s": 0.0006648589915130287
+      },
+      "warnings": [],
+      "engine": null,
+      "t_reached_s": [
+        2e-05
+      ],
+      "saved_points": [
+        213
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.001346242002910003,
+      "cpu_s": 0.0013477250000022423,
+      "reported_s": 0.001314453998929821,
+      "solver": {
+        "steps": 212,
+        "rejected": 0,
+        "newton_iters": 357,
+        "runtime_s": 0.0005959260015515611
+      },
+      "warnings": [],
+      "engine": null,
+      "t_reached_s": [
+        2e-05
+      ],
+      "saved_points": [
+        213
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.00140604299667757,
+      "cpu_s": 0.0014070530000012127,
+      "reported_s": 0.0013743949966738,
+      "solver": {
+        "steps": 212,
+        "rejected": 0,
+        "newton_iters": 357,
+        "runtime_s": 0.0007020949997240677
+      },
+      "warnings": [],
+      "engine": null,
+      "t_reached_s": [
+        2e-05
+      ],
+      "saved_points": [
+        213
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.0013441689952742308,
+      "cpu_s": 0.0013452210000011178,
+      "reported_s": 0.0013129329890944064,
+      "solver": {
+        "steps": 212,
+        "rejected": 0,
+        "newton_iters": 357,
+        "runtime_s": 0.0006086950015742332
+      },
+      "warnings": [],
+      "engine": null,
+      "t_reached_s": [
+        2e-05
+      ],
+      "saved_points": [
+        213
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.0012919510045321658,
+      "cpu_s": 0.0012928529999953753,
+      "reported_s": 0.001261074998183176,
+      "solver": {
+        "steps": 212,
+        "rejected": 0,
+        "newton_iters": 357,
+        "runtime_s": 0.0006194900051923469
+      },
+      "warnings": [],
+      "engine": null,
+      "t_reached_s": [
+        2e-05
+      ],
+      "saved_points": [
+        213
+      ],
+      "event_count": 0
+    }
+  ]
+}

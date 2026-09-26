@@ -1,20 +1,16 @@
-// Click-to-open parameter guide (D1: no inline guide; the ⓘ is the only entry point). Guide first:
-// the plain picture, the full V_LU / V_LD effect list with its reason line, the caveat, then the technical
-// block (one-line definition, code index, default, range) and the documentation link. Fields without a
-// guide entry (yet) show the technical block alone. Keyboard activation, Escape, outside-click dismissal
-// and mobile bottom sheets are supported.
+// Click-to-open parameter guide: one sentence, two effect chips, and the full documentation link.
+// Keyboard activation, Escape, outside-click dismissal, and mobile bottom sheets are supported.
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { create } from "zustand";
-import type { L10n } from "../content/physics/types";
 import { useT, type T } from "../i18n";
 import { GUIDE } from "../i18n/strings.guide";
-import { effectChips, inlineLead, splitLead, type Effect, type GuideVerb, type ParamGuide } from "../params/guideUi";
+import { effectChips, firstSentence, inlineLead, splitLead, type Effect, type GuideVerb, type ParamGuide } from "../params/guideUi";
 import { IconAlert, IconX } from "./icons";
 import "./guide.css";
 
 // ---------------------------------------------------------------- text helpers (shared by every guide view)
-const SYM = /(V_(?:LU|LD|GD|BG|G|D,max|D)|I_(?:PH|p)|E_G|τ_[pn]|δφ_[GE]0|dφ_[GE]|dV_(?:LU|LD)|a_loc)/g;
+const SYM = /(V_(?:LU|LD|GD|G|D,max|D)|I_(?:PH|p)|E_G|τ_[pn]|δφ_[GE]0|dφ_[GE]|dV_(?:LU|LD)|a_loc)/g;
 
 /** Guide text with symbol subscripts (V_G → V<sub>G</sub>); V_LU / V_LD in their quantity colours. */
 export function GuideText({ text, plain = false }: { text: string; plain?: boolean }) {
@@ -195,63 +191,38 @@ export interface GuideCardProps {
   label: string;
   guide?: ParamGuide | null;
   verb?: GuideVerb;
-  /** Plain explanation for a trigger that has no parameter guide (e.g. a whole group); shown first. */
+  /** Brief fallback for fields with no authored design guide. */
   description?: string;
-  /** Technical block: one-line definition, code index, default and range (after the guide). */
-  technical?: ReactNode;
-  /** "상세 문서 →" / "물리 자세히 보기 →". */
+  /** "물리 자세히 보기 →" (pinned only). */
   onMore?: () => void;
-  /** Label of the onMore link (default: the documentation link). */
-  moreLabel?: string;
 }
 
-function GuideCard({ sym, label, guide, verb = "raise", description, technical, onMore, moreLabel, headingId, onClose }: GuideCardProps & { headingId: string; onClose: () => void }) {
+/** Keep lengthy glosses, equations, defaults, and caveats in the linked documentation. */
+export const compactGuideSummary = (text: string) => firstSentence(inlineLead(text));
+
+function GuideCard({ sym, label, guide, verb = "raise", description, onMore, headingId, onClose }: GuideCardProps & { headingId: string; onClose: () => void }) {
   const t = useT();
-  const L = (x: L10n) => t.l(x);
-  const lead = !guide && description ? description : null;
+  const summary = compactGuideSummary(guide ? t.l(guide.intuitive) : description ?? "");
   return (
     <>
       <div className="gp-head">
         {sym && <span className="gp-sym">{sym}</span>}
         <span className="gp-title" id={headingId}>{label}</span>
-        <button type="button" className="icon-btn xs gp-close" onClick={onClose} aria-label={L(GUIDE["guide.close"])} title={`${L(GUIDE["guide.close"])} (Esc)`} data-testid="guide-pop-close">
+        <button type="button" className="icon-btn xs gp-close" onClick={onClose} aria-label={t.l(GUIDE["guide.close"])} title={`${t.l(GUIDE["guide.close"])} (Esc)`} data-testid="guide-pop-close">
           <IconX size={14} />
         </button>
       </div>
+      {summary && <p className="gp-intuitive" data-testid="guide-pop-intuitive"><GuideText text={summary} /></p>}
       {guide && (
-        <>
-          <p className="gp-intuitive" data-testid="guide-pop-intuitive"><GuideText text={L(guide.intuitive)} /></p>
-          <div className="gp-block gp-eff">
-            <div className="gp-h">
-              {verbLabel(t, verb)}
-              {verb === "raise" && <span aria-hidden> ↑</span>}
-            </div>
-            <ul className="gp-effects" data-testid="guide-pop-effects">
-              {guide.effect.map((e, i) => (
-                <li key={i} className={i === 2 ? "why" : undefined}>
-                  <EffectLine line={L(e)} />
-                </li>
-              ))}
-            </ul>
-          </div>
-          {guide.caveat && <Caveat text={L(guide.caveat)} interactive />}
-          {/* how to read the arrows; the provenance note (English, checked by guide.test.ts) stays in the tooltip */}
-          <p className="gp-basis" title={guide.basis ? `${L(GUIDE["guide.basis"])}: ${guide.basis}` : undefined}>
-            <GuideText text={legendNote(t)} plain />
-          </p>
-        </>
-      )}
-      {lead && <p className="gp-intuitive" data-testid="guide-pop-intuitive"><GuideText text={lead} /></p>}
-      {technical && (
-        <div className={`gp-tech${guide || lead ? "" : " solo"}`} data-testid="guide-pop-tech">
-          {(guide || lead) && <div className="gp-h">{L(GUIDE["guide.tech"])}</div>}
-          {technical}
+        <div className="gp-compact-effects" data-testid="guide-pop-effects">
+          <EffectChips guide={guide} verb={verb} compact />
+          <span className="gp-reference" title={legendNote(t)}>{t.lang === "ko" ? "기준 소자에서의 변화" : "Reference-device response"}</span>
         </div>
       )}
       {onMore && (
         <div className="gp-foot">
           <button type="button" className="link-btn gp-more" onClick={onMore} data-testid="guide-pop-more">
-            {moreLabel ?? L(GUIDE["guide.doc"])} →
+            {t.lang === "ko" ? "상세 문서" : "Documentation"} →
           </button>
         </div>
       )}

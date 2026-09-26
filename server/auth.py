@@ -16,6 +16,12 @@ key means a password change invalidates every old cookie.  Lifetime: 30 days wit
 browser-session cookie whose token still expires after 24 h.  Attributes: HttpOnly; SameSite=Lax; Path=/; Secure
 when the request is https (scope scheme or X-Forwarded-Proto).
 
+Remote UI: POST /api/session with JSON {password} checks the same password and limiter, returning an
+opaque bearer token. The UI keeps it in memory and sends Authorization: Bearer <token> to API paths.
+Server stores only token digests, capped at 4096 active sessions (oldest replaced); tokens expire after
+24 h, on DELETE /api/session, or on server restart. No cross-origin cookies are needed. Browser origins
+must be listed exactly in STL_CORS_ORIGINS; wildcards and paths are rejected during startup.
+
 Brute force: per-client exponential backoff (5 failures → 30 s, doubling, capped at 15 min) plus a global window
 of 20 failed checks per 60 s; while it is full, only clients with no recent failures may try (≤ 10 such "grace"
 checks per 60 s), so an attacker who fills the window cannot lock everyone out and at most 30 checks per minute run
@@ -43,11 +49,12 @@ import hmac
 import html
 import logging
 import ipaddress
+import json
 import os
 import secrets
 import sys
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 from urllib.parse import parse_qs, quote, unquote, urlsplit
@@ -59,6 +66,7 @@ log = logging.getLogger("stl.auth")
 COOKIE_NAME = "stl_session"
 LOGIN_PATH = "/login"
 LOGOUT_PATH = "/logout"
+SESSION_PATH = "/api/session"
 OPEN_PATHS = frozenset({"/api/health", "/favicon.svg", "/favicon.ico"})
 REMEMBER_S = 30 * 86400                  # "keep me signed in": cookie Max-Age and token lifetime
 SESSION_S = 24 * 3600                    # browser-session cookie: the token still expires after 24 h
@@ -67,6 +75,22 @@ CLOCK_SKEW_S = 300
 PBKDF2_ITERATIONS = 200_000              # ≈ 60 ms per login check on one core
 LOGIN_BODY_MAX = 8192
 PASSWORD_MAX = 1024
+MAX_API_SESSIONS = 4096
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173", "http://127.0.0.1:5173",
+    "http://localhost:4173", "http://127.0.0.1:4173",
+)
+
+
+def cors_origins(env: Mapping[str, str] | None = None) -> list[str]:
+    """Explicit browser origins only; never reflect an arbitrary Origin or allow a wildcard."""
+    env = os.environ if env is None else env
+    origins = [v.strip() for v in env.get("STL_CORS_ORIGINS", ",".join(DEFAULT_CORS_ORIGINS)).split(",") if v.strip()]
+    for origin in origins:
+        p = urlsplit(origin)
+        if p.scheme not in ("http", "https") or not p.hostname or p.username or p.password or p.path or p.query or p.fragment or "*" in origin:
+            raise ValueError("STL_CORS_ORIGINS must contain exact http(s) origins without paths or wildcards")
+    return list(dict.fromkeys(origins))
 
 # brute-force limiter
 FREE_FAILURES = 5                        # failures before the first lock
@@ -204,6 +228,9 @@ class GateConfig:
         self.trust_proxy = max(0, int(trust_proxy))
         self.clock = clock
         self.limiter = Limiter(clock=monotonic)
+        # Remote-browser sessions are distinct from HttpOnly cookies. Store only token digests,
+        # expire after 24 h, revoke on logout, and discard on restart (also with a fixed cookie key).
+        self._api_sessions: OrderedDict[str, float] = OrderedDict()
 
     # ---- password --------------------------------------------------------------------------
     def check_password(self, candidate: str) -> bool:
@@ -240,6 +267,29 @@ class GateConfig:
         issued, expires = int(issued_s), int(expires_s)
         t = self.clock() if now is None else now
         return issued <= t + CLOCK_SKEW_S and t < expires and 0 < expires - issued <= MAX_TOKEN_S
+
+    def _prune_api_sessions(self) -> None:
+        now = self.clock()
+        for digest, expires in list(self._api_sessions.items()):
+            if expires <= now:
+                del self._api_sessions[digest]
+
+    def make_api_token(self) -> str:
+        self._prune_api_sessions()
+        while len(self._api_sessions) >= MAX_API_SESSIONS:
+            self._api_sessions.popitem(last=False)
+        token = "api1." + secrets.token_urlsafe(32)
+        self._api_sessions[hashlib.sha256(token.encode()).hexdigest()] = self.clock() + SESSION_S
+        return token
+
+    def check_api_token(self, token: str) -> bool:
+        if not token.startswith("api1.") or len(token) != 48:
+            return False
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        return self._api_sessions.get(digest, 0.0) > self.clock()
+
+    def revoke_api_token(self, token: str) -> None:
+        self._api_sessions.pop(hashlib.sha256(token.encode()).hexdigest(), None)
 
 
 def _parse_trust(value: str | None) -> int:
@@ -370,6 +420,26 @@ def _session_cookies(scope: Mapping[str, Any]) -> list[str]:
             if name.strip() == COOKIE_NAME:
                 out.append(value.strip().strip('"'))
     return out
+
+
+def _bearer_token(scope: Mapping[str, Any]) -> str:
+    headers = _header_values(scope, b"authorization")
+    if len(headers) != 1:
+        return ""
+    scheme, _, token = headers[0].partition(" ")
+    return token.strip() if scheme.lower() == "bearer" and len(token) <= 200 else ""
+
+
+def _allowed_session_origin(scope: Mapping[str, Any]) -> bool:
+    origins = _header_values(scope, b"origin")
+    if not origins:                                      # native/CLI clients have no Origin
+        return True
+    if len(origins) != 1 or origins[0] == "null":
+        return False
+    hosts = _header_values(scope, b"host")
+    scheme = "https" if _is_https(scope) else "http"
+    same_origin = f"{scheme}://{hosts[0]}" if len(hosts) == 1 else ""
+    return origins[0] == same_origin or origins[0] in cors_origins()
 
 
 def _is_https(scope: Mapping[str, Any]) -> bool:
@@ -524,19 +594,19 @@ _MESSAGES = {
 }
 
 _LOGIN_CSS = """
-:root{color-scheme:light;--bg:#f4f5f7;--surface:#fff;--surface-2:#f8f9fb;--border:#e2e5eb;--border-strong:#cfd4dc;
---text:#0f172a;--text-2:#3b4658;--muted:#6b7587;--accent:#0d9488;--accent-strong:#0f766e;--on-accent:#fff;
+:root{color-scheme:light;--bg:#f2f5fa;--surface:#fff;--surface-2:#f6f8fc;--border:#dce4ee;--border-strong:#bccbdd;
+--text:#172c46;--text-2:#3c536e;--muted:#62738b;--accent:#245eac;--accent-strong:#245eac;--on-accent:#fff;
 --err:#b91c1c;--err-soft:rgba(220,38,38,.09);--warn:#b45309;--warn-soft:rgba(217,119,6,.12);--info:#1d4ed8;
 --info-soft:rgba(37,99,235,.08);--shadow:0 4px 16px rgba(15,23,42,.08),0 1px 3px rgba(15,23,42,.06);
 --font:"Pretendard","Pretendard Variable","Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 @media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#0e1015;--surface:#161920;--surface-2:#1b1f27;
---border:#2a303b;--border-strong:#3a4250;--text:#e7eaf0;--text-2:#b7bfcc;--muted:#8a93a3;--accent:#2dd4bf;
---accent-strong:#5eead4;--on-accent:#04201d;--err:#f87171;--err-soft:rgba(248,113,113,.12);--warn:#fbbf24;
+--border:#2a303b;--border-strong:#3a4250;--text:#e7eaf0;--text-2:#b7bfcc;--muted:#8a93a3;--accent:#80adff;
+--accent-strong:#80adff;--on-accent:#102447;--err:#f87171;--err-soft:rgba(248,113,113,.12);--warn:#fbbf24;
 --warn-soft:rgba(251,191,36,.12);--info:#93c5fd;--info-soft:rgba(96,165,250,.1);--shadow:0 6px 20px rgba(0,0,0,.35)}}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
-padding:24px 16px;font-family:var(--font);font-size:14px;line-height:1.5;color:var(--text);
+padding:24px 16px;font-family:var(--font);font-size:15px;line-height:1.5;color:var(--text);
 background:radial-gradient(1200px 600px at 100% -10%,rgba(99,102,241,.06),transparent 60%),var(--bg);
 -webkit-font-smoothing:antialiased;word-break:keep-all;overflow-wrap:break-word}
 main{width:100%;max-width:400px;background:var(--surface);border:1px solid var(--border);border-radius:14px;
@@ -556,13 +626,13 @@ label.pw{display:block;font-weight:600;font-size:13px;margin-bottom:6px}
 label.pw .en{display:inline;margin-left:6px}
 input[type=password]{display:block;width:100%;height:42px;padding:0 12px;border-radius:8px;
 border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text);font:inherit;font-size:16px}
-input[type=password]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(13,148,136,.25)}
+input[type=password]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(36,94,172,.25)}
 .check{display:flex;gap:8px;align-items:flex-start;margin:14px 0 18px;font-size:13px;color:var(--text-2);cursor:pointer}
 .check input{margin:3px 0 0;width:16px;height:16px;accent-color:var(--accent);flex:none}
 button{display:block;width:100%;height:42px;border:0;border-radius:8px;background:var(--accent-strong);
 color:var(--on-accent);font:inherit;font-size:15px;font-weight:650;cursor:pointer}
 button:hover{filter:brightness(1.08)}
-button:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(13,148,136,.35)}
+button:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(36,94,172,.35)}
 .scope{margin:16px 0 0;font-size:12px;color:var(--muted)}
 a{color:var(--accent-strong)}
 footer{max-width:400px;text-align:center;font-size:12px;color:var(--muted)}
@@ -580,18 +650,17 @@ def _page(title: str, content: str, root: str = "") -> bytes:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta name="color-scheme" content="light dark">
-<title>{title} · STL Simulator</title>
+<title>{title} · STL simulator</title>
 <link rel="icon" type="image/svg+xml" href="{root_e}/favicon.svg">
 <style>{_LOGIN_CSS}</style>
 </head>
 <body>
 <main>
 <div class="brand"><img src="{root_e}/favicon.svg" alt="" width="40" height="40">
-<div><h1>STL Simulator</h1><p class="tag">SOI 단일 트랜지스터 래치 시뮬레이터
-<span class="en" lang="en">Single-transistor latch simulator for SOI</span></p></div></div>
+<div><h1>STL simulator</h1><p class="tag">SOI device &amp; circuit workspace</p></div></div>
 {content}
 </main>
-<footer><span>KAIST</span> · <span>NOBEL 연구실</span></footer>
+<footer><details><summary>제작자</summary><span>NOBEL 연구실 · KAIST</span></details></footer>
 </body>
 </html>
 """
@@ -605,8 +674,7 @@ def login_page(next_path: str = "/", message: str | None = None, retry_s: int = 
         msg_html = (f'<p class="msg {cls}" role="alert">{html.escape(ko.format(s=retry_s))}'
                     f'<span class="en" lang="en">{html.escape(en.format(s=retry_s))}</span></p>')
     root_e = html.escape(root, quote=True)
-    content = f"""<p class="lead">비공개 연구용 페이지입니다. 공유받은 비밀번호를 입력하세요.
-<span class="en" lang="en">This is a private research page. Enter the password you were given.</span></p>
+    content = f"""<p class="lead">연구실 비밀번호를 입력하세요.</p>
 {msg_html}
 <form method="post" action="{root_e}{LOGIN_PATH}">
 <input type="hidden" name="next" value="{html.escape(next_path, quote=True)}">
@@ -616,7 +684,7 @@ def login_page(next_path: str = "/", message: str | None = None, retry_s: int = 
 <span>이 기기에서 30일 동안 로그인 유지<span class="en" lang="en">Keep me signed in on this device for 30 days</span></span></label>
 <button type="submit">들어가기 · Sign in</button>
 </form>
-<p class="scope">미발표 모델 — 연구용으로만 사용하세요.<span class="en" lang="en">Unpublished model — for research use only.</span></p>"""
+<p class="scope">Research workspace</p>"""
     return _page("로그인", content, root)
 
 
@@ -668,6 +736,9 @@ class AccessGate:
 
     async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
         cfg = STATE.config
+        if scope["type"] == "http" and _route_path(scope) == SESSION_PATH and not STATE.misconfigured:
+            await self._session_api(scope, receive, send, cfg)
+            return
         if scope["type"] not in ("http", "websocket") or (cfg is None and not STATE.misconfigured):
             await self.app(scope, receive, send)
             return
@@ -682,6 +753,8 @@ class AccessGate:
         path = _route_path(scope)
         cookies = _session_cookies(scope)
         authed = any(cfg.check_token(c) for c in cookies)
+        if _is_api(path):
+            authed = authed or cfg.check_api_token(_bearer_token(scope))
         if scope["type"] == "websocket":
             if authed:
                 await self.app(scope, receive, send)
@@ -709,6 +782,70 @@ class AccessGate:
             await _redirect(send, f"{root}{LOGIN_PATH}?{query}")
             return
         await _deny_api(send)
+
+    @staticmethod
+    async def _session_api(scope: dict, receive: Any, send: Any, cfg: GateConfig | None) -> None:
+        """JSON login for a separate local browser UI. Password and token never enter URLs or logs.
+
+        No cross-site cookie is required: the browser holds this token only in memory and sends an
+        Authorization header. The existing same-origin HTML login keeps its HttpOnly cookie.
+        """
+        async def reply(status: int, **body: Any) -> None:
+            await _send(send, status, json.dumps(body, separators=(",", ":")).encode(), b"application/json",
+                        [(b"cache-control", b"no-store"), (b"pragma", b"no-cache")])
+
+        method = scope.get("method", "GET")
+        token = _bearer_token(scope)
+        authed = cfg is None or cfg.check_api_token(token) or any(cfg.check_token(c) for c in _session_cookies(scope))
+        if method in ("GET", "HEAD"):
+            await reply(200, authenticated=authed, access_gate=state_name())
+            return
+        if method not in ("POST", "DELETE"):
+            await reply(405, detail="method not allowed")
+            return
+        if not _allowed_session_origin(scope):
+            await reply(403, detail="browser origin is not allowed")
+            return
+        if method == "DELETE":
+            if cfg is not None:
+                cfg.revoke_api_token(token)
+            body = json.dumps({"authenticated": cfg is None, "access_gate": state_name()}).encode()
+            await _send(send, 200, body, b"application/json", [(b"cache-control", b"no-store"),
+                        (b"set-cookie", _cookie("", 0, _is_https(scope)))])
+            return
+        content_type = next(iter(_header_values(scope, b"content-type")), "").split(";")[0].strip().lower()
+        if content_type != "application/json":
+            await reply(415, detail="application/json required")
+            return
+        body = await _read_body(receive, LOGIN_BODY_MAX)
+        if body is None:
+            await reply(413, detail="request body too large")
+            return
+        try:
+            payload = json.loads(body)
+        except (UnicodeDecodeError, ValueError, RecursionError):
+            await reply(400, detail="invalid JSON")
+            return
+        if not isinstance(payload, dict) or not isinstance(payload.get("password", ""), str):
+            await reply(400, detail="password must be a string")
+            return
+        if cfg is None:
+            await reply(200, authenticated=True, access_gate="off", token=None, expires_in=None)
+            return
+        key = client_key(scope, cfg.trust_proxy)
+        wait = cfg.limiter.retry_after(key)
+        if wait > 0:
+            await _send(send, 429, b'{"detail":"too many login attempts"}', b"application/json",
+                        [(b"cache-control", b"no-store"), (b"retry-after", str(int(wait + .999)).encode())])
+            return
+        ticket = cfg.limiter.reserve(key)
+        password = payload.get("password", "")
+        valid = bool(password) and len(password) <= PASSWORD_MAX and await run_in_threadpool(cfg.check_password, password)
+        if not valid:
+            await reply(401, detail="incorrect password")
+            return
+        cfg.limiter.success(key, ticket)
+        await reply(200, authenticated=True, access_gate="on", token=cfg.make_api_token(), expires_in=SESSION_S)
 
     @staticmethod
     def _private(send: Any) -> Any:

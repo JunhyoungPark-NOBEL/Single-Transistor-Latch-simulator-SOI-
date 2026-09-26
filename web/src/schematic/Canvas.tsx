@@ -10,7 +10,7 @@ import type { ErcItem } from "./erc";
 import { addWires, docBounds, lPath, moveItems } from "./edit";
 import { DEFAULT_CMP, DEFAULT_MOS, DEFAULT_DIODE, DEFAULT_BJT, distToSeg, elementBox, GRID, newId, nextName, onWireInterior, pinPositions, rotatePt, snap, type Pt, type SchematicDoc, type SElement, type Wire } from "./model";
 import type { Connectivity, NetInfo } from "./nets";
-import { pinId } from "./nets";
+import { optionalPinConnected, pinId } from "./nets";
 import { fmtSI } from "./si";
 import { useSch, stlRefFor } from "./store";
 import { ElementView } from "./Symbols";
@@ -245,9 +245,14 @@ export function Canvas({ conn, ann, height }: { conn: Connectivity; erc: ErcItem
     if (e.button !== 0) return;
     switch (st.tool.kind) {
       case "place": {
-        const el = makeElement(st.doc, st.tool.el, sp.x, sp.y, st.tool.rot, st.tool.mirror, st.stlChoice);
-        st.commit((d) => ({ ...d, elements: [...d.elements, el] }));
-        st.select([el.id]);
+        try {
+          const el = makeElement(st.doc, st.tool.el, sp.x, sp.y, st.tool.rot, st.tool.mirror, st.stlChoice);
+          st.commit((d) => ({ ...d, elements: [...d.elements, el] }));
+          st.select([el.id]);
+        } catch {
+          st.notify(t.lang === "ko" ? "미지원 소자 · FDSOI 소자를 선택하세요." : "Unsupported device · Choose FDSOI.", "err");
+          st.setTool({ kind: "select" });
+        }
         return;
       }
       case "wire": {
@@ -387,8 +392,12 @@ export function Canvas({ conn, ann, height }: { conn: Connectivity; erc: ErcItem
   const hoverNetWires = useMemo(() => new Set(hoverNet?.wires.map((w) => w.id) ?? []), [hoverNet]);
   const unconnected = conn.unconnected.filter((p) => p.el.kind !== "GND" && p.el.kind !== "LABEL");
 
-  const ghostEl: SElement | null =
-    tool.kind === "place" && ghost ? { id: "ghost", kind: tool.el, name: tool.el === "GND" || tool.el === "LABEL" ? "" : nextName(doc.elements, tool.el), x: ghost.x, y: ghost.y, rot: tool.rot, mirror: tool.mirror, ...defaultsFor(tool.el), ...(tool.el === "LABEL" ? { label: "…" } : {}), ...(tool.el === "STL" ? { stl: stlRefFor(stlChoice) } : {}) } : null;
+  const ghostEl = (() : SElement | null => {
+    if (tool.kind !== "place" || !ghost) return null;
+    try {
+      return { id: "ghost", kind: tool.el, name: tool.el === "GND" || tool.el === "LABEL" ? "" : nextName(doc.elements, tool.el), x: ghost.x, y: ghost.y, rot: tool.rot, mirror: tool.mirror, ...defaultsFor(tool.el), ...(tool.el === "LABEL" ? { label: "…" } : {}), ...(tool.el === "STL" ? { stl: stlRefFor(stlChoice) } : {}) };
+    } catch { return null; }
+  })();
   const wirePreview = tool.kind === "wire" && wireFrom && ghost ? lPath(wireFrom.p, ghost, wireFrom.vFirst ?? Math.abs(ghost.y - wireFrom.p.y) > Math.abs(ghost.x - wireFrom.p.x)) : [];
 
   const cursor = panning ? "grabbing" : tool.kind === "place" || tool.kind === "wire" ? "crosshair" : tool.kind === "probe" ? "copy" : hover ? "pointer" : "grab";
@@ -502,12 +511,14 @@ function probeTarget(doc: SchematicDoc, conn: Connectivity, p: Pt, tol: number):
     for (const q of pinPositions(el)) {
       if (Math.hypot(q.x - p.x, q.y - p.y) <= tol * 0.9) {
         const n = conn.pinNet.get(pinId(el.id, q.pin));
+        if (el.kind === "STL" && q.pin === "b" && !optionalPinConnected(el.id, "b", conn)) return `${el.name}.vbody`;
+        if (el.kind === "STL" && q.pin === "bg" && !optionalPinConnected(el.id, "bg", conn)) return null;
         if (n) return vKey(n.name);
       }
     }
     if (el.kind === "STL" || el.kind === "MOS") {
       const pin = nearestPin(el, p);
-      return iKey(el.name, pin === "s" ? "s" : pin === "g" ? "g" : "d");
+      return iKey(el.name, pin === "b" || pin === "bg" || pin === "s" || pin === "g" ? pin : "d");
     }
     if (el.kind === "CMP") return `${el.name}.bit`;
     if (el.kind === "BJT") { const pin = nearestPin(el, p); return iKey(el.name, pin === "b" ? "b" : pin === "e" ? "e" : "c"); }
@@ -605,10 +616,15 @@ function HoverTip({ hover, net, conn, ann, mouse }: { hover: Hover; net?: NetInf
   } else if (hover.kind === "el") {
     const el = hover.el;
     title = el.name;
-    const nets = pinPositions(el).map((p) => `${p.pin === "p" ? "+" : p.pin === "n" ? "−" : p.pin.toUpperCase()}: ${conn.pinNet.get(pinId(el.id, p.pin))?.name ?? "—"}`);
+    const nets = pinPositions(el).map((p) => {
+      const value = el.kind === "STL" && (p.pin === "bg" || p.pin === "b") && !optionalPinConnected(el.id, p.pin, conn)
+        ? t(p.pin === "b" ? "schematic.stl.floating" : "schematic.stl.savedBias")
+        : conn.pinNet.get(pinId(el.id, p.pin))?.name ?? "—";
+      return `${p.pin === "p" ? "+" : p.pin === "n" ? "−" : p.pin.toUpperCase()}: ${value}`;
+    });
     rows.push([t("schematic.insp.nodes"), nets.join(" · ")]);
     if (ann) {
-      const keys = el.kind === "MOS" ? [iKey(el.name, "d"), iKey(el.name, "g"), iKey(el.name, "s")] : el.kind === "BJT" ? [iKey(el.name, "c"), iKey(el.name, "b"), iKey(el.name, "e")] : el.kind === "STL" ? [iKey(el.name, "d"), iKey(el.name, "g"), iKey(el.name, "s"), `${el.name}.u`, `${el.name}.r`, `${el.name}.q_b`] : el.kind === "CMP" ? [`${el.name}.bit`, iKey(el.name)] : [iKey(el.name)];
+      const keys = el.kind === "MOS" ? [iKey(el.name, "d"), iKey(el.name, "g"), iKey(el.name, "s")] : el.kind === "BJT" ? [iKey(el.name, "c"), iKey(el.name, "b"), iKey(el.name, "e")] : el.kind === "STL" ? [iKey(el.name, "d"), iKey(el.name, "g"), iKey(el.name, "s"), iKey(el.name, "bg"), iKey(el.name, "b"), `${el.name}.vb`, `${el.name}.vbody`, `${el.name}.r`, `${el.name}.q_b`] : el.kind === "CMP" ? [`${el.name}.bit`, iKey(el.name)] : [iKey(el.name)];
       for (const k of keys) {
         const v = ann.sig.get(k);
         if (v === undefined) continue;

@@ -6,7 +6,12 @@ Unknown vector x = [node voltages v_1..v_{N-1} (node 0 = ground), V-source branc
 Residuals:
   KCL at every non-ground node (A):  sum of currents leaving the node = 0
       R: (v_a - v_b)/R; C: companion (BE: C/h dv, TRAP: 2C/h dv - i_n); V: branch current;
-      I: source value; STL: I_D(u,r) leaves the drain node and enters the source node.
+      I: source value; legacy STL: I_D(u,r) leaves drain and enters source.
+      Connected BG/B: gate displacement and ideal hole-contact current also enter
+      KCL, with the reduced source-return partition I_S=-(I_D+I_G+I_BG+I_B).
+      B imposes V(B)-V(S)=u and moves (dQ/dt-F) into B-node KCL.
+      The physical contact u is distinct from electrostatic psi_B plotted as X.vb.
+      These optional terminal equations currently use deterministic BE only.
   V source:  v_a - v_b - V(t) = 0
   comparator output (a V source whose wave index is -1 - j, j = comparator row of ``cmp``):
              v_out - y_j(v_in - v_inm) = 0,  y = v_low + (v_high - v_low) (1 + tanh((d - thr)/w))/2,
@@ -21,6 +26,11 @@ Residuals:
         4 drift only, latched cell with ld_carrier_noise off
         5 drift only, outside the cell's noise band (no escape possible there)
   (DC initialisation: E2 replaced by u - u_fix = 0, then pseudo-transient BE.)
+
+Packed parameter rows can mix Detailed and Simple Model elements. ``stl_eval``
+owns each model's transport, body charge and gate charges; the MNA solver never
+substitutes a Detailed charge law for a Simple first-order reservoir. For Simple
+Model the plotted body reservoir w=u+I_D*R_LRS is distinct from contact u.
 
 Geometry model v1 with split front-/back-gate charge: each row P[k] retains its own geometry and electrostatic field
 table through every element evaluation and finite difference.  Q and F therefore
@@ -107,7 +117,9 @@ N_SAMPC = 3
 # partial derivative columns (part): d/du, d/dr and, for cells whose V_GS can move (P_VGSJ = 1: source not grounded
 # or gate not held by a constant source), d/dV_GS; the V_GS columns enter the Jacobian at the gate and source nodes
 P_VU, P_VR, P_IU, P_IR, P_FU, P_FR, P_QU, P_QR, P_VG, P_IG, P_FG, P_QG, P_VGSJ = range(13)
-N_PART = 13
+# Optional terminal metadata and gate-charge companions. Node -1 means omitted.
+P_BNODE, P_BGNODE, P_PORTS, P_VBG, P_IBG, P_FBG, P_QBG, P_QGU, P_QGR, P_QGG, P_QGBG, P_QBU, P_QBR, P_QBGG, P_QBBG, P_QGPREV, P_QBPREV, P_IGTERM, P_IBGTERM, P_IBTERM = range(13, 33)
+N_PART = 33
 FD_VGS = 1e-6         # V, finite-difference step in V_GS
 # event columns
 EV_KIND, EV_STL, EV_T, EV_VDS, EV_VSRC, EV_I = range(6)
@@ -202,7 +214,7 @@ def _nv(x, node):
 
 
 @njit(cache=True)
-def eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev):
+def eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev, part):
     nn = ci[CI_NN]
     nv = ci[CI_NV]
     ns = ci[CI_NS]
@@ -210,6 +222,8 @@ def eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev):
     for k in range(ns):
         ku = nn - 1 + nv + 2 * k
         P[k, 11] = _nv(x, sG[k]) - _nv(x, sS[k])
+        if part[k, P_BGNODE] >= 0 and part[k, P_PORTS] > 0.5:
+            P[k, 32] = _nv(x, int(part[k, P_BGNODE])) - _nv(x, sS[k])
         if not stl_eval(x[ku], x[ku + 1], P[k], na, vbi, rg, fg, table, ev[k]):
             ok = False
     return ok
@@ -267,6 +281,28 @@ def fd_partials(x, ci, P, na, vbi, rg, fg, table, ev, part, tmp):
                 part[k, P_IG] = 0.0
                 part[k, P_FG] = 0.0
                 part[k, P_QG] = 0.0
+        if part[k, P_PORTS] > 0.5:
+            # All charge and bias derivatives use the same per-device evaluator.
+            for var in range(4):
+                vg0 = P[k, 11]
+                bg0 = P[k, 32]
+                if var == 2:
+                    P[k, 11] = vg0 + FD_VGS
+                if var == 3:
+                    P[k, 32] = bg0 + FD_VGS
+                valid = stl_eval(u + (FD_U if var == 0 else 0.0),
+                                 r + (FD_R if var == 1 else 0.0), P[k], na, vbi, rg, fg, table, tmp)
+                P[k, 11] = vg0
+                P[k, 32] = bg0
+                if not valid:
+                    return False
+                part[k, P_QGU + var] = (tmp[9] - ev[k, 9]) / FD_VGS
+                part[k, P_QBU + var] = (tmp[10] - ev[k, 10]) / FD_VGS
+                if var == 3:
+                    part[k, P_VBG] = (tmp[0] - ev[k, 0]) / FD_VGS
+                    part[k, P_IBG] = (tmp[1] - ev[k, 1]) / FD_VGS
+                    part[k, P_FBG] = (tmp[2] - ev[k, 2]) / FD_VGS
+                    part[k, P_QBG] = (tmp[3] - ev[k, 3]) / FD_VGS
     return True
 
 
@@ -390,6 +426,81 @@ def assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
                         J[s - 1, c] -= sgn * part[k, P_IG]
                     J[ku, c] += sgn * part[k, P_VG]
                     J[kr, c] += sgn * gq
+        if part[k, P_PORTS] > 0.5:
+            bg = int(part[k, P_BGNODE])
+            b = int(part[k, P_BNODE])
+            if bg >= 0:
+                qb = (part[k, P_QBG] - tha[k] * h * part[k, P_FBG]) / COX if emode == 0 else 0.0
+                for node, sign in ((bg, 1.0), (s, -1.0)):
+                    if node > 0:
+                        col = node - 1
+                        if d > 0:
+                            J[d - 1, col] += sign * part[k, P_IBG]
+                        if s > 0:
+                            J[s - 1, col] -= sign * part[k, P_IBG]
+                        J[ku, col] += sign * part[k, P_VBG]
+                        J[kr, col] += sign * qb
+            # B is an ideal hole contact: V(B)-V(S)=u, not electrostatic psi.
+            # The body's exact BE charge residual is its terminal current.
+            if b >= 0 and (h > 0.0 or emode == 1):
+                grad = np.zeros(n)
+                if emode == 1:
+                    ib = -ev[k, 2]
+                    grad[ku] = -part[k, P_FU]
+                    grad[kr] = -part[k, P_FR]
+                    for node, sign in ((sG[k], 1.0), (s, -1.0)):
+                        if node > 0:
+                            grad[node - 1] -= sign * part[k, P_FG]
+                    if bg >= 0:
+                        for node, sign in ((bg, 1.0), (s, -1.0)):
+                            if node > 0:
+                                grad[node - 1] -= sign * part[k, P_FBG]
+                else:
+                    ib = f[kr] * COX / h
+                    for col in range(n):
+                        grad[col] = J[kr, col] * COX / h
+                part[k, P_IBTERM] = ib
+                for node, sign in ((b, 1.0), (s, -1.0)):
+                    if node > 0:
+                        f[node - 1] += sign * ib
+                        for col in range(n):
+                            J[node - 1, col] += sign * grad[col]
+                for col in range(n):
+                    J[kr, col] = 0.0
+                f[kr] = x[ku] - (_nv(x, b) - _nv(x, s))
+                J[kr, ku] = 1.0
+                if b > 0:
+                    J[kr, b - 1] -= 1.0
+                if s > 0:
+                    J[kr, s - 1] += 1.0
+            else:
+                part[k, P_IBTERM] = 0.0
+            # Electrode displacement currents and their source-return partition.
+            # Legacy three-pin cells retain their calibrated ideal-gate stamping.
+            for electrode in range(2):
+                node = sG[k] if electrode == 0 else bg
+                outcol = P_IGTERM if electrode == 0 else P_IBGTERM
+                qidx = 9 + electrode
+                prev = P_QGPREV if electrode == 0 else P_QBPREV
+                deriv = P_QGU if electrode == 0 else P_QBU
+                current = (ev[k, qidx] - part[k, prev]) / h if h > 0.0 and node >= 0 else 0.0
+                part[k, outcol] = current
+                if h > 0.0 and node >= 0:
+                    grad = np.zeros(n)
+                    grad[ku] = part[k, deriv] / h
+                    grad[kr] = part[k, deriv + 1] / h
+                    for nd, sign in ((sG[k], 1.0), (s, -1.0)):
+                        if nd > 0:
+                            grad[nd - 1] += sign * part[k, deriv + 2] / h
+                    if bg >= 0:
+                        for nd, sign in ((bg, 1.0), (s, -1.0)):
+                            if nd > 0:
+                                grad[nd - 1] += sign * part[k, deriv + 3] / h
+                    for nd, sign in ((node, 1.0), (s, -1.0)):
+                        if nd > 0:
+                            f[nd - 1] += sign * current
+                            for col in range(n):
+                                J[nd - 1, col] += sign * grad[col]
 
 
 @njit(cache=True)
@@ -403,7 +514,7 @@ def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival
     ns = ci[CI_NS]
     n = x.shape[0]
     tol = cf[CF_NEWTOL] * tolmul
-    if not eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev):
+    if not eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev, part):
         return False, 0
     last_norm = 1e300
     for it in range(maxit):
@@ -422,7 +533,7 @@ def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival
                 ok = False
         if not ok:
             return False, it + 1
-        alpha = basic_step_limit(x, dx, basic)
+        alpha = basic_step_limit(dx, basic)
         small = True
         for k in range(ns):
             ku = nn - 1 + nv + 2 * k
@@ -445,6 +556,13 @@ def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival
         if small:
             for i in range(n):
                 x[i] += dx[i]
+            if np.any(part[:, P_PORTS] > 0.5):
+                # Record currents at the final Newton point. At tiny h, a small
+                # voltage correction can still represent a material Q/h current.
+                if not eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev, part):
+                    return False, it + 1
+                assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
+                         sD, sG, sS, ev, part, emode, qc, tha, h, J, f, vW, cmp, basic)
             return True, it + 1
         nrm = 0.0
         for k in range(ns):
@@ -454,7 +572,7 @@ def newton(x, ci, cf, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival
         for bt in range(14):
             for i in range(n):
                 xt[i] = x[i] + alpha * dx[i]
-            if eval_all(xt, ci, sD, sG, sS, P, na, vbi, rg, fg, table, evt):
+            if eval_all(xt, ci, sD, sG, sS, P, na, vbi, rg, fg, table, evt, part):
                 found = True
                 break
             alpha *= 0.5
@@ -507,6 +625,12 @@ def sensitivities(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, i
     ns = ci[CI_NS]
     n = x.shape[0]
     if ns == 0:
+        return
+    if np.any(part[:, P_PORTS] > 0.5):
+        for k in range(ns):
+            slope = part[k, P_FU] / part[k, P_QU] if abs(part[k, P_QU]) > 1e-30 else 0.0
+            ss[k, SS_TAU] = 1.0 / abs(slope) if slope != 0 else 1e30
+            ss[k, SS_DQ] = slope
         return
     assemble(x, ci, rA, rB, rG, cA, cB, cGeq, cIeq, vA, vB, vval, iA, iB, ival,
              sD, sG, sS, ev, part, 0, qc0, np.zeros(ns), 0.0, J, f, vW, cmp, basic)
@@ -650,6 +774,8 @@ def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS,
     h = 1e-12
     for k in range(ns):
         qc[k] = ev[k, 3]
+        part[k, P_QGPREV] = ev[k, 9]
+        part[k, P_QBPREV] = ev[k, 10]
     for e in range(nc):
         cv[e] = _nv(x, cA[e]) - _nv(x, cB[e])
     for itr in range(600):
@@ -675,12 +801,14 @@ def dc_op(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG, sS,
             dmax = max(dmax, abs(x[ku] - xold[ku]))
         for k in range(ns):
             qc[k] = ev[k, 3]
+            part[k, P_QGPREV] = ev[k, 9]
+            part[k, P_QBPREV] = ev[k, 10]
         for e in range(nc):
             cv[e] = _nv(x, cA[e]) - _nv(x, cB[e])
         for i in range(n):
             xold[i] = x[i]
         if h > 1e4 and dmax < 1e-10:
-            eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev)
+            eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev, part)
             fd_partials(x, ci, P, na, vbi, rg, fg, table, ev, part, tmp)
             return True
         h = min(h * 3.0, 1e8)
@@ -785,7 +913,7 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             ix = int(win[k, W_LSIDX])
             P[k, ix] = Pbase[k, ix] + ls[k, 0]
             P[k, 10] = Pbase[k, 10] + ls[k, 1]
-    eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev0)
+    eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev0, part)
     status = ST_DONE
     while True:
         if t >= t_stop - 1e-15 * max(1.0, abs(t_stop)) or t >= t_end:
@@ -1070,7 +1198,9 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
             ku = nn - 1 + nv + 2 * k
             # charge state = value of the integration formula (exact event bookkeeping in the
             # explicit tier; Newton residual <= ~1e-4 q is not accumulated)
-            ss[k, SS_QN] = qc[k] + tha[k] * h * ev[k, 2]
+            ss[k, SS_QN] = ev[k, 3] if part[k, P_PORTS] > 0.5 else qc[k] + tha[k] * h * ev[k, 2]
+            part[k, P_QGPREV] = ev[k, 9]
+            part[k, P_QBPREV] = ev[k, 10]
             ss[k, SS_FN] = ev[k, 2]
             ss[k, SS_UNIT] = ev[k, 4]
             ss[k, SS_G] = ev[k, 5]
@@ -1193,6 +1323,11 @@ def run_chunk(x, xp, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD,
                 # capacitor current a -> b of the accepted step (companion current of the integration formula)
                 rec[j, c] = cI[e]
                 c += 1
+            for k in range(ns):
+                rec[j, c] = part[k, P_IGTERM]
+                rec[j, c + 1] = part[k, P_IBGTERM]
+                rec[j, c + 2] = part[k, P_IBTERM]
+                c += 3
             si[SI_NREC] = j + 1
             sf[SF_TREC] = t
         for k in range(ns):
@@ -1242,7 +1377,7 @@ def init_state(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG
                 ix = int(win[k, W_LSIDX])
                 P[k, ix] = Pbase[k, ix] + ls[k, 0]
                 P[k, 10] = Pbase[k, 10] + ls[k, 1]
-    if not eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev):
+    if not eval_all(x, ci, sD, sG, sS, P, na, vbi, rg, fg, table, ev, part):
         return False
     if not fd_partials(x, ci, P, na, vbi, rg, fg, table, ev, part, tmp):
         return False
@@ -1252,6 +1387,11 @@ def init_state(x, ci, cf, rA, rB, rG, cA, cB, cC, vA, vB, vW, iA, iB, iW, sD, sG
     for k in range(ns):
         ku = nn - 1 + nv + 2 * k
         ss[k, SS_QN] = ev[k, 3]
+        part[k, P_QGPREV] = ev[k, 9]
+        part[k, P_QBPREV] = ev[k, 10]
+        part[k, P_IGTERM] = 0.0
+        part[k, P_IBGTERM] = 0.0
+        part[k, P_IBTERM] = -ev[k, 2] if part[k, P_BNODE] >= 0 else 0.0
         ss[k, SS_FN] = ev[k, 2]
         ss[k, SS_IN] = ev[k, 1]
         ss[k, SS_UNIT] = ev[k, 4]

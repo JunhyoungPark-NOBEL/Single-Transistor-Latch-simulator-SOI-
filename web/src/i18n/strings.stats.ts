@@ -4,9 +4,21 @@ import type { L10n } from "../content/physics/types";
 
 export const STATS_STRINGS = {
   // ---------------------------------------------------------------- statistics panel (device tab, stochastic)
+  "stats.panel.title": { ko: "통계 요약", en: "Statistics" },
+  "stats.panel.desc": {
+    ko: "사이클마다 얻은 V_LU, V_LD와 창(V_LU − V_LD)의 기술통계입니다. 측정 기록이 있으면 바로 아래 줄에 함께 보여 줍니다.",
+    en: "Descriptive statistics of the per-cycle V_LU, V_LD and window (V_LU − V_LD). When a measured record exists, it is shown right below for comparison.",
+  },
+  "stats.empty": { ko: "확률적 모드로 실행하면 여기에 통계가 표시됩니다.", en: "Run in Stochastic mode to see the statistics here." },
+  "stats.meta.engine": { ko: "엔진", en: "Engine" },
+  "stats.meta.cycles": { ko: "{n}회 사이클", en: "{n} cycles" },
+  "stats.meta.seed": { ko: "시드", en: "Seed" },
   "stats.meta.sweep": { ko: "스윕 0 → {v} V · {rate} V/s", en: "Sweep 0 → {v} V · {rate} V/s" },
+  "stats.meta.latched": { ko: "스윕 안에서 래치업 {pct}", en: "Latched up within the sweep: {pct}" },
   "stats.meta.censored": { ko: "중도절단 {n}회 ({pct})", en: "Censored: {n} ({pct})" },
   "stats.meta.ci": { ko: "평균 V_LU의 95 % 신뢰구간 {lo} … {hi} V", en: "95 % CI of mean V_LU: {lo} … {hi} V" },
+  "stats.engine.calibrated_lookup": { ko: "보정 조회표 엔진", en: "calibrated lookup table" },
+  "stats.engine.general": { ko: "일반 엔진", en: "general engine" },
 
   // ---------------------------------------------------------------- one-line summary (stats-meta) + disclosure
   "stats.line.title": { ko: "통계", en: "Statistics" },
@@ -47,6 +59,7 @@ export const STATS_STRINGS = {
   "stats.row.hazard.atom": { ko: "폴드 도달 {pct}", en: "{pct} reach the fold" },
   "stats.row.model": { ko: "모델", en: "model" },
   "stats.row.measured": { ko: "측정", en: "measured" },
+  "stats.row.analytic": { ko: "해석 분포", en: "analytic" },
 
   // ---------------------------------------------------------------- column groups
   "stats.g.centre": { ko: "중심", en: "Centre" },
@@ -161,6 +174,7 @@ export const STATS_STRINGS = {
     ko: "통계와 KS 비교는 값이 있는 사이클만 씁니다. 중도절단된 사이클은 개수로만 셉니다.",
     en: "Statistics and the KS comparison use only cycles that have a value; censored cycles are counted but not averaged.",
   },
+  "stats.foot.measured": { ko: "측정 기록: {label}", en: "Measured record: {label}" },
   "stats.aria.table": { ko: "기술통계 표", en: "Descriptive statistics table" },
   "stats.meas.caption": { ko: "측정 기록: V_G = {vg} V, {light}, 사이클 {n}회", en: "Measured record: {n} cycles at V_G = {vg} V, {light}" },
   "stats.meas.dark": { ko: "암조건", en: "dark" },
@@ -170,10 +184,15 @@ export const STATS_STRINGS = {
     ko: "CDF는 모든 사이클 기준이라 스윕 안에서 전이한 비율 {pct}에서 멈춥니다 (나머지는 중도절단).",
     en: "CDF over all cycles: it levels off at the {pct} that switched within the sweep (the rest are censored).",
   },
+  "stats.dist.ks": { ko: "모델 vs 측정 KS D = {d}, p = {p}", en: "model vs measured KS D = {d}, p = {p}" },
   "stats.dist.ksHead": { ko: "측정 대비 KS D:", en: "KS D vs measured:" },
   "stats.dist.ksItem": { ko: "{d} (p {p})", en: "{d} (p {p})" },
 
   // ---------------------------------------------------------------- V_G curve (stochastic) censoring
+  "stats.vgs.censored": { ko: "중도절단 비율", en: "Censored" },
+  "stats.vgs.noLatch": { ko: "래치 없음 (폴드 없음)", en: "no latch (no fold)" },
+  "stats.vgs.beyond": { ko: "스윕 최대 {v} V 너머", en: "beyond the {v} V sweep maximum" },
+  "stats.vgs.axis": { ko: "중도절단 (%)", en: "censored (%)" },
   "stats.vgs.foot": {
     ko: "평균과 σ는 스윕 안에서 래치업하는 사이클만으로 계산합니다. 중도절단 비율은 V_G = {vg} V에서 최대 {max}입니다 (래치 없음 {nl}, 스윕 너머 {bs}).",
     en: "Mean and σ are over the cycles that latch up within the sweep. The censored share peaks at {max} at V_G = {vg} V (no latch {nl}, beyond the sweep {bs}).",

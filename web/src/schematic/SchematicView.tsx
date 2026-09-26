@@ -92,7 +92,11 @@ function NetlistPanel({ conn }: { conn: Connectivity }) {
   const mode = useStore((s) => s.mode);
   const [view, setView] = useState<"spice" | "json">("spice");
   const [copied, setCopied] = useState(false);
-  const text = useMemo(() => (view === "spice" ? netlistText(doc, conn, mode) : JSON.stringify(buildRequest(doc, conn, mode, traces), null, 1)), [view, doc, conn, mode, traces]);
+  const text = useMemo(() => {
+    if (view === "spice") return netlistText(doc, conn, mode);
+    try { return JSON.stringify(buildRequest(doc, conn, mode, traces), null, 1); }
+    catch (err) { return (err as Error).message; }
+  }, [view, doc, conn, mode, traces]);
   return (
     <Panel
       id="sch-netlist"
@@ -200,7 +204,10 @@ export default function SchematicView() {
   const erc = useMemo(() => runErc(doc, conn), [doc, conn]);
   const { entry } = useEntry<SchematicRunData>(RESULT_KEY);
   const data = entry?.data as SchematicRunData | undefined;
-  const reqKey = useMemo(() => requestKey(buildRequest(doc, conn, mode, traces)), [doc, conn, mode, traces]);
+  const reqKey = useMemo(() => {
+    try { return requestKey(buildRequest(doc, conn, mode, traces)); }
+    catch { return "unsupported-device-technology"; }
+  }, [doc, conn, mode, traces]);
   const stale = isStale(entry, reqKey);
   const res = data?.result;
   const ann = useMemo(() => (res && annotate && !stale && cursorT != null ? annotationsAt(res, cursorT, res.mode === "stochastic" ? source : "run0") : null), [res, annotate, stale, cursorT, source]);

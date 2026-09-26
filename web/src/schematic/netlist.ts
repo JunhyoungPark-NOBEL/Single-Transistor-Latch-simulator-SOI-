@@ -3,9 +3,10 @@
 import type { CustomCircuitRequest, CustomElement, CustomTran } from "../api/circuitCustom";
 import type { LocalStateBlock, Mode } from "../api/types";
 import { clone } from "../utils/object";
+import { requireSupportedTechnology } from "../devices/library";
 import { elementNets } from "./erc";
 import { CIRCUIT_KINDS, DEFAULT_CMP, DEFAULT_MOS, DEFAULT_DIODE, DEFAULT_BJT, type SchematicDoc, type SElement, type TranSettings } from "./model";
-import type { Connectivity } from "./nets";
+import { isCircuitNet, optionalPinConnected, type Connectivity } from "./nets";
 import { toSpice } from "./si";
 import { waveSpice } from "./waves";
 
@@ -48,7 +49,10 @@ export function toCustomElement(e: SElement, conn: Connectivity): CustomElement 
     case "BJT": return { type: "BJT", name: e.name, nodes: { c: ns[0], b: ns[1], e: ns[2] }, model: clone(e.bjt ?? DEFAULT_BJT) };
     case "STL": {
       if (!e.stl) return null;
+      requireSupportedTechnology(e.stl.technology ?? "FDSOI");
       const out: CustomElement = { type: "STL", name: e.name, nodes: { d: ns[0], g: ns[1], s: ns[2] }, device: clone(e.stl.device), light_pA: e.light ? clone(e.light) : null };
+      if (optionalPinConnected(e.id, "bg", conn)) out.nodes.bg = ns[3];
+      if (optionalPinConnected(e.id, "b", conn)) out.nodes.b = ns[4];
       if (e.stl.local_state) out.local_state = { ...clone(e.stl.local_state), acquisition_trend: false };
       return out;
     }
@@ -89,13 +93,13 @@ export function buildRequest(doc: SchematicDoc, conn: Connectivity, mode: Mode, 
   return req;
 }
 
-/** Every probe key the netlist can answer: V(node), I(element), I(X.d|g|s), X.u/.r/.q_b. */
+/** Every probe key the netlist can answer: V(node), I(element), I(X.d|g|s|bg|b), X.vb/.vbody/.u/.r/.q_b. */
 export function validProbeKeys(elements: CustomElement[]): Set<string> {
   const keys = new Set<string>(["V(0)"]);
   for (const e of elements) {
     const nodes = Object.values(e.nodes);
-    for (const n of nodes) keys.add(`V(${n})`);
-    if (e.type === "STL") for (const k of [`I(${e.name}.d)`, `I(${e.name}.g)`, `I(${e.name}.s)`, `${e.name}.u`, `${e.name}.r`, `${e.name}.q_b`]) keys.add(k);
+    for (const n of nodes) if (n) keys.add(`V(${n})`);
+    if (e.type === "STL") for (const k of [`I(${e.name}.d)`, `I(${e.name}.g)`, `I(${e.name}.s)`, `I(${e.name}.bg)`, `I(${e.name}.b)`, `${e.name}.vb`, `${e.name}.vbody`, `${e.name}.u`, `${e.name}.r`, `${e.name}.q_b`]) keys.add(k);
     else if (e.type === "MOS") for (const p of ["d", "g", "s"]) keys.add(`I(${e.name}.${p})`);
     else if (e.type === "BJT") for (const p of ["c", "b", "e"]) keys.add(`I(${e.name}.${p})`);
     else if (e.type === "CMP") for (const k of [`I(${e.name})`, `${e.name}.bit`]) keys.add(k);
@@ -106,7 +110,7 @@ export function validProbeKeys(elements: CustomElement[]): Set<string> {
 
 /** Node names used by the circuit (ground first). */
 export function nodeList(conn: Connectivity): string[] {
-  const names = conn.nets.filter((n) => n.pins.length > 0).map((n) => n.name);
+  const names = conn.nets.filter((n) => isCircuitNet(n, conn)).map((n) => n.name);
   return [...new Set(names)].sort((a, b) => (a === "0" ? -1 : b === "0" ? 1 : a.localeCompare(b, "en", { numeric: true })));
 }
 
@@ -146,8 +150,10 @@ export function netlistText(doc: SchematicDoc, conn: Connectivity, mode: Mode): 
       }
       case "STL": {
         const d = e.stl?.device;
-        const parts = [`${e.name} ${ns[0]} ${ns[1]} ${ns[2]} STL`, `dev="${e.stl?.name ?? "?"}"`];
-        if (d) parts.push(`preset=${d.preset}`);
+        const parts = [`${e.name} ${ns[0]} ${ns[1]} ${ns[2]} STL`, `technology=${e.stl?.technology ?? "FDSOI"}`, `dev="${e.stl?.name ?? "?"}"`];
+        if (optionalPinConnected(e.id, "bg", conn)) parts.push(`BG=${ns[3]}`);
+        if (optionalPinConnected(e.id, "b", conn)) parts.push(`B=${ns[4]}`);
+        if (d) parts.push(`preset=${d.preset}`, `model=${d.model ?? "detailed"}`);
         if (e.light) parts.push(`light_pA=${waveSpice(e.light)}`);
         else if (d) {
           const iph = d.light.mode === "power" ? d.light.power_mW * d.light.responsivity_pA_per_mW : d.light.iph_pA;

@@ -1,6 +1,7 @@
 // Restoring persisted UI state (localStorage) defensively: the stored JSON may come from an older schema,
 // another app version or be corrupted by hand. Every field is validated; anything unknown or ill-typed
 // falls back to the default instead of crashing the app (pure functions — unit-tested).
+import { withModelDefaults } from "../params/model";
 import type { Mode, PresetId } from "../api/types";
 import { BENCH_ORDER } from "../params/benches";
 import type { ParamRoot, Tab } from "../params/schema";
@@ -29,7 +30,7 @@ export interface Persisted {
   tab: Tab;
 }
 
-export const TABS: readonly Tab[] = ["device", "circuit", "validation", "physics"];
+export const TABS: readonly Tab[] = ["device", "circuit", "validation", "physics", "performance"];
 export const MODES: readonly Mode[] = ["deterministic", "stochastic"];
 const LANGS: readonly Lang[] = ["ko", "en"];
 const THEMES: readonly Theme[] = ["light", "dark"];
@@ -68,6 +69,7 @@ const LOCAL_ACTIONS = ["gidl", "local_avalanche", "junction", "multiplication"] 
 /** Enumerated fields: a stored value outside the allowed set is replaced by the default. */
 const ENUMS: [Path, readonly unknown[]][] = [
   [["device", "preset"], PRESETS],
+  [["device", "model"], ["detailed", "simple"]],
   [["device", "light", "mode"], ["iph", "power"]],
   [["device", "ext", "loc_carriers"], [0, 1, 2]],
   [["stochastic", "local_state", "mode"], LOCAL_MODES],
@@ -85,6 +87,7 @@ const ENUMS: [Path, readonly unknown[]][] = [
  * enforce enumerations and numeric-list contents so every value the UI and payload builders read is valid.
  */
 export function restoreParams(base: ParamRoot, stored: unknown, version = PERSIST_VERSION): ParamRoot {
+  base = { ...base, device: withModelDefaults(base.device) };
   let p = mergeDefaults(base, stored);
   p = { ...p, device: { ...p.device, geometry: resolveGeometry(p.device.geometry), vbg: resolveBackGate(p.device.vbg) } };
   if (version < 2) {

@@ -19,8 +19,10 @@ Pipeline of ``run_custom(payload, progress)``:
 Sign conventions (§6.1): ``V(n)`` node voltage to ground; ``I(R1)``, ``I(C1)`` current through the element from
 its first to its second node; ``I(V1)``, ``I(I1)`` current through the source from its + (first) to its -
 (second) node (a source delivering power has I(V1) < 0; for I sources it equals the wave value);
-``I(X1.d)``, ``I(X1.s)``, ``I(X1.g)`` currents INTO the STL terminals (I(X1.s) = -I(X1.d), I(X1.g) = 0: ideal
-gate, the body-gate displacement current is not stamped).
+``I(X1.d|s|g|bg|b)`` are currents INTO the STL terminals. Legacy three-pin cells retain ideal-gate stamping.
+For connected optional BG/B terminals, front/back electrode displacement and ideal hole-contact body current
+are included; the source-return partition conserves the five-terminal current sum. B is the hole-contact
+potential u relative to source. ``X1.vb`` separately reports electrostatic body potential psi_B.
 """
 from __future__ import annotations
 
@@ -251,6 +253,8 @@ class El:
     type: str
     name: str
     nodes: list[str]                       # canonical node names (ground = "0"); STL: [d, g, s]
+    bg: str | None = None
+    b: str | None = None
     value: float | None = None
     wave: Wave | None = None
     # STL
@@ -310,10 +314,10 @@ def parse_elements(netlist: Any, t_stop: float, edge0: float, warnings: list[str
                 raise ValueError(f"{where}: {typ} needs connected terminals {', '.join(pins)}")
             nodes = [_canon_node(nd[k], f"{where}.{k}") for k in pins]
         elif typ == "STL":
-            if isinstance(nd, (list, tuple)) and len(nd) == 3:
-                nd = dict(zip(("d", "g", "s"), nd))
+            if isinstance(nd, (list, tuple)) and len(nd) in (3, 5):
+                nd = dict(zip(("d", "g", "s", "bg", "b"), nd))
             if not isinstance(nd, dict):
-                raise ValueError(f"{where}: STL nodes must be an object {{d, g, s}}")
+                raise ValueError(f"{where}: STL nodes must be an object {{d, g, s, optional bg, b}}")
             missing = [k for k in ("d", "g", "s") if nd.get(k) in (None, "")]
             if missing:
                 raise ValueError(f"{where}: STL terminal(s) {', '.join(missing)} not connected (nodes needs d, g and s)")
@@ -335,6 +339,12 @@ def parse_elements(netlist: Any, t_stop: float, edge0: float, warnings: list[str
                 raise ValueError(f"{where}: {typ} needs exactly two nodes [n1, n2]")
             nodes = [_canon_node(x, where) for x in nd]
         el = El(type=typ, name=name, nodes=nodes)
+        if typ == "STL":
+            unknown = set(nd) - {"d", "g", "s", "bg", "b"}
+            if unknown:
+                raise ValueError(f"{name}: unknown STL terminal(s): {sorted(unknown)}")
+            el.bg = None if nd.get("bg") in (None, "") else _canon_node(nd["bg"], f"{name}.bg")
+            el.b = None if nd.get("b") in (None, "") else _canon_node(nd["b"], f"{name}.b")
         if typ in BASIC_PINS:
             m = e.get("model", {})
             if m is None:
@@ -346,7 +356,7 @@ def parse_elements(netlist: Any, t_stop: float, edge0: float, warnings: list[str
                 if polarity not in ("nmos", "pmos"):
                     raise ValueError(f"{where}: MOS polarity must be nmos or pmos")
                 fields = {"L_um": (1.0, 0.001, 10000.0), "W_um": (10.0, 0.001, 100000.0),
-                          "Vth_V": (0.5, -100.0, 100.0), "SS_mV_dec": (80.0, 10.0, 1000.0),
+                          "Vth_V": (0.5, -100.0, 100.0), "SS_mV_dec": (80.0, 60.0, 1000.0),
                           "k_uA_V2": (100.0, 0.001, 1e6), "lambda_per_V": (0.02, 0.0, 10.0)}
                 el.model = {key: _f(m, key, where + " model", *limits) for key, limits in fields.items()}
                 el.model["Vth_V"] = abs(el.model["Vth_V"])
@@ -430,7 +440,7 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
     """Electrical rule check.  Returns the node list (ground first); raises ValueError on errors."""
     nodes = ["0"]
     for e in els:
-        for n in e.nodes:
+        for n in e.nodes + ([e.bg] if e.bg is not None else []) + ([e.b] if e.b is not None else []):
             if n not in nodes:
                 nodes.append(n)
     if len(nodes) - 1 > LIMITS["nodes"]:
@@ -443,6 +453,11 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
             if e.type == "CMP" and lab == "inm" and n == "0":
                 continue                          # single-ended comparator: inm is ground implicitly
             conns[n].append(f"{e.name}.{lab}" if e.type in ("STL", "CMP") else e.name)
+        if e.type == "STL":
+            for pin in ("bg", "b"):
+                node = getattr(e, pin)
+                if node is not None:
+                    conns[node].append(f"{e.name}.{pin}")
     if not conns["0"]:
         raise ValueError("no ground reference: no element is connected to node 0 (gnd). Connect the circuit to "
                          "ground (node '0', 'gnd' or 'GND')")
@@ -484,14 +499,15 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
                              "remove one source")
         vadj[a].append((b, e.name))
         vadj[b].append((a, e.name))
-    # DC paths to ground: R, V, diodes, the STL/MOSFET drain-source path, BJT junctions and comparator outputs
-    # conduct; C, I sources, STL/MOSFET gates and comparator inputs do not
+    # DC paths to ground: R, V and the STL drain-source path conduct; C, I sources and the STL gate do not
     dc = _DSU(nodes)
     for e in els:
         if e.type in ("R", "V", "D"):
             dc.union(e.nodes[0], e.nodes[1])
         elif e.type in ("STL", "MOS"):
             dc.union(e.nodes[0], e.nodes[2])
+            if e.type == "STL" and e.b is not None:
+                dc.union(e.b, e.nodes[2])
         elif e.type == "BJT":
             dc.union(e.nodes[0], e.nodes[1])
             dc.union(e.nodes[1], e.nodes[2])
@@ -511,15 +527,14 @@ def erc(els: list[El], warnings: list[str]) -> list[str]:
         if srcs:
             via.append("current sources " + ", ".join(srcs))
         if gates:
-            via.append("transistor gates / comparator inputs " + ", ".join(gates))
+            via.append("STL gates / comparator inputs " + ", ".join(gates))
         extra = f" (also: {', '.join(repr(m) for m in others)}{' ...' if len(floating) > 6 else ''})" if others else ""
         if srcs and not caps and not gates and all(c in srcs for c in conns[n]):
             raise ValueError(f"current source {srcs[0]} drives node {n!r}, which has no other connection (open circuit): "
-                             f"add a resistor or another DC path from {n!r} to ground{extra}")
+                             f"add a resistor or an STL path from {n!r} to ground{extra}")
         how = " and ".join(via) if via else "nothing that conducts DC"
         raise ValueError(f"node {n!r} has no DC path to ground: it is connected only through {how}. Every node needs "
-                         "a DC path to ground (resistor, voltage source, diode, STL or MOSFET drain-source, BJT "
-                         f"junction or comparator output){extra}")
+                         f"a DC path (resistor, voltage source or STL drain-source) to ground{extra}")
     # warnings: single connections, shorted terminals
     for n in nodes[1:]:
         if len(conns[n]) == 1 and not conns[n][0].endswith(".out"):      # an unloaded comparator output is fine
@@ -664,6 +679,7 @@ def _signal_specs(nodes: list[str], els: list[El], layout: dict, cell_ls: list, 
     nn, nv, ns = layout["nn"], layout["nv"], layout["ns"]
     base = nn + nv
     cbase = base + 7 * ns
+    portbase = cbase + layout.get("nc", sum(e.type == "C" and e.idx >= 0 for e in els))
     col = {n: i for i, n in enumerate(nodes)}             # node -> rec column (ground 0 -> constant 0)
     out: list[SigSpec] = []
     for n in nodes[1:]:
@@ -704,17 +720,33 @@ def _signal_specs(nodes: list[str], els: list[El], layout: dict, cell_ls: list, 
             out.append(SigSpec(f"I({e.name}.d)", _L(f"{e.name} 드레인 전류 (단자로 유입)", f"{e.name} drain current (into the terminal)"),
                                "A", "current", ("col", c0 + 3)))
             out.append(SigSpec(f"I({e.name}.s)", _L(f"{e.name} 소스 전류 (단자로 유입)", f"{e.name} source current (into the terminal)"),
-                               "A", "current", ("neg", c0 + 3)))
-            out.append(SigSpec(f"I({e.name}.g)", _L(f"{e.name} 게이트 전류 (이상적 게이트: 0)", f"{e.name} gate current (ideal gate: 0)"),
-                               "A", "current", ("zero",)))
+                               "A", "current", ("source_current", c0 + 3, portbase + 3 * e.idx)))
+            for pin, off in (("g", 0), ("bg", 1), ("b", 2)):
+                out.append(SigSpec(f"I({e.name}.{pin})", _L(f"{e.name}.{pin} 전류 (단자로 유입)", f"{e.name}.{pin} current (into terminal)"),
+                                   "A", "current", ("col", portbase + 3 * e.idx + off)))
             k += 1
     for e in els:
         if e.type != "STL":
             continue
         c0 = base + 7 * e.idx
-        out.append(SigSpec(f"{e.name}.u", _L(f"{e.name} 소스–바디 준페르미 분리 u", f"{e.name} source–body quasi-Fermi splitting u"),
+        from server.simple_model import is_simple, effective_parameters
+        simple = e.p is not None and is_simple(e.p)
+        if simple:
+            # The recorded current already includes the actual G/BG/light drives.
+            # This is the reservoir potential w, not the source-side contact u.
+            resistance = effective_parameters(e.p)[3]
+            out.append(SigSpec(f"{e.name}.vb", _L(f"{e.name} 바디 저장소 전위 (소스 기준)", f"{e.name} body reservoir potential (relative to source)"),
+                               "V", "voltage", ("simple_body_potential", c0, resistance)))
+        else:
+            out.append(SigSpec(f"{e.name}.vb", _L(f"{e.name} 바디 전위 ψ_B (소스 기준)", f"{e.name} electrostatic body potential ψ_B (relative to source)"),
+                               "V", "voltage", ("body_potential", c0, e.p, col[e.bg] if e.bg is not None else -1, col[e.nodes[2]])))
+        out.append(SigSpec(f"{e.name}.vbody", _L(f"{e.name} 바디 접촉 전압 (소스 기준)", f"{e.name} body contact voltage (relative to source)"),
+                           "V", "voltage", ("col", c0), True))
+        out.append(SigSpec(f"{e.name}.u", _L(f"{e.name} 소스측 바디 접촉 전압 u" if simple else f"{e.name} 소스–바디 준페르미 분리 u",
+                                           f"{e.name} source-side body contact voltage u" if simple else f"{e.name} source–body quasi-Fermi splitting u"),
                            "V", "state", ("col", c0), True))
-        out.append(SigSpec(f"{e.name}.r", _L(f"{e.name} 드레인 접합 역바이어스 r", f"{e.name} drain-junction reverse bias r"),
+        out.append(SigSpec(f"{e.name}.r", _L(f"{e.name} 애벌랜치 유효 드레인 전압 r" if simple else f"{e.name} 드레인 접합 역바이어스 r",
+                                           f"{e.name} effective avalanche drain voltage r" if simple else f"{e.name} drain-junction reverse bias r"),
                            "V", "state", ("col", c0 + 1), True))
         out.append(SigSpec(f"{e.name}.q_b", _L(f"{e.name} 바디 전하 변화 ΔQ_B", f"{e.name} body-charge change ΔQ_B"),
                            "C", "charge", ("qb", c0 + 2), True))
@@ -736,6 +768,19 @@ def _convert(rows: np.ndarray, specs: list[SigSpec], q0: dict) -> np.ndarray:
         k = r[0]
         if k == "col":
             out[:, j] = rows[:, r[1]] if r[1] > 0 else 0.0
+        elif k == "source_current":
+            out[:, j] = -rows[:, r[1]] - np.sum(rows[:, r[2]:r[2] + 3], axis=1)
+        elif k == "simple_body_potential":
+            out[:, j] = rows[:, r[1]] + rows[:, r[1] + 3] * r[2]
+        elif k == "body_potential":
+            from server.geometry_model import body_potential, pack_p
+            pk = np.array(r[2], dtype=float).copy()
+            if r[3] >= 0:
+                pk = pack_p(pk, force=True).copy()
+            for ri in range(len(rows)):
+                if r[3] >= 0:
+                    pk[32] = (rows[ri, r[3]] if r[3] > 0 else 0.0) - (rows[ri, r[4]] if r[4] > 0 else 0.0)
+                out[ri, j] = body_potential(rows[ri, r[1]], pk)
         elif k == "neg":
             out[:, j] = -rows[:, r[1]]
         elif k == "rcur":
@@ -1023,7 +1068,8 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     from server.payloads import normalize_device
 
     from . import runner as RN
-    from .stochastic import (ACTION_UNIT, estimate_steps, noise_bands, parse_local_state, GEOMETRY_NOISE_ERROR)
+    from .stochastic import (ACTION_UNIT, estimate_steps, noise_bands, parse_local_state,
+                             GEOMETRY_NOISE_ERROR, SIMPLE_NOISE_ERROR, SIMPLE_METHOD_ERROR)
 
     tic = time.perf_counter()
     progress = progress or (lambda f, msg="": None)
@@ -1080,6 +1126,11 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     nodes = erc(els, warnings)
     stls = [e for e in els if e.type == "STL"]
     ns = len(stls)
+    extended = any(e.bg is not None or e.b is not None for e in stls)
+    if extended and stochastic:
+        raise ValueError("five-terminal-stochastic-unavailable: connected BG/B terminals currently support deterministic mode only")
+    if extended and method != "BE":
+        raise ValueError("five-terminal-method-unavailable: connected BG/B terminals currently require tran.method = BE")
 
     # ---- stochastic block, detection ----
     st = RN._stochastic(payload, mode, None, warnings)
@@ -1095,6 +1146,10 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             dev = normalize_device(e.device, warnings)
         except ValueError as exc:
             raise ValueError(f"{e.name}: {exc}") from None
+        if stochastic and dev.get("model") == "simple":
+            raise ValueError(f"{SIMPLE_NOISE_ERROR} ({e.name})")
+        if method != "BE" and dev.get("model") == "simple":
+            raise ValueError(f"{SIMPLE_METHOD_ERROR} ({e.name})")
         if stochastic and PR.uses_geometry_model(dev):
             raise ValueError(f"{GEOMETRY_NOISE_ERROR} ({e.name})")
         cfg_k = ls_global
@@ -1111,6 +1166,9 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
                             "calibrated GIDL action point")
         e.device = dev
         e.p = np.array(PR.build_p(dev), dtype=float)
+        if e.bg is not None or e.b is not None:
+            from server.geometry_model import pack_p
+            e.p = pack_p(e.p, force=True)
         cell_ls.append(cfg_k if (stochastic and cfg_k.mode != "none") else None)
     if stochastic:
         any_ls = any(c is not None for c in cell_ls)
@@ -1152,7 +1210,7 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     for e in stls:
         e.idx = len(net.STL)
         light = (e.light.t, e.light.v) if e.light is not None else None
-        net.add_STL(e.name, e.nodes[0], e.nodes[1], e.nodes[2], e.p, light=light, label=_stl_label(e))
+        net.add_STL(e.name, e.nodes[0], e.nodes[1], e.nodes[2], e.p, light=light, label=_stl_label(e), bg=e.bg, b=e.b)
     net.t_end = t_stop
     net.main_wave = -1
     if [n for n in net.nodes] != nodes:
@@ -1178,18 +1236,9 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         sd = node_resp(d) - node_resp(s)
         drive = sd @ Wg if len(srcs) else np.zeros(len(tg))
         rth = float((S_stl[rowi[d], k] if rowi[d] >= 0 else 0.0) - (S_stl[rowi[s], k] if rowi[s] >= 0 else 0.0))
-        cells.append(dict(vgs=vgs, vgs_lo=vgs_lo, vgs_hi=vgs_hi, sd=sd, drive=drive, rth=rth))
+        vbg = (node_resp(e.bg) - node_resp(s)) @ Wg if e.bg is not None and len(srcs) else np.full(len(tg), float(e.device.get("vbg", 0.0)))
+        cells.append(dict(vgs=vgs, vgs_lo=vgs_lo, vgs_hi=vgs_hi, vbg_lo=float(np.min(vbg)), vbg_hi=float(np.max(vbg)), sd=sd, drive=drive, rth=rth))
 
-    # [P1-13 stop-gap] the linear DC estimate leaves MOS/D/BJT out (G_OFF): a cell whose drain, gate or source net
-    # touches one of their pins gets estimated V_GS / drive values that may be far off, so the estimate-based
-    # oscillation and no-latch predictions are not reported for it and its V_GS is marked as an estimate (the
-    # estimate still sizes the run and picks the initial state)
-    tx_nets: dict[str, list[str]] = {}
-    for x in els:
-        if x.type in BASIC_PINS:
-            for n in x.nodes:
-                if n != "0" and x.name not in tx_nets.setdefault(n, []):
-                    tx_nets[n].append(x.name)
     wins = np.zeros((ns, 15))
     cell_info = []
     total_est_cells = 0.0
@@ -1199,8 +1248,6 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     n_bp = len(net.breakpoints())
     for k, e in enumerate(stls):
         c = cells[k]
-        tx = sorted({nm for n in set(e.nodes) for nm in tx_nets.get(n, [])})
-        tx_note = f" without the transistor network ({', '.join(tx)})" if tx else ""
         vg_dev = float(e.p[11])
         vgs_nom = 0.5 * (c["vgs_lo"] + c["vgs_hi"])
         vg_vals = [vgs_nom] if c["vgs_hi"] - c["vgs_lo"] <= 1e-3 else [c["vgs_lo"], c["vgs_hi"]]
@@ -1208,8 +1255,7 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             warnings.append(f"{e.name}: the gate-source voltage varies ({c['vgs_lo']:.4g} … {c['vgs_hi']:.4g} V, linear "
                             "estimate): latch-state fold values and noise bands are taken over this range")
         if abs(vgs_nom - vg_dev) > 1e-3 and len(vg_vals) == 1:
-            warnings.append(f"{e.name}: V_GS = {vgs_nom:.4g} V comes from the circuit"
-                            f"{' (linear estimate' + tx_note + ')' if tx else ''}; the device block's V_G = "
+            warnings.append(f"{e.name}: V_GS = {vgs_nom:.4g} V comes from the circuit; the device block's V_G = "
                             f"{vg_dev:g} V is not used")
         base_light = float(e.p[13])
         if e.light is not None:
@@ -1218,13 +1264,24 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             li_vals = [float(lv.min()), float(lv.max())] if np.ptp(lv) > 1e-3 * max(lv.max(), 1e-18) else [float(lv.mean())]
         else:
             li_vals = [base_light]
+        bg_vals = [c["vbg_lo"]] if c["vbg_hi"] - c["vbg_lo"] <= 1e-3 else [c["vbg_lo"], c["vbg_hi"]]
         variants = []
         for vg_ in vg_vals:
             for li in li_vals:
-                pv = e.p.copy()
-                pv[11] = vg_
-                pv[13] = li
-                variants.append(pv)
+                for bg_ in bg_vals:
+                    pv = e.p.copy()
+                    pv[11] = vg_
+                    pv[13] = li
+                    if e.bg is not None:
+                        pv[32] = bg_
+                        from server.geometry_model import body_potential, constants_from_p
+                        from server.simple_model import is_simple
+                        if not is_simple(pv) and (not np.isfinite(body_potential(0.0, pv)) or body_potential(0.0, pv) >= constants_from_p(pv)[-1]):
+                            raise ValueError(f"backgate-domain-unavailable ({e.name}): driven BG exceeds the source-barrier domain")
+                    variants.append(pv)
+        if e.b is not None:
+            contact = "a source-side effective body contact" if e.device.get("model") == "simple" else "an ideal hole contact"
+            warnings.append(f"{e.name}: B is {contact}, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.")
         profs = [_profile(pv) for pv in variants]
         pnom = profs[0]
         lsk = cell_ls[k]
@@ -1233,16 +1290,11 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         lat = [pr for pr in profs if pr["latch"]]
         u_i = min(pr["u_fold"][0] for pr in lat) if lat else np.inf
         u_j = max(pr["u_fold"][1] for pr in lat) if lat else np.inf
-        if tx:
-            pass                                  # V_GS unknown before the run: no latch-window prediction
-        elif not lat:
+        if not lat:
             warnings.append(f"{e.name}: no latch window at V_GS = {vgs_nom:.4g} V"
                             f"{' (locus gap at the fold, channel-on regime)' if pnom.get('gap') else ''}: no latch-up expected")
         elif len(lat) < len(profs):
             warnings.append(f"{e.name}: the latch window disappears over part of the V_GS / light range")
-        if tx and stochastic:
-            warnings.append(f"{e.name}: the carrier-noise band near the folds was set from the linear V_GS estimate"
-                            f"{tx_note}; with a different actual V_GS the noise near the folds is approximate")
         RN._check_thresholds(det, pnom, warnings, e.name)
         # noise look-ahead drive: the source that moves V_DS most
         law, lag = -1, 0.0
@@ -1271,7 +1323,7 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             osc = dict(walks=walks, i_n=(float(np.min(i_n)), float(np.max(i_n))), g_ext=g_ext, c_eff=c_eff,
                        r_ext=(1.0 / g_ext if g_ext > 1e-15 else None))
             drives = [(w["t"], w["v"], np.zeros(max(len(w["t"]) - 2, 0)), w["scale"], OSC_TRANSITION_STEPS) for w in walks]
-            if not tx:                            # the walk still sizes the run and picks the initial state
+            if e.b is None:
                 _osc_warning(e, osc, pnom, t_stop, warnings)
         else:
             if rth > 1e11:
@@ -1297,7 +1349,7 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
         total_est_cells += max(e_k - base_k, 0.0)
         cell_info.append(dict(vgs_nom=vgs_nom, vgs_range=(c["vgs_lo"], c["vgs_hi"]), light_range_A=(min(li_vals), max(li_vals)),
                               folds=pnom["folds"], latch=bool(lat), u_fold=(u_i, u_j), band=b, rth=c["rth"],
-                              lookahead=(law, lag), est=e_k, osc=osc, fold_I=pnom.get("fold_I"), tx=tx))
+                              lookahead=(law, lag), est=e_k, osc=osc, fold_I=pnom.get("fold_I")))
 
     # ---- feasibility: linear part (every node) + cells ----
     if len(srcs) and len(tg) > 1:
@@ -1337,6 +1389,10 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     pre_zero = []
     if initial == "auto":
         for k, ci_ in enumerate(cell_info):
+            # An external body load changes the equilibrium and stability.
+            # Intrinsic floating-body fold currents cannot choose its initial state.
+            if stls[k].b is not None:
+                continue
             osc = ci_["osc"]
             fi = ci_["fold_I"] or {}
             if osc is None or not ci_["latch"] or not fi:
@@ -1361,21 +1417,19 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             why = ("the waveforms are long compared with the step limits dt_max and |Δv| <= "
                    f"{dv_max * 1e3:.3g} mV per step (reltol) and the resolved switching transients). Shorten t_stop, "
                    "increase tran.dt_max_s / tran.reltol or reduce the number of pulses/periods.")
-        # "circuit-step-budget:" is a stable prefix the web app translates (web/src/api/geometryPolicy.ts)
-        raise ValueError(f"circuit-step-budget: estimated ~{est:.3g} time steps per run exceed 2 x solver.max_steps = "
+        raise ValueError(f"estimated ~{est:.3g} time steps per run exceed 2 x solver.max_steps = "
                          f"{2 * sol['max_steps']:.0f} (~{est * sec_step:.0f} s per run; {why}")
     if est > 0.5 * sol["max_steps"]:
         warnings.append(f"estimated ~{est:.3g} steps per run is close to solver.max_steps = {sol['max_steps']:.0f}; "
                         "runs may be truncated")
     if total_est > MAX_TOTAL_STEPS:
-        raise ValueError(f"circuit-step-budget: estimated total work ~{total_est:.3g} time steps "
-                         f"(~{total_est * sec_step / 60:.0f} min) exceeds the per-request limit {MAX_TOTAL_STEPS:.0g}; "
-                         "reduce n_runs or t_stop")
+        raise ValueError(f"estimated total work ~{total_est:.3g} time steps (~{total_est * sec_step / 60:.0f} min) "
+                         f"exceeds the per-request limit {MAX_TOTAL_STEPS:.0g}; reduce n_runs or t_stop")
     if total_est * sec_step > 120:
         warnings.append(f"estimated run time ~{total_est * sec_step:.0f} s")
 
     # ---- probes / signals ----
-    layout = dict(nn=len(nodes), nv=len(net.V), ns=ns)
+    layout = dict(nn=len(nodes), nv=len(net.V), ns=ns, nc=len(net.C))
     units = [ACTION_UNIT[c.action] if c is not None else None for c in cell_ls]
     sigE = [bool(c is not None and c.sigma_E_V > 0) for c in cell_ls]
     specs_all = _signal_specs(nodes, els, layout, units, sigE)
@@ -1619,10 +1673,19 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
     if n_trunc:
         warnings.append(f"{n_trunc} run(s) did not reach t_stop (step budget / convergence): their end-state and "
                         "t_stop values are excluded from the statistics")
-    if ns and min_r < 0:
+    any_simple = any(e.device.get("model") == "simple" for e in stls)
+    all_simple = bool(stls) and all(e.device.get("model") == "simple" for e in stls)
+    if ns and min_r < 0 and any_simple:
+        warnings.append(f"negative internal drain voltage r occurred (minimum {min_r:.3f} V). "
+                        "Simple Model uses a startup continuation, not a calibrated reverse-junction model."
+                        + (" Detailed cells retain their forward drain-diode extension." if not all_simple else ""))
+    elif ns and min_r < 0:
         warnings.append(f"a drain junction became forward biased (min r = {min_r:.3f} V): symmetric forward drain-diode "
                         "extension used (outside the calibrated model)")
-    if ns and min_u < 0:
+    if ns and min_u < 0 and any_simple and not all_simple:
+        warnings.append(f"negative source-side body voltage u occurred (minimum {min_u * 1e3:.2f} mV). "
+                        "Simple Model retains its forward exponential; Detailed Model uses its low-injection diode extension.")
+    elif ns and min_u < 0 and not all_simple:
         warnings.append(f"a source junction became reverse biased (min u = {min_u * 1e3:.2f} mV): low-injection diode "
                         "extension used for u < 0")
     if pre_zero:
@@ -1631,8 +1694,8 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
                         "the transient starts from discharged capacitors, as if the sources were switched on at t = 0 "
                         "(tran.initial = 'auto'; 'op' uses the DC operating point)")
     elif ndr_op and ndr_op[0][0] < 0:
-        warnings.append("no DC operating point was found from the empty body (a current-biased cell forced beyond its "
-                        "HRS): the transient starts from discharged capacitors, as if the sources were switched on at "
+        warnings.append("no DC operating point was found from the initial body state: the transient starts from "
+                        "discharged capacitors, as if the sources were switched on at "
                         "t = 0 (tran.initial = 'auto')")
     elif ndr_op:
         cells_txt = "; ".join(f"{stls[k].name} at V_DS = {v:.4g} V, I_D = {_fmt(i, 'A')}" for k, v, i in ndr_op)
@@ -1816,29 +1879,53 @@ def run_custom(payload: dict, progress: Callable[[float, str], None] | None = No
             ci_ = cell_info[k]
             dev = e.device
             d["nodes"] = dict(d=e.nodes[0], g=e.nodes[1], s=e.nodes[2])
-            d["device"] = dict(preset=dev.get("preset"), vg_device_V=float(dev["vg"]),
+            if e.bg is not None:
+                d["nodes"]["bg"] = e.bg
+            if e.b is not None:
+                d["nodes"]["b"] = e.b
+            d["device"] = dict(preset=dev.get("preset"), model=dev.get("model", "detailed"), vg_device_V=float(dev["vg"]),
                                vbg_device_V=float(dev.get("vbg", 0.0)), geometry=dict(dev["geometry"]),
                                geometry_model=PR.geometry_model_metadata(dev), iph_pA=float(e.p[13]) * 1e12,
                                label=_stl_label(e))
+            if dev.get("model") == "simple":
+                from server.simple_model import effective_parameters
+                beta, tau, cb, resistance, current, breakdown, eta, cg, cbg, cs, bias = effective_parameters(e.p)
+                d["device"]["simple"] = dict(dev["simple"])
+                d["device"]["simple_effective"] = dict(beta=beta, tau_body_s=tau, c_body_F=cb, r_lrs_ohm=resistance,
+                                                       i_s_A=current, v_br_V=breakdown, eta=eta,
+                                                       c_gate_F=cg, c_backgate_F=cbg, c_source_F=cs, bias_V=bias)
+            if e.bg is not None or e.b is not None:
+                d["device"]["geometry_model"].update(
+                    validated=False, scope="five-terminal-unvalidated",
+                    validation_basis=("Simple Model external BG/B dynamics have not been independently calibrated"
+                                      if dev.get("model") == "simple" else
+                                      "reference device calibration does not validate external BG/B dynamics"))
             d["light_pA"] = None if e.light is None else e.light.resolved
             d["vgs_V"] = ci_["vgs_nom"]
             d["vgs_range_V"] = list(ci_["vgs_range"])
-            # both come from the linear DC network before the run; with MOS/D/BJT on the cell's nets they are rough
-            d["vgs_estimate"] = dict(method="linear DC network before the run (C open, STL drain-source off)",
-                                     transistors_ignored=list(ci_["tx"]), reliable=not ci_["tx"])
+            contact = "source-side effective body contact" if dev.get("model") == "simple" else "ideal hole contact"
+            d["body_contact"] = f"{contact}: V(B)-V(S)=u" if e.b is not None else "floating"
+            d["body_potential_model"] = ("reservoir w=u+I_D R_LRS" if dev.get("model") == "simple"
+                                           else "electrostatic body potential psi_B")
+            d["terminal_current_model"] = "charge-conserving reduced source-return partition" if e.bg is not None or e.b is not None else "legacy ideal gate"
             d["folds"] = dict(V_LU=_fin(ci_["folds"][0]), V_LD=_fin(ci_["folds"][1]))
-            d["latch_window"] = ci_["latch"] if (ci_["latch"] or not ci_["tx"]) else None
+            d["folds_scope"] = "intrinsic floating-body reference; not thresholds of the externally body-loaded or modulated circuit"
+            d["latch_window"] = ci_["latch"]
             d["u_fold"] = dict(u_i=_fin(ci_["u_fold"][0]), u_j=_fin(ci_["u_fold"][1]))
             if stochastic:
                 d["local_state"] = None if cell_ls[k] is None else vars(cell_ls[k])
                 d["noise_band_V"] = dict(unlatched_from=_fin(ci_["band"][0]), latched_up_to=_fin(ci_["band"][3]))
             d["estimated_steps"] = ci_["est"]
-            osc = ci_["osc"] if not ci_["tx"] else None
+            osc = ci_["osc"]
             if osc is not None:
                 w0 = osc["walks"][0]
-                d["oscillator"] = dict(predicted=bool(w0["oscillating"]), period_qs_s=w0["period"],
+                d["oscillator"] = dict(predicted=bool(w0["oscillating"]) if e.b is None else None,
+                                       period_qs_s=w0["period"] if e.b is None else None,
                                        latch_ups_expected=float(w0["n_lu"] * w0["scale"]), c_eff_F=osc["c_eff"],
                                        i_norton_A=list(osc["i_n"]), r_ext_ohm=osc["r_ext"])
+                if e.b is not None:
+                    d["oscillator"]["latch_ups_expected"] = None
+                    d["oscillator"]["scope"] = "body-loaded dynamics require transient integration; intrinsic quasi-static walk used only for a rough work estimate"
             else:
                 d["oscillator"] = None
         elif e.type == "CMP":
@@ -1915,8 +2002,9 @@ def _cmp_label(e: El) -> str:
 
 def _stl_label(e: El) -> str:
     dev = e.device or {}
-    pre = {"paper": "FDSOI reference calibration", "photo": "FDSOI illumination calibration"}.get(
-        dev.get("preset", "paper"), "FDSOI custom")
+    pre = ("Simple Model, first-order body reservoir" if dev.get("model") == "simple" else
+           {"paper": "FDSOI reference calibration", "photo": "FDSOI illumination calibration"}.get(
+               dev.get("preset", "paper"), "FDSOI custom"))
     iph = float(e.p[13]) * 1e12 if e.p is not None else 0.0
     lt = "light wave" if e.light is not None else (f"I_PH {iph:.3g} pA" if iph else "dark")
     return f"STL ({pre}, {lt})"

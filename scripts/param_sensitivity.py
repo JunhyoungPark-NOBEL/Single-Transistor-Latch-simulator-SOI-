@@ -26,9 +26,6 @@ Sweep / stochastic parameters use run_hazard (carrier-noise first passage at the
     python scripts/param_sensitivity.py            # everything (~5-10 min on one core, uses the shared disk cache)
     python scripts/param_sensitivity.py --det-only # deterministic folds only (~1 min)
     python scripts/param_sensitivity.py --only ls_sigma   # recompute one stochastic block, merge into the JSON
-    python scripts/param_sensitivity.py --geometry [--geometry-out FILE]   # Geometry (L, W, Tsi, EOT, Tbox, Nbody) and
-                                                   # V_BG steps only: table on stdout, blocks as JSON in FILE (~1 min);
-                                                   # sensitivity.json is not touched
 """
 from __future__ import annotations
 
@@ -50,7 +47,6 @@ if str(ROOT) not in sys.path:
 from server import params as P  # noqa: E402
 from server.compute import deterministic as D  # noqa: E402
 from server.engine_bridge import MODEL, m  # noqa: E402
-from server.geometry_model import pack_p, packed_field  # noqa: E402
 
 OUT = ROOT / "web" / "src" / "content" / "params" / "sensitivity.json"
 GRID = 601                       # UI default (device.numerics.grid)
@@ -137,30 +133,6 @@ PARAMS: list[dict] = [
 ]
 GRID_KEYS = ("grid",)
 
-# Geometry extension (server/geometry_model.py) and back-gate bias: deterministic steps only (the stochastic model is
-# calibrated at the reference geometry).  Steps stay inside params.GEOMETRY_LIMITS and the model domain.
-_GL = P.GEOMETRY_LIMITS
-GEOMETRY_PARAMS: list[dict] = [
-    dict(key="Lg_nm", path=("geometry", "Lg_nm"), kind="add", step=100.0, per=10.0, unit="nm", scale=1,
-         lo=_GL["Lg_nm"][0], hi=_GL["Lg_nm"][1], slope_unit="mV per +10 nm",
-         extra=[("abs", v, f"{v:g} nm") for v in (200.0, 300.0, 700.0, 1000.0)]),
-    dict(key="W_nm", path=("geometry", "W_nm"), kind="mul", unit="nm", scale=1, lo=_GL["W_nm"][0], hi=_GL["W_nm"][1]),
-    dict(key="Tsi_nm", path=("geometry", "Tsi_nm"), kind="add", step=10.0, per=1.0, unit="nm", scale=1,
-         lo=_GL["Tsi_nm"][0], hi=_GL["Tsi_nm"][1], slope_unit="mV per +1 nm",
-         extra=[("abs", v, f"{v:g} nm") for v in (5.0, 10.0, 20.0, 70.0)]),
-    dict(key="EOT_nm", path=("geometry", "EOT_nm"), kind="add", step=1.0, per=0.1, unit="nm", scale=1,
-         lo=_GL["EOT_nm"][0], hi=_GL["EOT_nm"][1], slope_unit="mV per +0.1 nm"),
-    dict(key="Tbox_nm", path=("geometry", "Tbox_nm"), kind="mul", unit="nm", scale=1,
-         lo=_GL["Tbox_nm"][0], hi=_GL["Tbox_nm"][1]),
-    dict(key="Nbody_cm3", path=("geometry", "Nbody_cm3"), kind="mul", unit="10¹⁷ cm⁻³", scale=1e-17,
-         lo=_GL["Nbody_cm3"][0], hi=_GL["Nbody_cm3"][1],
-         extra=[("abs", v, f"{v:.3g} cm⁻³") for v in (5e16, 1e17, 3e17, 5e17, 1e18)]),
-    dict(key="vbg", path=("vbg",), kind="add", step=0.5, per=0.1, unit="V", scale=1, lo=-10.0, hi=10.0, alt_vg=-1.1,
-         slope_unit="mV per +0.1 V", extra=[("abs", v, f"{v:+g} V") for v in (-2.0, 2.0, 5.0)],
-         ctx_note="V_BG only shifts the front-channel overdrive (EOT/(Tbox + Tsi/3) x V_BG); with the channel off "
-                  "(V_G = -2 V) the folds hardly move, see the V_G = -1.1 V block"),
-]
-
 TERM_LABEL = {
     "ii_seed": "impact ionisation of the BJT (seed) electrons",
     "ii_ch": "channel-electron impact ionisation",
@@ -230,7 +202,6 @@ def evaluate(dev: dict, grid: int = GRID, vd_max: float = 4.0) -> dict:
         z, gap = D.classify_checked(p, grid)
         _FOLD_CACHE[key] = (z, gap, p)
     z, gap, p = _FOLD_CACHE[key]
-    p = pack_p(p)                 # geometry vectors carry their own field tables (the reference vector is unchanged)
     f = D.folds_of(z)
     # a physical hysteresis window: two folds with V_LU > V_LD, V_LU within the server's 8 V sweep cap.  classify
     # can return spurious fold pairs far above 8 V (e.g. beta <= 0.28x: V_LD > V_LU at 9-13 V); those are rejected.
@@ -275,8 +246,7 @@ def terms(u: float, r: float, p: np.ndarray) -> dict | None:
         return None
     vd, drain, _net, seed, _em, bulk, diff, junction, bbj, gidl = c[:10]
     racc, ch, hole_drop, iph = c[12], c[16], c[17], c[18]
-    gain = packed_field(float(r) + p[19], p, 0) if len(p) > 33 else m.f_interp(float(r) + p[19], MODEL.rg, MODEL.fg[0])
-    M = 1.0 + (gain - 1.0) * math.exp(p[20])
+    M = 1.0 + (m.f_interp(float(r) + p[19], MODEL.rg, MODEL.fg[0]) - 1.0) * math.exp(p[20])
     ii_total = drain - seed - bbj - gidl - ch - iph
     ii_seed = (M - 1.0) * seed
     ii_ch = max(M - 1.0, 0.0) * ch * p[12]
@@ -964,14 +934,9 @@ def main() -> int:
     ap.add_argument("--out", default=str(OUT))
     ap.add_argument("--only", default="", help="recompute only these stochastic blocks (comma-separated, e.g. "
                     "ls_sigma) and merge them into the existing --out JSON")
-    ap.add_argument("--geometry", action="store_true", help="geometry and V_BG steps only (sensitivity.json untouched)")
-    ap.add_argument("--geometry-out", default="", help="with --geometry: write the blocks to this JSON file")
     args = ap.parse_args()
     t0 = time.perf_counter()
     log = lambda s: print(f"[{time.perf_counter() - t0:6.1f} s] {s}", flush=True)
-
-    if args.geometry:
-        return geometry_main(args, log)
 
     if args.only:
         keys = [k.strip() for k in args.only.split(",") if k.strip()]
@@ -1081,41 +1046,6 @@ def main() -> int:
     out.write_text(json.dumps(result, ensure_ascii=False, indent=1) + "\n")
     log(f"wrote {out.relative_to(ROOT) if out.is_relative_to(ROOT) else out}")
     print_table(result)
-    return 0
-
-
-def geometry_main(args, log) -> int:
-    """Geometry / V_BG blocks, same fields as the calibration-parameter blocks (reference and illumination presets)."""
-    res: dict = dict(_meta=dict(generated=_dt.date.today().isoformat(), script="scripts/param_sensitivity.py --geometry",
-                                grid=GRID, model=P.GEOMETRY_MODEL_ASSUMPTIONS,
-                                note="deterministic folds of the geometry extension; not a fit to multi-geometry data"))
-    for spec in GEOMETRY_PARAMS:
-        k = spec["key"]
-        blk = dict(key=k, units=spec["unit"])
-        for which in ("ref", "photo"):
-            blk[which] = device_block(spec, which)
-            blk[which].pop("step_up", None), blk[which].pop("step_down", None)
-        up, dn, su, sd = steps_for(spec, get_path(base_device("ref"), spec["path"]))
-        blk["step_up"], blk["step_down"] = su, sd
-        if spec.get("alt_vg") is not None:
-            vg_alt = spec["alt_vg"]
-            a = device_block(spec, "ref", dev_base=set_path(base_device("ref"), ("vg",), vg_alt))
-            blk[f"ref_at_vg_{vg_alt:+.1f}"] = {kk: a[kk] for kk in ("base", "up", "down", "dVLU_up_mV", "dVLD_up_mV",
-                                                                  "dVLU_down_mV", "dVLD_down_mV", "slope")}
-        if spec.get("ctx_note"):
-            blk["context"] = spec["ctx_note"]
-        res[k] = blk
-        r, ph = blk["ref"], blk["photo"]
-        log(f"{k:<10s} {su!s:>10s}/{sd!s:<10s} ref up {r['dVLU_up_mV']}/{r['dVLD_up_mV']} down "
-            f"{r['dVLU_down_mV']}/{r['dVLD_down_mV']} | photo up {ph['dVLU_up_mV']}/{ph['dVLD_up_mV']} down "
-            f"{ph['dVLU_down_mV']}/{ph['dVLD_down_mV']}")
-        for ex in r.get("extra") or []:
-            log(f"{'':<10s} ref {ex}")
-    if args.geometry_out:
-        out = Path(args.geometry_out)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(res, ensure_ascii=False, indent=1) + "\n")
-        log(f"wrote {out}")
     return 0
 
 

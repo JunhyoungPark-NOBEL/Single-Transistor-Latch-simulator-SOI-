@@ -13,6 +13,7 @@ import { SubText } from "../plots/SubText";
 import { useStore } from "../state/store";
 import { matchGuideKeys, ParamGuideList } from "./ParamGuideList";
 import { TopicBody } from "./TopicBody";
+import "./studio-docs.css";
 
 /** The guide article above the numbered topics (not a topic: the topic- count stays 18). */
 const GUIDE_ID = "physics-guide";
@@ -121,6 +122,11 @@ export function PhysicsTab() {
         </ol>
       </aside>
       <div className="doc">
+        <nav className="studio-doc-links" aria-label={t.lang === "ko" ? "빠른 안내" : "Quick guides"}>
+          <a href={`${import.meta.env.BASE_URL}docs/setup.html`} target="_blank" rel="noopener noreferrer">{t.lang === "ko" ? "실행 · 서버 연결" : "Setup & connection"}<span aria-hidden>↗</span></a>
+          <a href={`${import.meta.env.BASE_URL}docs/model-scope.html`} target="_blank" rel="noopener noreferrer">{t.lang === "ko" ? "모델 범위 · 가정" : "Model scope & assumptions"}<span aria-hidden>↗</span></a>
+          <a href={`${import.meta.env.BASE_URL}docs/geometry-model.html`} target="_blank" rel="noopener noreferrer">Geometry<span aria-hidden>↗</span></a>
+        </nav>
         {/* the parameter guide on top: plain picture + what raising each value does to V_LU·V_LD */}
         {showGuide && (
           <article id={GUIDE_ID} className="doc-topic doc-guide" data-testid="physics-guide" aria-labelledby={`${GUIDE_ID}-title`}>

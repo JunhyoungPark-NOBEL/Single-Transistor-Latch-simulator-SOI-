@@ -2,7 +2,7 @@
 // waveform traces, time cursor and saved circuits. The document and saved circuits persist in
 // localStorage["stl-websim:schematic"] (validated on load, ./persist.ts).
 import { create } from "zustand";
-import { builtinDevices, deviceName, geometryFromDevice, stochOf, type LibDevice } from "../devices/library";
+import { builtinDevices, deviceName, geometryFromDevice, requireSupportedTechnology, stochOf, type LibDevice } from "../devices/library";
 import { useDeviceLib } from "../devices/store";
 import { useStore } from "../state/store";
 import { clone } from "../utils/object";
@@ -97,9 +97,10 @@ export function stlRefFor(libId: string): StlRef {
   const d = all.find((x) => x.id === libId)
     ?? (libId === "current" ? currentDevice() : libId === "builtin:photo" ? builtinDevices(meta, ["photo"])[0] : undefined)
     ?? all[0];
+  requireSupportedTechnology(d.technology);
   const name = deviceName(d, lang);
   // acquisition_trend belongs to the device-record lookup engine and is not used by the circuit simulator
-  return { libId: d.id, name, device: clone({ ...d.device, geometry: geometryFromDevice(d.device), vbg: resolveBackGate(d.device.vbg) }), local_state: { ...clone(d.stochastic.local_state), acquisition_trend: false } };
+  return { libId: d.id, technology: d.technology, name, device: clone({ ...d.device, geometry: geometryFromDevice(d.device), vbg: resolveBackGate(d.device.vbg) }), local_state: { ...clone(d.stochastic.local_state), acquisition_trend: false } };
 }
 
 export function templateDoc(id: TemplateId): SchematicDoc {

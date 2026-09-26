@@ -1,0 +1,15 @@
+{
+  "device": {
+    "preset": "paper",
+    "model": "simple"
+  },
+  "vg_min": -2.2,
+  "vg_max": -1.8,
+  "n": 3,
+  "stochastic": {
+    "fold_nodes": 3,
+    "hazard_nodes": 1,
+    "n_cycles": 100,
+    "seed": 404
+  }
+}

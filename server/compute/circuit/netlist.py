@@ -2,7 +2,7 @@
 integer/float arrays consumed by the MNA kernel (``mna.py``).
 
 Element kinds: R (ohm), C (F), V (piecewise-linear source, V), I (piecewise-linear source, A),
-STL (terminals d, g, s; device parameter vector; optional light waveform I_PH(t) in A) and CMP
+STL (terminals d, g, s; optional bg and ideal hole contact b; device parameter vector; optional light waveform I_PH(t) in A) and CMP
 (comparator: ideal inputs in / inm, output = behavioural voltage source from ``out`` to ground,
 v_low + (v_high - v_low)(1 + tanh((v_in - v_inm - thr)/w))/2 with a hysteresis threshold; stamped as a
 voltage source whose wave index is -1 - j, see ``mna.cmp_value``).
@@ -83,12 +83,13 @@ class Netlist:
         self.I.append((name, self.node(a), self.node(b), w, label))
         return w
 
-    def add_STL(self, name, d, g, s, p, light=None, label=""):
+    def add_STL(self, name, d, g, s, p, light=None, label="", bg=None, b=None):
         lw = -1
         if light is not None:
             lw = self.wave(*light)
         self.STL.append(dict(name=name, d=self.node(d), g=self.node(g), s=self.node(s),
-                             p=np.asarray(p, float).copy(), light_wave=lw, label=label))
+                             p=np.asarray(p, float).copy(), light_wave=lw, label=label,
+                             bg=-1 if bg is None else self.node(bg), b=-1 if b is None else self.node(b)))
 
     def add_CMP(self, name, inp, out, v_ref, v_high=1.0, v_low=0.0, hysteresis=0.0, width=1e-3, inm="0", label=""):
         """Comparator: out (to ground) = v_high when v(inp) - v(inm) > v_ref (+- hysteresis/2), else v_low
@@ -121,7 +122,8 @@ class Netlist:
             els.append(dict(kind="C", name=name, nodes=[self.nodes[a], self.nodes[b]], value=_fmt(val, "F")))
         for s in self.STL:
             els.append(dict(kind="STL", name=s["name"], nodes=[self.nodes[s["d"]], self.nodes[s["g"]], self.nodes[s["s"]]],
-                            value=s["label"]))
+                            value=s["label"],
+                            terminals={pin: self.nodes[s[pin]] for pin in ("d", "g", "s", "bg", "b") if s[pin] >= 0}))
         for c in self.CMP:
             # the bench schematic draws a single-ended comparator as a probe on its input node (output "bit")
             nd = [self.nodes[c["inp"]]] if c["inm"] == 0 else [self.nodes[c["inp"]], self.nodes[c["inm"]]]
@@ -156,7 +158,7 @@ class Netlist:
         # A heterogeneous circuit may mix legacy reference devices and geometry
         # variants.  Pad only that mixed/variant case, with each cell's own field
         # table; reference-only circuits retain the original 26-column layout.
-        geometry = any(len(s["p"]) > 26 for s in self.STL)
+        geometry = any(len(s["p"]) > 26 or s["bg"] >= 0 or s["b"] >= 0 for s in self.STL)
         P = (np.vstack([pack_p(s["p"], force=geometry) for s in self.STL])
              if self.STL else np.zeros((0, 26), dtype=np.float64))
         samples = np.sort(np.asarray(self.samples, float))
@@ -168,6 +170,8 @@ class Netlist:
             iA=ii(self.I, 1), iB=ii(self.I, 2), iW=ii(self.I, 3),
             sD=np.array([s["d"] for s in self.STL], np.int64), sG=np.array([s["g"] for s in self.STL], np.int64),
             sS=np.array([s["s"] for s in self.STL], np.int64),
+            sBG=np.array([s["bg"] for s in self.STL], np.int64),
+            sB=np.array([s["b"] for s in self.STL], np.int64),
             sW=np.array([s["light_wave"] for s in self.STL], np.int64),
             wt=wt.astype(np.float64), wv=wv.astype(np.float64), woff=woff,
             bp=self.breakpoints().astype(np.float64), samp=samples.astype(np.float64), P=P,

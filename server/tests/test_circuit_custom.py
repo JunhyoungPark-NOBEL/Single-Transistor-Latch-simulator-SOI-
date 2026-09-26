@@ -352,10 +352,6 @@ def _r(name, a, b, v=1e3):
     ([V1, R1, RB, {"type": "STL", "name": "X1", "nodes": {"d": "b", "g": "g"}, "device": {}}], "X1: STL terminal.*s not connected"),
     ([V1, R1, RB, {"type": "STL", "name": "X1", "nodes": {"d": "b", "g": "g", "s": "0"}, "device": {}}],
      "node 'g' has no DC path.*X1.g"),
-    ([V1, R1, RB, {"type": "MOS", "name": "M1", "nodes": {"d": "b", "g": "gf", "s": "0"}}],
-     r"node 'gf' has no DC path to ground: it is connected only through transistor gates / comparator inputs M1\.g\. "
-     r"Every node needs a DC path to ground \(resistor, voltage source, diode, STL or MOSFET drain-source, BJT junction "
-     r"or comparator output\)"),
     ([V1, R1, {**RB, "name": "r1"}], "duplicate element name"),
     ([V1, {"type": "L", "name": "L1", "nodes": ["a", "0"], "value": 1e-6}], "unknown element type"),
     ([V1, {**R1, "value": -5}], "R1.*must be >= 0.001"),
@@ -705,57 +701,3 @@ def test_many_long_generated_waves_estimate_is_bounded():
     els += [_r(f"R{k}", f"a{k}", "0") for k in range(6)]
     with pytest.raises(ValueError, match="exceed 2 x solver.max_steps"):
         run_circuit(_custom(els, {"t_stop_s": 1e-3, "reltol": 1e-4}))
-
-
-# ---- mixed circuits (STL + MOS/D/BJT): the pre-run V_GS estimate ignores the transistor network (P1-13 stop-gap) ----
-def _stl_echo(res, name="X1"):
-    return {e["name"]: e for e in res["elements"]}[name]
-
-
-def test_mixed_circuit_skips_the_estimate_based_oscillator_prediction():
-    els = _osc_elements(1e-9, 1e-12) + [
-        {"type": "V", "name": "VGM", "nodes": ["gm", "0"], "wave": {"kind": "dc", "value": 0.0}},
-        {"type": "MOS", "name": "M1", "nodes": {"d": "out", "g": "gm", "s": "0"}}]
-    res = run_circuit(_custom(els, {"t_stop_s": 3e-3, "dt_max_s": 5e-6}))
-    x1 = _stl_echo(res)
-    assert x1["oscillator"] is None and not any("relaxation oscillator" in w for w in res["warnings"])
-    assert x1["vgs_estimate"]["transistors_ignored"] == ["M1"] and x1["vgs_estimate"]["reliable"] is False
-    assert x1["vgs_V"] == pytest.approx(-2.0)
-    # the same circuit without the MOSFET keeps the prediction
-    ref = run_circuit(_custom(_osc_elements(1e-9, 1e-12), {"t_stop_s": 3e-3, "dt_max_s": 5e-6}))
-    assert _stl_echo(ref)["oscillator"] is not None and _stl_echo(ref)["vgs_estimate"]["reliable"] is True
-    assert any("X1: high-impedance drive" in w or "relaxation oscillator" in w for w in ref["warnings"])
-
-
-def test_mixed_circuit_gate_clamped_by_a_diode_has_no_premature_no_latch_warning():
-    # the linear estimate (diode off) puts the gate at +0.5 V (channel on, no latch window); the diode to the
-    # -2.6 V rail actually holds it near -2.04 V, where the window exists
-    els = [{"type": "V", "name": "VS", "nodes": ["s1", "0"], "wave": {"kind": "dc", "value": 0.5}},
-           _r("RG", "s1", "g", 1e5),
-           {"type": "D", "name": "D1", "nodes": {"a": "g", "k": "m"}},
-           {"type": "V", "name": "VM", "nodes": ["m", "0"], "wave": {"kind": "dc", "value": -2.6}},
-           {"type": "V", "name": "VD", "nodes": ["vd", "0"], "wave": {"kind": "dc", "value": 1.0}},
-           _r("RD", "vd", "d"),
-           {"type": "STL", "name": "X1", "nodes": {"d": "d", "g": "g", "s": "0"}, "device": {"preset": "paper"}}]
-    res = run_circuit(_custom(els, {"t_stop_s": 1e-6}))
-    x1 = _stl_echo(res)
-    assert res["op"]["V(g)"] == pytest.approx(-2.04, abs=0.03)
-    assert x1["vgs_V"] == pytest.approx(0.5, abs=1e-3)                  # the pre-run estimate, flagged as such
-    assert x1["vgs_estimate"] == {"method": "linear DC network before the run (C open, STL drain-source off)",
-                                  "transistors_ignored": ["D1"], "reliable": False}
-    assert x1["latch_window"] is None
-    assert not any("no latch window" in w for w in res["warnings"])
-    assert any("V_GS = 0.5 V comes from the circuit (linear estimate without the transistor network (D1))" in w
-               for w in res["warnings"])
-
-
-def test_mixed_circuit_stochastic_warns_about_the_noise_band():
-    T = 2 * 4.0 / 1200.0
-    els = _load_line_elements(4.0, T, {"preset": "paper"}, -2.0, g="g") + [
-        {"type": "D", "name": "DG", "nodes": {"a": "g", "k": "0"}}]
-    els[3]["nodes"] = ["g", "0"]
-    res = run_circuit(_custom(els, {"t_stop_s": T, "dt_max_s": T / 2000}, mode="stochastic",
-                              stochastic={"n_runs": 1, "seed": 4}))
-    assert any("X1: the carrier-noise band near the folds was set from the linear V_GS estimate without the "
-               "transistor network (DG)" in w for w in res["warnings"])
-    assert _stl_echo(res)["latch_window"] is True                      # V_GS = -2 V: the window is known

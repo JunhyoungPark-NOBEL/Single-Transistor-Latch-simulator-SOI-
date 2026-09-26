@@ -1,84 +1,65 @@
-# Single-Transistor-Latch-simulator-SOI-
-Web simulator for single-transistor latch (STL) behavior in SOI MOSFETs.
+# STL simulator
+
+FDSOI single-transistor latch 소자와 회로를 위한 웹 시뮬레이터입니다. 측정 데이터와 원본 수치 엔진을 보존하고, 독립적으로 실행할 수 있는 화면과 서버 구성을 제공합니다.
+
+**KAIST · NOBEL Lab**
+
+## 시작
+
+- **Windows 10/11 · x64:** 압축을 전부 풀고 `start-local.bat`을 실행합니다. Python이 없으면 포함된 공식 설치 파일로 자동 설치합니다.
+- **macOS / Linux:** 터미널에서 `sh start-local.sh`를 실행합니다.
+- **연구실 서버:** 환경 파일을 준비하고 `docker compose up -d --build`로 실행합니다.
+
+Windows에서는 Python을 따로 설치할 필요가 없습니다. 최초 실행은 Python 확인·필요 시 설치 → `.venv`에 계산 패키지 설치 → 브라우저 열기 순서로 진행합니다. 계산 패키지를 받기 위해 첫 실행에는 인터넷이 필요합니다. macOS/Linux는 Python 3.11 이상을 먼저 설치하세요. 완성된 `web/dist/`가 포함되어 있어 Node.js 없이 사용할 수 있습니다. 종료는 Ctrl+C입니다.
+
+실행·서버 설치·원격 연결: **[STUDIO_START_KO.md](STUDIO_START_KO.md)**
+
+성능 측정과 예상 시간: **[PERFORMANCE_KO.md](PERFORMANCE_KO.md)**
+
+이번 실행판의 확인 결과와 한계: [docs/RELEASE_CHECKS_KO.md](docs/RELEASE_CHECKS_KO.md)
+
+## 사용할 수 있는 기능
+
+현재 FDSOI만 지원합니다. PDSOI·Bulk는 미지원으로 표시하며 기존 기록을 임의로 FDSOI로 변환하지 않습니다. Geometry 그림의 치수를 누르면 해당 입력으로 이동하고, 변수는 이탤릭·아래첨자는 정자로 표시합니다. 주요 입력·탭·버튼 글씨는 14px 이상이며 결정론적·확률적 모드는 화면 상단에서 전환합니다.
+
+- 모델·종류별 성능 표, 계산 환경 측정, 실행 전 예상 시간
+- Detailed / Simple Model 선택 · Simple의 1차 바디 재결합 및 HRS 보정
+- VSCM의 ID–VD, CSVM의 VD(t)·Vtop·Vbottom·주파수
+- L·W·Tsi·EOT·Tbox·Nbody 및 VG·VBG 설정
+- 사용자 소자 5개 저장, 자유로운 회로 배치와 배선, 기본 MOSFET·diode·BJT
+- STL D·S·G·BG·B의 5단자, 시간 가변 G/BG, 외부 Body R·C (결정론적 BE)
+- CSVM 드레인·내부 바디 전위 동시 표시, 첫 피크 오버슈트 보존 및 이후 반복 주기 측정
+- 측정 ID–VD와 기준 보정 모델 비교
+- 고정 조건의 LTspice·Verilog-A 준정적 모델 내보내기
+- 로컬 계산과 연구실 서버 연결 전환
+
+Simple Model의 β는 바이어스에 대해서만 상수이며, 동일 emitter 공정 가정에서 L·Nbody에 따라 변합니다. 초기값은 기존 Device 1 측정에 맞춘 값이 아닙니다. 수식·기하 가정·사용 범위는 [SIMPLE_MODEL_KO.md](SIMPLE_MODEL_KO.md)에 있습니다. Simple은 현재 결정론적 BE를 지원합니다.
+
+Detailed Model의 VBG는 BJT source injection의 바디 바이어스 근사로 적용합니다. 결합 계수는 정전용량 divider이며 VBG sweep으로 새로 보정한 값은 아닙니다. 내부 정전기 전위와 외부 B 접점 전압을 구분합니다. Geometry 확장은 기준 보정을 벗어나는 모델 가정을 포함합니다. 지원 범위와 확인된 조건을 화면 및 문서에서 구분하며, 없는 물리 현상이나 측정하지 않은 정확도를 주장하지 않습니다. 실제 계산 서버 연결이 끊기면 계산을 안내 없이 데모 곡선으로 바꾸지 않습니다.
+
+## 구성
+
+| 경로 | 내용 |
+|---|---|
+| `engine/` | 변경하지 않은 원본 모델·측정 데이터 |
+| `server/` | API, 독립 계산 프로세스, geometry 확장, 회로 해석 |
+| `web/` | React·TypeScript 화면, 빌드된 `dist/`, 상세 안내 |
+| `launch.py` | 로컬 실행·의존성 검사·종료 관리 |
+| `scripts/bootstrap-windows.ps1`, `vendor/` | Windows 자동 준비 및 공식 Python 설치 파일 |
+| `deploy/` | 환경 파일·nginx·systemd 예시 |
+| `SIMPLE_MODEL_KO.md` | 1차 재결합 모델, 확산 β, HRS 보정과 한계 |
+| `GEOMETRY_MODEL_KO.md` | Geometry의 물리 관계, 가정, 기준값 |
+| `docs/` | API·모델·회로·검증 문서 |
+| `app.py` | 이전 Streamlit 앱, 변경하지 않음 |
+
+화면 소스 수정 시에만 Node.js 22와 `cd web`, `npm ci`, `npm run build`가 필요합니다. 서버·프런트엔드 개발 상세는 [docs/RUNNING.md](docs/RUNNING.md)를 참고합니다.
+
+## English
+
+On Windows 10/11 x64, extract the full ZIP and run `start-local.bat`; Python is installed automatically if needed using the bundled official installer. First setup needs Internet for Python packages. On macOS/Linux, install Python 3.11+ and run `sh start-local.sh`. No Node.js is needed for the bundled UI. Lab deployment and remote-compute setup are in [STUDIO_START_KO.md](STUDIO_START_KO.md).
+
 ## Copyright and usage
+
 Copyright © Junhyoung Park. All rights reserved.
 This repository and its source code are provided for viewing and deployment by the owner only.
 No reproduction, redistribution, modification, or commercial use is permitted without explicit prior permission from the author.
-
-## About Me
-- B.S. in Electrical Engineering, KAIST
-- M.S. student in Electrical Engineering, KAIST
-- Email: jhpark@nobelab.kaist.ac.kr
-
-## STL Web Simulator (deterministic + stochastic) — `engine/`, `server/`, `web/`
-
-**한국어** — SOI 단일 트랜지스터 래치(STL)의 결정론·확률 모델(전하 보존 + Kirchhoff 평균 모델, compound
-first-passage, 국소 상태)을 그대로 계산하는 웹 시뮬레이터입니다. 현재 소자는 **FDSOI · L_g 500 nm · W 200 nm ·
-T_Si 50 nm · EOT 14.1 nm**이며(기준 보정: 암조건 V_G −2 V, 0.4 V/s / 광조사 보정: V_G −1.8 V, 1200 V/s),
-PDSOI·Bulk 모델은 준비 중입니다. 아직 발표되지 않은 모델이므로 연구용으로만 사용하세요. 상단에서
-**Deterministic / Stochastic**을 고르고, 왼쪽 맨 위 **Geometry**(L·W·T_Si·EOT·T_BOX·N_body, V_BG)와 파라미터
-카드에서 조건을 정한 뒤 실행합니다. 기본 소자는 `Device 1` 하나이며, 바꾼 소자는 5칸짜리 소자 선반에 저장합니다.
-모든 그룹·패널의 **상세** 버튼은 같은 화면에 작은 창을 띄워 코드와 정확히 일치하는 수식·변수표·가정을 보여 줍니다.
-
-- **소자 (Device)** — 기본 화면은 순방향·역방향 ID–VD만 보여 주고, `?view=all`이나 “모두 보기”로 나머지 분석을
-  엽니다. 구동 방식은 VSCM(전압 스윕)과 CSVM(전류 강제 발진) 두 가지입니다. Deterministic: 정상상태 I–V branch(HRS/불안정/LRS, fold 전압 V_LU·V_LD), 전류 성분, 고정
-  V_D에서의 바디 전하 균형(안정/불안정 근, 준퍼텐셜), V_G 의존성(래치 창). Stochastic: MC 스윕(보정 lookup
-  엔진 / 임의 조건용 일반 엔진), V_LU·V_LD 히스토그램·CDF(측정값 비교), hazard·생존 확률, 확률 V_G 곡선,
-  사이클 시계열, 설계 지도.
-- **회로 (Circuit)** — 바디 전하 Q_B를 상태변수로 갖는 STL 소자를 넣은 MNA 과도해석(후진 오일러/사다리꼴 +
-  Newton, 적응 Δt). 확률 모드는 매 스텝 Eq. 2 캐리어 잡음 증분(Poisson 단위 사건 + II 클러스터)을 더합니다.
-  빈 캔버스에서 시작하며 STL 소자 외에 기본 MOSFET·다이오드·BJT를 넣을 수 있습니다. 예제(부하선 스윕, 펄스 열,
-  p-bit, 결합 쌍)는 보조 메뉴에 있습니다. LTspice·Verilog-A 내보내기(보정값은 기본 제외, 선택 시 포함).
-- **레퍼런스 (Reference)** — 실제 측정 중앙값 ID–VD와 보정 조건 계산 곡선 비교(바닥 전류 제외 RMSE, ΔV_LU·ΔV_LD).
-  엔진 수치 검증은 자동 테스트에 남아 있습니다.
-- **문서 (Docs)** — 전체 수식 문서(목차·검색).
-
-만든 곳: KAIST · NOBEL 연구실. 모드 막대 오른쪽 끝의 **정보**를 누르면 소개 창(버전 포함)이 열립니다.
-
-**English** — A web simulator that runs the deterministic and stochastic single-transistor latch (STL) model for
-SOI unchanged (charge-conservation + Kirchhoff mean model, compound first passage, local states). The current
-device is **FDSOI · L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm** (reference calibration: dark, V_G −2 V,
-0.4 V/s; illumination calibration: V_G −1.8 V, 1200 V/s); PDSOI and bulk models are coming later. The model is
-unpublished — for research use only. Pick **Deterministic / Stochastic** at the top, set **Geometry** (L, W, T_Si,
-EOT, T_BOX, N_body, V_BG; top of the sidebar) and the grouped parameters, and run. The only built-in device is
-`Device 1`; edited devices go on a five-slot device shelf. The Device tab shows forward/reverse ID–VD by default
-(`?view=all` opens the other analyses) and forces the device by VSCM (voltage sweep) or CSVM (current-forced
-oscillation). The Circuit tab starts on an empty canvas and adds basic MOSFET/diode/BJT elements; LTspice and
-Verilog-A exports leave the calibration out unless you tick the option. The Reference tab compares the measured
-median ID–VD with the calibrated sweep. Every group and panel has a **Details** button that opens a compact
-floating window with the exact code-level equations, variable tables and assumptions.
-
-Made at KAIST · NOBEL Lab. **About** at the right end of the mode strip opens an About card (with the app/engine
-version).
-
-### Quick start / 빠른 시작
-```bash
-pip install -r server/requirements.txt          # numpy, scipy, numba, fastapi, uvicorn, orjson
-cd web && npm ci && npm run build && cd ..      # builds web/dist
-python3 scripts/warmup.py                        # optional: pre-compile numba kernels
-uvicorn server.main:app --port 8000             # open http://127.0.0.1:8000
-```
-Development (hot reload): `scripts/dev.sh` → http://127.0.0.1:5173. Docker: `docker build -t stl-websim . &&
-docker run -p 8000:8000 stl-websim`. Details: [`docs/RUNNING.md`](docs/RUNNING.md).
-Each person's own computer (password-unlocked installer kit): [`docs/LOCAL_INSTALL.md`](docs/LOCAL_INSTALL.md).
-Lab server (HTTPS, password gate, auto-update on push): [`docs/DEPLOY_LAB.md`](docs/DEPLOY_LAB.md).
-
-### Layout / 구성
-| Path | Contents |
-|---|---|
-| `engine/` | Model handoff package, verbatim (`python3 engine/stl_api.py` = smoke test; docs in `engine/docs/`) |
-| `server/` | FastAPI service, job pool + cache, compute modules (deterministic, stochastic, circuit, validation), geometry model |
-| `web/` | React + TypeScript frontend; physics content in `web/src/content/physics/topics/` |
-| `docs/` | `WEB_CONTRACT.md` (API/UI contract), `API.md`, `RUNNING.md`, `CIRCUIT_SIMULATOR.md`, `GEOMETRY_MODEL_KO.md`, `SIMULATOR_EXPORTS_KO.md`, `LOCAL_INSTALL.md`, `DEPLOY_LAB.md`, `DECISIONS.md` |
-| `deploy/` | `local/` installer kit sources, `lab/` Docker Compose + Caddy + auto-update kit |
-| `app.py` | Legacy Streamlit simulator (below), unchanged |
-
-Tests: `python3 -m pytest server/tests -m "not slow"`, `cd web && npm run typecheck && npx vitest run && npx playwright test`.
-
-## Legacy Streamlit app (`app.py`)
-- Branch-preserving ID-VD double sweep
-- Separate BTBT / II / Out-diffusion / Recombination controls
-- TSi-only unified silicon-thickness parameter
-- Snap-based oscillation branch extraction
-- Plotly internal-quantity graph with clickable legend
-- Live SOI MOSFET cross-section that updates with geometry

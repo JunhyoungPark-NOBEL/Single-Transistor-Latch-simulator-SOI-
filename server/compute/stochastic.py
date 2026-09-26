@@ -63,6 +63,8 @@ def _resolve(payload: dict, warnings: list, need_stochastic=True):
     if not isinstance(payload, dict):
         raise ValueError("payload must be a JSON object")
     device = P.resolve_device(payload.get("device"))
+    if device.get("model") == "simple":
+        raise ValueError("simple-mode-unavailable: Simple Model has no calibrated stochastic carrier model")
     if P.uses_geometry_model(device):
         raise ValueError("geometry-stochastic-unavailable: Geometry scaling currently supports deterministic VSCM/CSVM; "
                          "the carrier-noise kernel is calibrated only at the reference geometry.")

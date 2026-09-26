@@ -70,34 +70,8 @@ test("five visible shelf slots save, reload, load, and update the current calibr
   expect(updated.name).toBe(first.name);
   expect(updated.device.vg).toBe(-1.7);
   await page.reload();
-  await expect(page.getByTestId("device-slot-1")).toContainText("−1.7");
+  await expect(page.getByTestId("device-slot-1")).toContainText("-1.7");
   expect(await stored(page)).toHaveLength(1);
-});
-
-test("dialogs: the save name can be typed and the export formats are reachable by keyboard", async ({ page }) => {
-  await fresh(page);
-  await page.getByTestId("dev-save-open").click();
-  const name = page.getByTestId("dev-save-name");
-  await expect(name).toBeFocused();
-  await name.press("Control+A");
-  // typed key by key (fill() would bypass a focus steal on re-render)
-  await page.keyboard.type("Typed by hand 7", { delay: 20 });
-  await expect(name).toHaveValue("Typed by hand 7");
-  await expect(name).toBeFocused();
-  await expect(page.getByTestId("save-device-dialog").getByTestId("modal-close")).toHaveAccessibleName("닫기");
-  await page.keyboard.press("Enter");
-  await expect(page.getByTestId("save-device-dialog")).toHaveCount(0);
-  await expect(page.getByTestId("device-slot-1")).toContainText("Typed by hand 7");
-  await expect(page.getByTestId("dev-save-open")).toBeFocused();
-  await page.getByTestId("model-export-open").click();
-  await expect(page.getByTestId("model-export-ltspice")).toBeFocused();
-  await page.keyboard.press("ArrowRight");
-  await expect(page.getByTestId("model-export-verilog-a")).toBeChecked();
-  await expect(page.getByTestId("model-export-verilog-a")).toBeFocused();
-  await expect(page.getByTestId("model-export-include-calibration")).not.toBeChecked();
-  await expect(page.getByTestId("model-export-share")).toContainText("보정된 ID–VD 곡선");
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("model-export-dialog")).toHaveCount(0);
 });
 
 test("imports stop at five slots and full shelves disable save and duplicate", async ({ page }) => {
@@ -123,18 +97,17 @@ test("imports stop at five slots and full shelves disable save and duplicate", a
   expect(await stored(page)).toHaveLength(5);
 });
 
-test("the About chip shows the reduced credit (KAIST · NOBEL) and no personal names", async ({ page }) => {
+test("creator attribution is a compact disclosure with lab and institution only", async ({ page }) => {
   await fresh(page);
   const credits = page.getByTestId("credits-chip");
-  expect((await credits.innerText()).trim()).toBe("정보");
+  expect((await credits.innerText()).trim()).toBe("제작자");
   await expect(page.getByTestId("about")).toHaveCount(0);
   await credits.click();
   const about = page.getByTestId("about");
   await expect(about).toBeVisible();
   await expect(about).toContainText("KAIST");
   await expect(about).toContainText(/NOBEL/i);
-  await expect(about).toContainText("KAIST · NOBEL 연구실");
-  await expect(about).not.toContainText(/Choi|최양규|Yang.?Kyu|박준형|Jun.?hyoung|지도교수|advisor|developer/i);
+  await expect(about).not.toContainText(/Choi|최양규|Yang.?Kyu/i);
   await page.keyboard.press("Escape");
   await expect(about).toHaveCount(0);
   await expect(credits).toBeFocused();

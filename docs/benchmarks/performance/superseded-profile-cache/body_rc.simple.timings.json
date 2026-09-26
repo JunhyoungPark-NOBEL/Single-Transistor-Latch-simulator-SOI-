@@ -1,0 +1,142 @@
+{
+  "first": {
+    "wall_s": 0.09144481799739879,
+    "cpu_s": 0.09144672400000076,
+    "reported_s": 0.09137868900143076,
+    "solver": {
+      "steps": 714,
+      "rejected": 51,
+      "newton_iters": 1520,
+      "runtime_s": 0.006735438990290277
+    },
+    "warnings": [
+      "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+      "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+    ],
+    "engine": null,
+    "t_reached_s": [
+      4e-05
+    ],
+    "saved_points": [
+      715
+    ],
+    "event_count": 0
+  },
+  "warm": [
+    {
+      "wall_s": 0.009537459001876414,
+      "cpu_s": 0.009539682000003324,
+      "reported_s": 0.009469828000874259,
+      "solver": {
+        "steps": 714,
+        "rejected": 51,
+        "newton_iters": 1520,
+        "runtime_s": 0.0070112739922478795
+      },
+      "warnings": [
+        "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+        "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        715
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.009332912013633177,
+      "cpu_s": 0.00933504799999696,
+      "reported_s": 0.009270278009353206,
+      "solver": {
+        "steps": 714,
+        "rejected": 51,
+        "newton_iters": 1520,
+        "runtime_s": 0.0066689689992927015
+      },
+      "warnings": [
+        "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+        "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        715
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.008471228007692844,
+      "cpu_s": 0.008426495000001921,
+      "reported_s": 0.008415093005169183,
+      "solver": {
+        "steps": 714,
+        "rejected": 51,
+        "newton_iters": 1520,
+        "runtime_s": 0.006492995991720818
+      },
+      "warnings": [
+        "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+        "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        715
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.009142756010987796,
+      "cpu_s": 0.009144624999997575,
+      "reported_s": 0.00908654100203421,
+      "solver": {
+        "steps": 714,
+        "rejected": 51,
+        "newton_iters": 1520,
+        "runtime_s": 0.006909581003128551
+      },
+      "warnings": [
+        "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+        "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        715
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.009052580993738957,
+      "cpu_s": 0.009054159999998035,
+      "reported_s": 0.008993622992420569,
+      "solver": {
+        "steps": 714,
+        "rejected": 51,
+        "newton_iters": 1520,
+        "runtime_s": 0.0070758810034021735
+      },
+      "warnings": [
+        "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+        "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        715
+      ],
+      "event_count": 0
+    }
+  ]
+}

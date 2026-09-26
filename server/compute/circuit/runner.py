@@ -13,7 +13,8 @@ from server import params as PR
 from . import benches as B
 from .sim import SolverConfig, simulate
 from .stochastic import (ACTION_UNIT, SECONDS_PER_STEP, branch_profile, draw_local_states, estimate_steps,
-                         classify_checked, noise_bands, parse_local_state, GEOMETRY_NOISE_ERROR)
+                         classify_checked, noise_bands, parse_local_state, GEOMETRY_NOISE_ERROR,
+                         SIMPLE_NOISE_ERROR, SIMPLE_METHOD_ERROR)
 
 MAX_POINTS = 4000
 MAX_POINTS_OTHER = 1500        # stored runs 1..7 (keeps the JSON result a few MB at most)
@@ -128,7 +129,9 @@ def _device_p(device: dict, vg: float | None = None, iph_pA: float | None = None
 
 
 def _label(p: np.ndarray) -> str:
-    return f"V_G = {p[11]:g} V, I_PH = {p[13] * 1e12:.3g} pA"
+    from server.simple_model import is_simple
+    prefix = "Simple Model, " if is_simple(p) else ""
+    return f"{prefix}V_G = {p[11]:g} V, I_PH = {p[13] * 1e12:.3g} pA"
 
 
 # ---- decimation / signals ---------------------------------------------------------------------
@@ -390,6 +393,10 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
     if mode not in ("deterministic", "stochastic"):
         raise ValueError("mode must be 'deterministic' or 'stochastic'")
     device = PR.resolve_device(payload.get("device"))
+    if mode == "stochastic" and device.get("model") == "simple":
+        raise ValueError(SIMPLE_NOISE_ERROR)
+    if device.get("model") == "simple" and (payload.get("solver") or {}).get("method", "BE") != "BE":
+        raise ValueError(SIMPLE_METHOD_ERROR)
     if mode == "stochastic" and PR.uses_geometry_model(device):
         raise ValueError(GEOMETRY_NOISE_ERROR)
     preset = device.get("preset") or "paper"
@@ -659,10 +666,13 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
     warnings.extend(run_warn[:20])
     if len(run_warn) > 20:
         warnings.append(f"... {len(run_warn) - 20} more run warnings")
-    if min_r < 0:
+    if min_r < 0 and device.get("model") == "simple":
+        warnings.append(f"Simple Model used its startup continuation at negative r (minimum {min_r:.3f} V). "
+                        "This is a forward-operating approximation, not a calibrated reverse-junction model.")
+    elif min_r < 0:
         warnings.append(f"the drain junction became forward biased (min r = {min_r:.3f} V, {regime_time['t_neg_r']:.3g} s "
                         "summed over runs): symmetric forward drain-diode extension used (outside the calibrated model)")
-    if min_u < 0:
+    if min_u < 0 and device.get("model") != "simple":
         warnings.append(f"the source junction became reverse biased (min u = {min_u * 1e3:.2f} mV, "
                         f"{regime_time['t_neg_u']:.3g} s summed over runs): low-injection diode extension used for u < 0")
     n_hrs_x = sum(hrs_x.values())
@@ -889,6 +899,9 @@ def run_circuit(payload: dict, progress: Callable[[float, str], None] | None = N
         folds=folds, feasibility=dict(estimated_steps_per_run=est_nominal, estimated_total_steps=total_est,
                                       estimated_runtime_s=total_est * SECONDS_PER_STEP, total_runs=total_runs),
         regimes=regime_time, runtime_s=runtime, warnings=warnings,
+        device=dict(model=device.get("model", "detailed"),
+                    simple=dict(device["simple"]) if device.get("model") == "simple" else None,
+                    geometry_model=PR.geometry_model_metadata(device)),
     )
 
 

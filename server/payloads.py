@@ -15,6 +15,7 @@ import math
 from typing import Any
 
 from server import params
+from server.simple_config import SIMPLE_LIMITS, is_simple_device
 
 CAPS: dict[str, Any] = {
     "grid": [201, 2001],
@@ -29,7 +30,7 @@ CAPS: dict[str, Any] = {
     "sweep_points_per_direction": 2001,
 }
 
-DEVICE_KINDS = {"branches", "folds", "charge_balance", "vg_curve", "hazard", "sweep_mc", "vg_curve_stochastic", "circuit"}
+DEVICE_KINDS = {"branches", "folds", "charge_balance", "vg_curve", "hazard", "sweep_mc", "vg_curve_stochastic", "circuit", "simple_calibrate"}
 SWEEP_KINDS = {"branches", "hazard", "sweep_mc", "vg_curve_stochastic"}
 STOCHASTIC_KINDS = {"sweep_mc", "vg_curve_stochastic"}
 VG_RANGE_KINDS = {"vg_curve", "vg_curve_stochastic"}
@@ -131,31 +132,22 @@ def _check_numeric_tree(block: Any, prefix: str) -> None:
             raise ValueError(f"{prefix} must be finite")
 
 
-def check_geometry_domain(geometry: dict, vbg: float) -> None:
-    """Domain of the reduced geometry model, checked before any job is queued (HTTP 422; in a custom circuit the
-    worker prefixes the cell name).  The field-table domain (Nbody) is checked in the worker (geometry_model.pack_p)."""
-    ratio = geometry["EOT_nm"] / (geometry["Tbox_nm"] + geometry["Tsi_nm"] / 3.0)
-    shift = ratio * vbg
-    if abs(shift) > params.BACKGATE_SHIFT_MAX_V:
-        raise ValueError("geometry-domain-unavailable: back-gate coupling beyond the linear (depleted back-interface) "
-                         "range; reduce |V_BG| or EOT/Tbox (EOT/(Tbox + Tsi/3) x |V_BG| = "
-                         f"{abs(shift):.3g} V > {params.BACKGATE_SHIFT_MAX_V:g} V)")
-    lmin = params.min_length_nm(geometry["Nbody_cm3"])
-    if geometry["Lg_nm"] <= lmin:
-        raise ValueError(f"geometry-domain-unavailable: L = {geometry['Lg_nm']:g} nm fully depletes the lateral "
-                         f"neutral base assumed by this compact model at Nbody = {geometry['Nbody_cm3']:.3g} cm^-3 "
-                         f"(L must exceed {lmin:.1f} nm); increase L or Nbody")
-
-
 def normalize_device(device: Any, warnings: list[str]) -> dict:
     if device is not None and not isinstance(device, dict):
         raise ValueError("device must be an object")
     if device:
         if device.get("preset") is not None and not isinstance(device["preset"], str):
             raise ValueError("device.preset must be a string")
-        for section in ("geometry", "light", "calib", "ext", "state", "numerics"):
+        for section in ("geometry", "light", "calib", "ext", "state", "numerics", "simple"):
             _obj(device, section, f"device.{section}")
     d = params.resolve_device(device)          # raises ValueError for an unknown preset
+    for key, (lo, hi) in SIMPLE_LIMITS.items():
+        v = _num(d["simple"][key], f"device.simple.{key}")
+        if not lo <= v <= hi:
+            raise ValueError(f"device.simple.{key} must be within [{lo:g}, {hi:g}]")
+        d["simple"][key] = v
+    if d["simple"]["gamma_fg"] + d["simple"]["gamma_bg"] > 1.0:
+        raise ValueError("device.simple.gamma_fg + gamma_bg must be <= 1 for a passive capacitance partition")
     for key, (lo, hi) in params.GEOMETRY_LIMITS.items():
         val = _num(d["geometry"][key], f"device.geometry.{key}")
         if not lo <= val <= hi:
@@ -164,7 +156,6 @@ def normalize_device(device: Any, warnings: list[str]) -> dict:
     d["vbg"] = _num(d.get("vbg", 0.0), "device.vbg")
     if not -10.0 <= d["vbg"] <= 10.0:
         raise ValueError("device.vbg must be within [-10, 10] V")
-    check_geometry_domain(d["geometry"], d["vbg"])
     d["vg"] = _num(d["vg"], "device.vg")
     if not -10.0 <= d["vg"] <= 10.0:
         raise ValueError("device.vg must be within [-10, 10] V")
@@ -241,8 +232,12 @@ def normalize(kind: str, payload: Any) -> tuple[dict, list[str]]:
     check_tree(payload, CUSTOM_CIRCUIT_NODES if custom else None)   # before deepcopy/hash/pickle (depth, size, NaN, huge ints)
     p = copy.deepcopy(payload)
     warnings: list[str] = []
+    if kind == "performance_calibrate" and p:
+        raise ValueError("performance_calibrate uses fixed workloads and requires an empty payload")
     if kind in DEVICE_KINDS:
         p["device"] = normalize_device(p.get("device"), warnings)
+        if is_simple_device(p["device"]) and kind in {"hazard", "sweep_mc", "vg_curve_stochastic", "charge_balance"}:
+            raise ValueError("simple-mode-unavailable: Simple Model supports deterministic IDVD and backward-Euler circuits; stochastic charge landscapes are not calibrated")
         preset = p["device"]["preset"]
     else:
         preset = "paper"

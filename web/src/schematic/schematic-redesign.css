@@ -46,3 +46,9 @@
 .sch-status .erc-pill { font-size: 10px; }
 @media (max-width: 1050px) { .sch-stl-select { width: 100px; } .sch-tool.sch-tool-labeled { min-width: 34px; padding-inline: 5px; } }
 @media (max-width: 760px) { .sch-body { grid-template-columns: 1fr; } .sch-side { max-height: 280px; border-top: 1px solid var(--border); } .sch-toolbar { gap: 5px; padding: 8px; } .sch-parts { flex: 1 1 100%; order: 3; border-right: 0; } }
+
+/* Five-terminal STL: readable pin labels and compact optional-terminal status. */
+.sch-el[data-kind="STL"] .sch-pin-letter { font-size: 10px; fill: var(--muted); }
+.insp-terminal-defaults { display: flex; gap: 8px; margin: 8px 0 12px; flex-wrap: wrap; }
+.insp-terminal-defaults > span { display: flex; gap: 8px; align-items: baseline; padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 12px; }
+.insp-terminal-defaults strong { font-size: 13px; font-weight: 550; color: var(--text); }

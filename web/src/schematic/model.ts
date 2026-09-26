@@ -5,7 +5,7 @@ import type { MosModel, DiodeModel, BjtModel, Wave } from "../api/circuitCustom"
 
 export type { Wave };
 export const GRID = 10;
-export const DOC_VERSION = 1;
+export const DOC_VERSION = 2;
 
 export type Rot = 0 | 1 | 2 | 3; // multiples of 90° clockwise
 export type ElKind = "R" | "C" | "V" | "I" | "MOS" | "D" | "BJT" | "STL" | "CMP" | "GND" | "LABEL";
@@ -28,6 +28,8 @@ export const DEFAULT_CMP: CmpParams = { v_ref: 0.1, v_high: 1, v_low: 0, hystere
 export interface StlRef {
   /** Library id the snapshot was taken from ("current" = the Device tab's unsaved device). */
   libId: string;
+  /** Absent only in older FDSOI snapshots; retained on import to reject unsupported models. */
+  technology?: string;
   /** Library name at the time of the snapshot (shown on the canvas). */
   name: string;
   /** Snapshot of the device block (§1) — later library edits never change it silently. */
@@ -49,6 +51,8 @@ export interface SElement {
   /** V source in volts, I source in amperes. */
   wave?: Wave;
   stl?: StlRef;
+  /** Legacy saved circuits keep their original three-pin topology until explicitly expanded. */
+  stlTerminalMode?: "legacy3";
   /** STL light waveform in pA; null = the device block's light setting. */
   light?: Wave | null;
   /** Net label text (LABEL). */
@@ -106,7 +110,7 @@ export interface Pt {
   y: number;
 }
 
-export type PinName = "p" | "n" | "d" | "g" | "s" | "o" | "i" | "q" | "a" | "k" | "c" | "b" | "e";
+export type PinName = "p" | "n" | "d" | "g" | "s" | "o" | "i" | "q" | "a" | "k" | "c" | "b" | "bg" | "e";
 export interface PinDef {
   name: PinName;
   x: number;
@@ -122,7 +126,7 @@ export const PINS: Record<ElKind, PinDef[]> = {
   D: [{ name: "a", x: 0, y: -40 }, { name: "k", x: 0, y: 40 }],
   MOS: [{ name: "d", x: 0, y: -40 }, { name: "g", x: -40, y: 0 }, { name: "s", x: 0, y: 40 }],
   BJT: [{ name: "c", x: 0, y: -40 }, { name: "b", x: -40, y: 0 }, { name: "e", x: 0, y: 40 }],
-  STL: [{ name: "d", x: 0, y: -40 }, { name: "g", x: -40, y: 0 }, { name: "s", x: 0, y: 40 }],
+  STL: [{ name: "d", x: 0, y: -40 }, { name: "g", x: -40, y: 0 }, { name: "s", x: 0, y: 40 }, { name: "bg", x: -50, y: -30 }, { name: "b", x: 50, y: 10 }],
   // comparator: input (compared with V_ref, referenced to ground) on the left, output on the right
   CMP: [{ name: "i", x: -40, y: 0 }, { name: "q", x: 40, y: 0 }],
   GND: [{ name: "o", x: 0, y: 0 }],
@@ -138,7 +142,7 @@ const BOX: Record<ElKind, [number, number, number, number]> = {
   D: [-16, -40, 16, 40],
   MOS: [-40, -40, 22, 40],
   BJT: [-40, -40, 22, 40],
-  STL: [-40, -40, 26, 40],
+  STL: [-50, -40, 50, 40],
   CMP: [-40, -26, 40, 26],
   GND: [-14, -2, 14, 22],
   LABEL: [-4, -12, 64, 12],
@@ -163,8 +167,14 @@ export interface PinPos {
   y: number;
 }
 
+export function pinsFor(el: SElement): PinDef[] {
+  return el.kind === "STL" && el.stlTerminalMode === "legacy3" ? PINS.STL.slice(0, 3) : PINS[el.kind];
+}
+
+export const isOptionalStlPin = (el: SElement, pin: string) => el.kind === "STL" && (pin === "bg" || pin === "b");
+
 export function pinPositions(el: SElement): PinPos[] {
-  return PINS[el.kind].map((p) => {
+  return pinsFor(el).map((p) => {
     const r = rotatePt(p.x, p.y, el.rot, el.mirror);
     return { el, pin: p.name, x: el.x + r.x, y: el.y + r.y };
   });
@@ -175,7 +185,7 @@ export function labelWidth(text: string): number {
 }
 
 export function elementBox(el: SElement): [number, number, number, number] {
-  let b = BOX[el.kind];
+  let b = el.kind === "STL" && el.stlTerminalMode === "legacy3" ? [-40, -40, 31, 40] as [number, number, number, number] : BOX[el.kind];
   if (el.kind === "LABEL") b = [-4, -12, labelWidth(el.label ?? "") + 10, 12];
   const pts = [rotatePt(b[0], b[1], el.rot, el.mirror), rotatePt(b[2], b[3], el.rot, el.mirror)];
   return [

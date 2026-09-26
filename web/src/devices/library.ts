@@ -4,6 +4,7 @@
 import type { L10n } from "../content/physics/types";
 import type { DeviceBlock, DeviceGeometry, LocalStateBlock, Meta, PresetId, StochasticBlock } from "../api/types";
 import { REFERENCE_GEOMETRY, resolveBackGate, resolveGeometry } from "../params/geometry";
+import { withModelDefaults } from "../params/model";
 import { clone, getPath, mergeDefaults, setPath, type Path } from "../utils/object";
 
 export type Technology = "FDSOI" | "PDSOI" | "Bulk";
@@ -12,6 +13,13 @@ export const TECHNOLOGIES: { id: Technology; active: boolean }[] = [
   { id: "PDSOI", active: false },
   { id: "Bulk", active: false },
 ];
+
+/** The solver currently implements only FDSOI. Other technologies remain readable for archiving. */
+export const isSupportedTechnology = (technology: unknown): technology is "FDSOI" => technology === "FDSOI";
+
+export function requireSupportedTechnology(technology: unknown): void {
+  if (!isSupportedTechnology(technology)) throw new Error(`Unsupported device technology: ${String(technology)}. Only FDSOI is supported.`);
+}
 
 export type Geometry = DeviceGeometry;
 export interface DeviceStochastic {
@@ -77,8 +85,8 @@ export function builtinDevices(meta: Meta, ids: PresetId[] = BUILTIN_IDS): LibDe
     const geometry = geometryFromDevice(pr.device, meta);
     return {
       id: builtinId(p),
-      name: p === "paper" ? "Device 1" : "Legacy device",
-      label: p === "paper" ? { ko: "Device 1", en: "Device 1" } : { ko: "이전 기본 소자", en: "Legacy device" },
+      name: p === "paper" ? "Device 1" : "Device (legacy)",
+      label: { ko: p === "paper" ? "Device 1" : "Device (legacy)", en: p === "paper" ? "Device 1" : "Device (legacy)" },
       technology: "FDSOI",
       geometry,
       calibration_label: pr.label,
@@ -100,11 +108,13 @@ const LOCAL_MODES = ["none", "frozen", "evolving"];
 const LOCAL_ACTIONS = ["gidl", "local_avalanche", "junction", "multiplication"];
 const DEVICE_ENUMS: [Path, readonly unknown[]][] = [
   [["preset"], ["paper", "photo", "custom"]],
+  [["model"], ["detailed", "simple"]],
   [["light", "mode"], ["iph", "power"]],
   [["ext", "loc_carriers"], [0, 1, 2]],
 ];
 
 export function sanitizeDevice(base: DeviceBlock, raw: unknown): DeviceBlock {
+  base = withModelDefaults(base);
   let d = mergeDefaults(base, raw);
   for (const [path, allowed] of DEVICE_ENUMS) if (!allowed.includes(getPath(d, path))) d = setPath(d, path, getPath(base, path));
   // Old saved devices/schematics did not submit geometry to the engine. Preserve that baseline behavior.
@@ -131,7 +141,8 @@ export function validateDevice(raw: unknown, base: { device: DeviceBlock; stocha
   if (!isObj(raw) || !isObj(raw.device)) return null;
   const name = str(raw.name, 80).trim();
   if (!name) return null;
-  const technology = (["FDSOI", "PDSOI", "Bulk"] as const).find((x) => x === raw.technology) ?? "FDSOI";
+  const technology = raw.technology === undefined ? "FDSOI" : (["FDSOI", "PDSOI", "Bulk"] as const).find((x) => x === raw.technology);
+  if (!technology) return null;
   const device = sanitizeDevice(base.device, raw.device);
   const geometry = geometryFromDevice(device);
   const st = isObj(raw.stochastic) ? raw.stochastic : {};

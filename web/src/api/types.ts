@@ -5,6 +5,19 @@ import type { L10n } from "../content/physics/types";
 export type Arr = (number | null)[];
 export type PresetId = "paper" | "photo" | "custom";
 export type Mode = "deterministic" | "stochastic";
+export type DeviceModel = "detailed" | "simple";
+/** Simple-model parameters have their own calibration; never reuse Detailed SRH values. */
+export interface SimpleModelBlock {
+  beta_ref: number; tau_body_s: number; cb_ref_F: number; r_lrs_ref_ohm: number;
+  is_ref_A: number; vbr_ref_V: number; avalanche_eta: number;
+  gamma_fg: number; gamma_bg: number; vfb_V: number; btbt_scale: number; surface_fraction: number;
+}
+export interface HrsPoint { vd_V: number; id_A: number }
+export type SimpleFit = "is" | "tau" | "is_tau";
+export interface SimpleCalibrationResult {
+  device: DeviceBlock; fit: SimpleFit; points: HrsPoint[]; rmse_log10: number;
+  identifiable: boolean; warnings: string[];
+}
 
 // ---------------------------------------------------------------- payload blocks (§1)
 export interface LightBlock {
@@ -33,6 +46,9 @@ export interface DeviceGeometry {
 }
 export interface DeviceBlock {
   preset: PresetId;
+  /** Legacy files without a model always select Detailed. */
+  model?: DeviceModel;
+  simple?: SimpleModelBlock;
   /** Absent in legacy device files: use the calibrated reference geometry. */
   geometry?: DeviceGeometry;
   vg: number;
@@ -99,7 +115,7 @@ export interface JobStatus<T = unknown> {
 }
 export type Kind =
   | "branches" | "charge_balance" | "vg_curve" | "hazard" | "sweep_mc" | "vg_curve_stochastic"
-  | "circuit" | "validation";
+  | "circuit" | "validation" | "simple_calibrate" | "performance_calibrate";
 
 // ---------------------------------------------------------------- results (§2)
 export interface Stats {
@@ -120,6 +136,7 @@ export interface Folds {
 }
 export interface Common { runtime_s: number; warnings: string[] }
 export interface BranchesResult extends Common {
+  model?: DeviceModel;
   latch: boolean;
   HRS: Curve; unstable: Curve; LRS: Curve; full: Curve;
   folds: Folds;

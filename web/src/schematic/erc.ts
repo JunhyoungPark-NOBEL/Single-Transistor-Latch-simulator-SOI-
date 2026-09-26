@@ -2,9 +2,10 @@
 // ground, voltage-source loops, current sources with nothing in series, element values, names, limits.
 // Messages are i18n keys ("schematic.erc.<code>") with variables; `elementIds`/`wireIds` let the UI
 // highlight the offending parts.
+import { isSupportedTechnology } from "../devices/library";
 import type { Connectivity, NetInfo } from "./nets";
-import { pinId, UnionFind } from "./nets";
-import { CIRCUIT_KINDS, PINS, type SchematicDoc, type SElement } from "./model";
+import { isCircuitNet, optionalPinConnected, pinId, UnionFind } from "./nets";
+import { CIRCUIT_KINDS, isOptionalStlPin, pinsFor, type SchematicDoc, type SElement } from "./model";
 import { waveIssues } from "./waves";
 
 export interface ErcItem {
@@ -20,11 +21,11 @@ export const LIMITS = { elements: 40, stl: 8, nodes: 30, pwlPoints: 2000 };
 export const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
 export const LABEL_RE = /^[A-Za-z0-9_+-]{1,32}$/;
 
-const PIN_LABEL: Record<string, string> = { p: "+", n: "−", d: "D", g: "G", s: "S", o: "", i: "IN", q: "OUT" };
+const PIN_LABEL: Record<string, string> = { p: "+", n: "−", d: "D", g: "G", s: "S", bg: "BG", b: "B", o: "", i: "IN", q: "OUT" };
 
 /** Nets of an element's pins in pin order (undefined when not found). */
 export function elementNets(el: SElement, conn: Connectivity): (NetInfo | undefined)[] {
-  const pins = PINS[el.kind].map((p) => p.name);
+  const pins = pinsFor(el).map((p) => p.name);
   return pins.map((p) => conn.pinNet.get(pinId(el.id, p)));
 }
 
@@ -42,7 +43,7 @@ export function runErc(doc: SchematicDoc, conn: Connectivity): ErcItem[] {
   if (els.length > LIMITS.elements) err("tooManyElements", [], { n: els.length, max: LIMITS.elements });
   const stls = els.filter((e) => e.kind === "STL");
   if (stls.length > LIMITS.stl) err("tooManyStl", stls.map((e) => e.id), { n: stls.length, max: LIMITS.stl });
-  const circuitNets = conn.nets.filter((n) => n.pins.length > 0);
+  const circuitNets = conn.nets.filter((n) => isCircuitNet(n, conn));
   const nodeCount = circuitNets.filter((n) => !n.ground).length;
   if (nodeCount > LIMITS.nodes) err("tooManyNodes", [], { n: nodeCount, max: LIMITS.nodes });
 
@@ -78,6 +79,7 @@ export function runErc(doc: SchematicDoc, conn: Connectivity): ErcItem[] {
       for (const iss of waveIssues(w!)) (iss.level === "error" ? err : warn)(`wave.${iss.key}`, [e.id], { name: e.name, ...(iss.vars ?? {}) });
     }
     if (e.kind === "STL" && !e.stl?.device) err("noDevice", [e.id], { name: e.name });
+    if (e.kind === "STL" && e.stl && !isSupportedTechnology(e.stl.technology ?? "FDSOI")) err("unsupportedTechnology", [e.id], { name: e.name, tech: e.stl.technology ?? "" });
     if (e.kind === "CMP") {
       const c = e.cmp;
       if (!c || ![c.v_ref, c.v_high, c.v_low, c.hysteresis].every((x) => Number.isFinite(x)) || c.v_high === c.v_low || c.hysteresis < 0) err("cmpBad", [e.id], { name: e.name });
@@ -136,6 +138,9 @@ export function runErc(doc: SchematicDoc, conn: Connectivity): ErcItem[] {
       if (e.kind === "R" || e.kind === "V" || e.kind === "D") link(ns[0], ns[1]);
       if (e.kind === "BJT") { link(ns[0], ns[1]); link(ns[1], ns[2]); }
       if (e.kind === "STL" || e.kind === "MOS") link(ns[0], ns[2]);
+      // The physical body has intrinsic recombination / junction loss to source. External C is
+      // therefore valid here even without an added resistor; insulated gates still need a driver.
+      if (e.kind === "STL" && optionalPinConnected(e.id, "b", conn)) link(ns[4], ns[2]);
       if (e.kind === "CMP") link(ns[1], gnd); // the output is a voltage source to ground; the input is ideal
     }
     reach.add(gnd.id);
@@ -153,7 +158,7 @@ export function runErc(doc: SchematicDoc, conn: Connectivity): ErcItem[] {
       const ids = [...new Set(n.pins.map((p) => p.el.id))];
       const names = [...new Set(n.pins.map((p) => p.el.name))].join(", ");
       if ([...kinds].every((k) => k === "I")) err("iSeries", ids, { node: n.name, names }, n.wires.map((w) => w.id));
-      else if ([...kinds].every((k) => k === "STL.g")) err("gateOnly", ids, { node: n.name, names }, n.wires.map((w) => w.id));
+      else if ([...kinds].every((k) => (k === "STL.g" || k === "STL.bg"))) err("gateOnly", ids, { node: n.name, names }, n.wires.map((w) => w.id));
       else err("noDcPath", ids, { node: n.name, names }, n.wires.map((w) => w.id));
     }
   }
@@ -167,6 +172,7 @@ export function runErc(doc: SchematicDoc, conn: Connectivity): ErcItem[] {
       warn("labelAlone", [p.el.id], { name: p.el.label ?? "" });
       continue;
     }
+    if (isOptionalStlPin(p.el, p.pin) && !optionalPinConnected(p.el.id, p.pin, conn)) continue;
     unconnectedIds.add(pinId(p.el.id, p.pin));
     const n = conn.pinNet.get(pinId(p.el.id, p.pin));
     (n && reach.has(n.id) ? warn : err)("unconnected", [p.el.id], { name: p.el.name, pin: PIN_LABEL[p.pin] ?? p.pin });

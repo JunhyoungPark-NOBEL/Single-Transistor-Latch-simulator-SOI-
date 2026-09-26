@@ -1,3 +1,4 @@
+import { modelLabel } from "../params/model";
 // Device library manager (modal): built-in read-only devices + the user's devices — load into the Device
 // tab, place in the schematic, rename, duplicate, delete, export/import JSON (validated).
 import { useRef, useState } from "react";
@@ -8,7 +9,7 @@ import { fmtSI } from "../utils/format";
 import { iphPA } from "../utils/payload";
 import { useCircuitView } from "../circuit/view";
 import { loadDeviceIntoParams, GeometryLine } from "./DeviceCard";
-import { builtinDevices, deviceName, exportLibraryJson, parseLibraryJson, TECHNOLOGIES, type LibDevice } from "./library";
+import { builtinDevices, deviceName, exportLibraryJson, isSupportedTechnology, parseLibraryJson, TECHNOLOGIES, type LibDevice } from "./library";
 import { Modal } from "./Modal";
 import { MAX_USER_DEVICES, useDeviceLib, validationBase } from "./store";
 
@@ -17,6 +18,7 @@ function Row({ d, onPlace, onLoad }: { d: LibDevice; onPlace: (d: LibDevice) => 
   const lib = useDeviceLib();
   const [name, setName] = useState(d.name);
   const [confirm, setConfirm] = useState(false);
+  const supported = isSupportedTechnology(d.technology);
   const dev = d.device;
   const iph = iphPA(dev);
   const created = d.created ? new Date(d.created) : null;
@@ -41,23 +43,24 @@ function Row({ d, onPlace, onLoad }: { d: LibDevice; onPlace: (d: LibDevice) => 
               data-testid="dm-name"
             />
           )}
-          <span className="badge">{d.technology}</span>
+          <span className="badge">{modelLabel(dev)} · {d.technology}</span>
+          {!supported && <span className="badge">{t.lang === "ko" ? "미지원" : "Unsupported"}</span>}
           {d.builtin && <span className="badge det">{t("schematic.lib.builtin")}</span>}
         </div>
         <div className="dm-meta">
           <GeometryLine g={d.geometry} />
         </div>
         <div className="dm-meta mono">
-          V<sub>G</sub> {dev.vg.toFixed(2).replace("-", "−")} V · {iph ? <>I<sub>PH</sub> {fmtSI(iph * 1e-12, "A", 3)}</> : t("schematic.lib.dark")} · {t("schematic.lib.local", { mode: t(`local.mode.short.${d.stochastic.local_state.mode}` as never) })}
+          <i>V</i><sub>G</sub> {dev.vg.toFixed(2).replace("-", "−")} V · {iph ? <><i>I</i><sub>PH</sub> {fmtSI(iph * 1e-12, "A", 3)}</> : t("schematic.lib.dark")} · {t("schematic.lib.local", { mode: t(`local.mode.short.${d.stochastic.local_state.mode}` as never) })}
         </div>
         {d.notes && <div className="dm-notes">{d.notes}</div>}
         {created && <div className="dm-date">{t("schematic.lib.created")}: {created.toLocaleString(t.lang === "ko" ? "ko-KR" : "en-GB")}</div>}
       </div>
       <div className="dm-actions">
-        <button type="button" className="btn sm" onClick={() => onLoad(d)} data-testid="dm-load">
+        <button type="button" className="btn sm" disabled={!supported} onClick={() => onLoad(d)} data-testid="dm-load">
           {t("schematic.lib.load")}
         </button>
-        <button type="button" className="btn sm primary" onClick={() => onPlace(d)} data-testid="dm-place">
+        <button type="button" className="btn sm primary" disabled={!supported} onClick={() => onPlace(d)} data-testid="dm-place">
           {t("schematic.lib.place")}
         </button>
         <button type="button" className="btn sm ghost" disabled={lib.devices.length >= MAX_USER_DEVICES} onClick={() => lib.duplicate(d, t("schematic.lib.copySuffix"))} data-testid="dm-duplicate">
@@ -90,6 +93,7 @@ export default function DeviceManager({ onClose }: { onClose: () => void }) {
   const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(null);
   const builtins = builtinDevices(meta);
   const place = (d: LibDevice) => {
+    if (!isSupportedTechnology(d.technology)) return;
     onClose();
     useStore.getState().setTab("circuit");
     useCircuitView.getState().setView("schematic");
@@ -98,7 +102,7 @@ export default function DeviceManager({ onClose }: { onClose: () => void }) {
     });
   };
   const loadDev = (d: LibDevice) => {
-    loadDeviceIntoParams(d);
+    if (!loadDeviceIntoParams(d)) return;
     setMsg({ text: t("schematic.dev.loadedToast", { name: deviceName(d, t.lang) }) });
   };
   return (
@@ -122,9 +126,9 @@ export default function DeviceManager({ onClose }: { onClose: () => void }) {
     >
       <div className="dm-tech" aria-label={t("schematic.dev.tech")}>
         {TECHNOLOGIES.map((x) => (
-          <span key={x.id} className={`techsel-opt${x.active ? " on" : ""}`} aria-disabled={!x.active} title={x.active ? x.id : t("schematic.dev.techSoon", { tech: x.id })}>
+          <span key={x.id} className={`techsel-opt${x.active ? " on" : ""}`} aria-disabled={!x.active} title={x.active ? x.id : (t.lang === "ko" ? "미지원" : "Unsupported")}>
             {x.id}
-            {!x.active && <span className="soon">{t("schematic.dev.soon")}</span>}
+            {!x.active && <span className="soon">{t.lang === "ko" ? "미지원" : "Unsupported"}</span>}
           </span>
         ))}
       </div>

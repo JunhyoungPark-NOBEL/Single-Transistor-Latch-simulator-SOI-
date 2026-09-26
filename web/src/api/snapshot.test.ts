@@ -204,4 +204,14 @@ describe("nearest V_G / optical power", () => {
     expect(nearDistance({ vg: -1.8, p: 2 }, { vg: -1.8, p: null })).toBe(Infinity);
     expect(nearDistance({ vg: -1.8, p: 5 }, { vg: -1.8, p: 3.51 })).toBe(Infinity);
   });
+
+  it("strict production replay never substitutes a nearby condition or a demo result", async () => {
+    const payload = dev(-2);
+    const snap = new Snapshot({ format: 1, created: "x", data: {}, compute: [
+      { kind: "branches", key: snapshotKey("branches", payload), label: "reference", file: "a.json", bytes: 1, near: nearInfo("branches", payload)! },
+    ] }, "s/", fakeFetch({ "s/a.json": '{"v":-2}' }));
+    const backend = createSnapshotBackend(snap, { exactOnly: true, fallback: () => { throw new Error("demo must not be reached"); } });
+    expect((await backend.submit("branches", payload)).result).toEqual({ v: -2 });
+    await expect(backend.submit("branches", dev(-1.99))).rejects.toThrow("snapshot-missing");
+  });
 });

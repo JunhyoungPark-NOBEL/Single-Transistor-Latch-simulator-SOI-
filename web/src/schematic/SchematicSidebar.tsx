@@ -1,3 +1,4 @@
+import { modelLabel } from "../params/model";
 // Sidebar content while the schematic editor is active: device library (place devices), .tran settings
 // with a live feasibility estimate, and the stochastic settings (runs, seed, noise, local states).
 // 간단히: the stop time and the number of runs stay visible; the other settings fold behind "고급 항목 n개 ▸"
@@ -5,7 +6,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useT } from "../i18n";
 import type { StrKey } from "../i18n/strings";
-import { deviceName, type LibDevice } from "../devices/library";
+import { deviceName, isSupportedTechnology, type LibDevice } from "../devices/library";
 import { SaveDeviceForm } from "../devices/DeviceCard";
 import { useDeviceLib } from "../devices/store";
 import { LOCAL_ACTION_OPTIONS, LOCAL_MODE_OPTIONS } from "../params/schema";
@@ -13,7 +14,7 @@ import { subs } from "../plots/labels";
 import { SubText } from "../plots/SubText";
 import { useIsAll } from "../state/layout";
 import { useStore } from "../state/store";
-import { fmtDuration, fmtSI as fmtSIu } from "../utils/format";
+import { fmtSI as fmtSIu } from "../utils/format";
 import { iphPA } from "../utils/payload";
 import { estimate } from "./feasibility";
 import type { SchematicDoc } from "./model";
@@ -55,6 +56,7 @@ function LibraryCard() {
   const entries = libraryEntries();
   const placing = tool.kind === "place" && tool.el === "STL";
   const place = (d: LibDevice) => {
+    if (!isSupportedTechnology(d.technology)) return;
     useSch.getState().set({ stlChoice: d.id, tool: { kind: "place", el: "STL", rot: 0, mirror: false }, selection: [] });
     document.querySelector<HTMLElement>("[data-testid=sch-canvas]")?.focus({ preventScroll: true });
   };
@@ -76,12 +78,13 @@ function LibraryCard() {
                     <SubText text={subs(d.id === "current" ? t("schematic.lib.current") : deviceName(d, lang))} />
                   </span>
                 </span>
-                <span className="lib-meta mono">
+                <span className="lib-meta mono"><span className="lib-badge">{modelLabel(d.device)}</span>
+                  {!isSupportedTechnology(d.technology) && <span className="lib-badge">{d.technology} · {t.lang === "ko" ? "미지원" : "Unsupported"}</span>}
                   {d.builtin && <span className="lib-badge">{t("schematic.lib.builtin")}</span>}
-                  V<sub>G</sub> {d.device.vg.toFixed(2).replace("-", "−")} V · {iph ? <>I<sub>PH</sub> {fmtSIu(iph * 1e-12, "A", 3)}</> : t("schematic.lib.dark")} · {t("schematic.lib.local", { mode: t(`local.mode.short.${d.stochastic.local_state.mode}` as never) })}
+                  <i>V</i><sub>G</sub> {d.device.vg.toFixed(2).replace("-", "−")} V · {iph ? <><i>I</i><sub>PH</sub> {fmtSIu(iph * 1e-12, "A", 3)}</> : t("schematic.lib.dark")} · {t("schematic.lib.local", { mode: t(`local.mode.short.${d.stochastic.local_state.mode}` as never) })}
                 </span>
               </span>
-              <button type="button" className={`btn sm${active ? " primary" : ""}`} onClick={() => place(d)} aria-label={t("schematic.lib.placeAria", { name: d.id === "current" ? t("schematic.lib.current") : deviceName(d, lang) })} data-testid="lib-place">
+              <button type="button" className={`btn sm${active ? " primary" : ""}`} disabled={!isSupportedTechnology(d.technology)} onClick={() => place(d)} aria-label={t("schematic.lib.placeAria", { name: d.id === "current" ? t("schematic.lib.current") : deviceName(d, lang) })} data-testid="lib-place">
                 {t("schematic.lib.place")}
               </button>
             </li>
@@ -151,8 +154,8 @@ function SimCard() {
           <strong>{t(`schematic.sim.level.${level}` as StrKey)}</strong>
           <span className="mono">
             {mode === "stochastic"
-              ? t("schematic.sim.estimateSto", { steps: compact(est.stepsPerRun), runs: est.runs, time: fmtDuration(est.seconds) })
-              : t("schematic.sim.estimate", { steps: compact(est.stepsPerRun), time: fmtDuration(est.seconds) })}
+              ? `${compact(est.stepsPerRun)} ${t.lang === "ko" ? "스텝 / 실행" : "steps / run"} × ${est.runs}`
+              : `${compact(est.stepsPerRun)} ${t.lang === "ko" ? "예상 스텝" : "estimated steps"}`}
           </span>
         </div>
         {(level === "heavy" || level === "refuse") && <div className="feas-hint">{t("schematic.sim.hintHeavy")}</div>}

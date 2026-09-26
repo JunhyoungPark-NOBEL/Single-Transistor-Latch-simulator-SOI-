@@ -96,10 +96,10 @@ export function StatsPanel() {
     if (!data) return [];
     const m = data.measured;
     const out: StatsRow[] = [
-      { key: "V_LU", label: <>V<sub>LU</sub></>, labelText: "V_LU", sub: t("stats.row.vlu"), unit: "V", values: data.V_LU, measured: m?.V_LU ?? null, color: c.hrs, cellTips: ciText ? { mean: ciText } : undefined },
-      { key: "V_LD", label: <>V<sub>LD</sub></>, labelText: "V_LD", sub: t("stats.row.vld"), unit: "V", values: data.V_LD, measured: m?.V_LD ?? null, color: c.lrs },
+      { key: "V_LU", label: <><i>V</i><sub>LU</sub></>, labelText: "V_LU", sub: t("stats.row.vlu"), unit: "V", values: data.V_LU, measured: m?.V_LU ?? null, color: c.hrs, cellTips: ciText ? { mean: ciText } : undefined },
+      { key: "V_LD", label: <><i>V</i><sub>LD</sub></>, labelText: "V_LD", sub: t("stats.row.vld"), unit: "V", values: data.V_LD, measured: m?.V_LD ?? null, color: c.lrs },
       {
-        key: "window", label: <>V<sub>LU</sub> − V<sub>LD</sub></>, labelText: "V_LU - V_LD", sub: t("stats.row.window"), unit: "V",
+        key: "window", label: <><i>V</i><sub>LU</sub> − <i>V</i><sub>LD</sub></>, labelText: "V_LU - V_LD", sub: t("stats.row.window"), unit: "V",
         values: diffSeries(data.V_LU, data.V_LD), measured: m?.V_LD ? diffSeries(m.V_LU, m.V_LD) : null, color: c.text2, tip: t("stats.row.window.tip"),
       },
     ];
@@ -108,7 +108,7 @@ export function StatsPanel() {
       const q = hz.quantiles;
       const atom = isNum(hz.fold_atom) && hz.fold_atom > 0.005 ? ` · ${t("stats.row.hazard.atom", { pct: fmtShare(hz.fold_atom) })}` : "";
       out.push({
-        key: "hazard", label: <>V<sub>LU</sub></>, labelText: "V_LU (carrier noise only, hazard)", sub: `${t("stats.row.hazard")}${atom}`, unit: "V",
+        key: "hazard", label: <><i>V</i><sub>LU</sub></>, labelText: "V_LU (carrier noise only, hazard)", sub: `${t("stats.row.hazard")}${atom}`, unit: "V",
         secondary: true, fullOnly: true, color: c.unstable, tip: t("stats.row.hazard.tip"),
         stats: {
           mean: st.mean, sd: st.sd, median: st.median, p05: st.p05, p95: st.p95, min: st.min, max: st.max,
@@ -269,8 +269,8 @@ export function McIvPanel() {
     const lu = finite(data.V_LU);
     const ld = finite(data.V_LD);
     traces.push(
-      { x: lu, y: lu.map(() => 1), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.rugLu"), showlegend: false, marker: { symbol: "line-ns-open", size: 14, color: c.hrs, line: { width: 1.2 } }, opacity: 0.6, hovertemplate: "V<sub>LU</sub> = %{x:.3f} V<extra></extra>" },
-      { x: ld, y: ld.map(() => 0), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.rugLd"), showlegend: false, marker: { symbol: "line-ns-open", size: 14, color: c.lrs, line: { width: 1.2 } }, opacity: 0.6, hovertemplate: "V<sub>LD</sub> = %{x:.3f} V<extra></extra>" },
+      { x: lu, y: lu.map(() => 1), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.rugLu"), showlegend: false, marker: { symbol: "line-ns-open", size: 14, color: c.hrs, line: { width: 1.2 } }, opacity: 0.6, hovertemplate: "<i>V</i><sub>LU</sub> = %{x:.3f} V<extra></extra>" },
+      { x: ld, y: ld.map(() => 0), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.rugLd"), showlegend: false, marker: { symbol: "line-ns-open", size: 14, color: c.lrs, line: { width: 1.2 } }, opacity: 0.6, hovertemplate: "<i>V</i><sub>LD</sub> = %{x:.3f} V<extra></extra>" },
     );
     // MC means: dashed (the Distribution tab's dotted lines are the mean-model folds), labelled at the top
     const shapes: Partial<Shape>[] = [];
@@ -280,7 +280,7 @@ export function McIvPanel() {
     for (const [v, col, q, row] of [[data.stats.LU.mean, c.hrs, "LU", 0], [data.stats.LD.mean, c.lrs, "LD", 1]] as const)
       if (isNum(v)) {
         shapes.push({ type: "line", xref: "x", yref: "paper", x0: v, x1: v, y0: 0, y1: 1, line: { color: col, width: 1, dash: "dash" } });
-        ann.push({ x: v, y: 1, xref: "x", yref: "paper", yanchor: "top", xanchor: "right", xshift: -3, yshift: -14 * row, text: `${t("stats.mean")} V<sub>${q}</sub> ${v.toFixed(3)}`, showarrow: false, font: { size: 10.5, color: col } });
+        ann.push({ x: v, y: 1, xref: "x", yref: "paper", yanchor: "top", xanchor: "right", xshift: -3, yshift: -14 * row, text: `${t("stats.mean")} <i>V</i><sub>${q}</sub> ${v.toFixed(3)}`, showarrow: false, font: { size: 10.5, color: col } });
       }
     const layout: Partial<Layout> = {
       xaxis: { title: { text: t("axis.vd") }, range: [0, params.sweep.vd_max_V + 0.15], anchor: "y2" },
@@ -369,8 +369,8 @@ export function DistPanel() {
     const traces: Data[] = [];
     const meas = showMeas ? data.measured : null;
     const series = [
-      { k: "LU" as const, color: c.hrs, label: "V<sub>LU</sub>", raw: data.V_LU, model: finite(data.V_LU), meas: finite(meas?.V_LU), fold: data.centre.V_LU },
-      { k: "LD" as const, color: c.lrs, label: "V<sub>LD</sub>", raw: data.V_LD, model: finite(data.V_LD), meas: finite(meas?.V_LD), fold: data.centre.V_LD },
+      { k: "LU" as const, color: c.hrs, label: "<i>V</i><sub>LU</sub>", raw: data.V_LU, model: finite(data.V_LU), meas: finite(meas?.V_LU), fold: data.centre.V_LU },
+      { k: "LD" as const, color: c.lrs, label: "<i>V</i><sub>LD</sub>", raw: data.V_LD, model: finite(data.V_LD), meas: finite(meas?.V_LD), fold: data.centre.V_LD },
     ].filter((s) => which === "both" || which === s.k);
     const shapes: Partial<Shape>[] = [];
     for (const s of series) {
@@ -445,7 +445,7 @@ export function DistPanel() {
       <span key="pl" data-testid="dist-plateau">
         {plateau.map((x, i) => (
           <span key={x.k}>
-            {i > 0 && " · "}V<sub>{x.k}</sub> {t("stats.dist.plateau", { pct: fmtShare(x.top) })}
+            {i > 0 && " · "}<i>V</i><sub>{x.k}</sub> {t("stats.dist.plateau", { pct: fmtShare(x.top) })}
           </span>
         ))}
       </span>,
@@ -456,7 +456,7 @@ export function DistPanel() {
         {t("stats.dist.ksHead")}{" "}
         {ksLine.map((x, i) => (
           <span key={x.k}>
-            {i > 0 && " · "}V<sub>{x.k}</sub> {t("stats.dist.ksItem", { d: x.D.toFixed(3), p: fmtP(x.p) })}
+            {i > 0 && " · "}<i>V</i><sub>{x.k}</sub> {t("stats.dist.ksItem", { d: x.D.toFixed(3), p: fmtP(x.p) })}
           </span>
         ))}
       </span>,
@@ -490,8 +490,8 @@ export function HazardPanel() {
     if (!data) return undefined;
     const v = nums(data.voltage);
     const traces: Data[] = [
-      { x: v, y: pos(data.hazard), type: "scatter", mode: "lines", name: t("axis.leg.h"), line: { color: c.hrs, width: 2.2 }, hovertemplate: "V<sub>D</sub> = %{x:.4f} V<br>h = %{y:.3g} 1/s<extra></extra>" },
-      { x: v, y: nums(data.survival), type: "scatter", mode: "lines", name: t("axis.leg.S"), yaxis: "y2", line: { color: c.text2, width: 2.2 }, hovertemplate: "V<sub>D</sub> = %{x:.4f} V<br>S = %{y:.4f}<extra></extra>" },
+      { x: v, y: pos(data.hazard), type: "scatter", mode: "lines", name: t("axis.leg.h"), line: { color: c.hrs, width: 2.2 }, hovertemplate: "<i>V</i><sub>D</sub> = %{x:.4f} V<br>h = %{y:.3g} 1/s<extra></extra>" },
+      { x: v, y: nums(data.survival), type: "scatter", mode: "lines", name: t("axis.leg.S"), yaxis: "y2", line: { color: c.text2, width: 2.2 }, hovertemplate: "<i>V</i><sub>D</sub> = %{x:.4f} V<br>S = %{y:.4f}<extra></extra>" },
     ];
     const shapes: Partial<Shape>[] = [];
     const ann: NonNullable<Partial<Layout>["annotations"]> = [];
@@ -503,7 +503,7 @@ export function HazardPanel() {
     if (isNum(st.mean)) {
       shapes.push({ type: "line", xref: "x", yref: "y2", x0: st.mean, x1: st.mean, y0: 0, y1: 1, line: { color: c.hrs, width: 1, dash: "dot" } });
       // carrier noise only: say so on the plot, since the MC answer's ± (local states included) is ~15× larger
-      ann.push({ x: st.mean, y: 0.5, xref: "x", yref: "y2", text: `${t("stats.row.hazard")}<br>${t("stats.mean")} V<sub>LU</sub> ${st.mean.toFixed(3)} V · σ ${isNum(st.sd) ? (st.sd * 1e3).toFixed(1) : "—"} mV`, showarrow: false, xanchor: "right", xshift: -6, align: "right", font: { size: 11, color: c.text2 } });
+      ann.push({ x: st.mean, y: 0.5, xref: "x", yref: "y2", text: `${t("stats.row.hazard")}<br>${t("stats.mean")} <i>V</i><sub>LU</sub> ${st.mean.toFixed(3)} V · σ ${isNum(st.sd) ? (st.sd * 1e3).toFixed(1) : "—"} mV`, showarrow: false, xanchor: "right", xshift: -6, align: "right", font: { size: 11, color: c.text2 } });
     }
     // sweep rate: bottom-left of the survival strip (S = 1 there, below the fold)
     if (isNum(data.rate_V_per_s))
@@ -574,25 +574,25 @@ export function VgStochPanel() {
     const hide = all ? { visible: "legendonly" as const } : { visible: false as const, showlegend: false };
     const traces: Data[] = [
       { x: bx, y: by, type: "scatter", mode: "lines", line: { width: 0 }, fill: "toself", fillcolor: c.hrsSoft, name: "± σ", hoverinfo: "skip", showlegend: false },
-      { x: vg, y: mean, type: "scatter", mode: "lines+markers", name: `${t("axis.leg.vluMean")} ± σ`, line: { color: c.hrs, width: 2.2 }, marker: { size: 6 }, hovertemplate: "V<sub>G</sub> = %{x:.2f} V<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra></extra>" },
-      { x: vg, y: nums(data.fold_centre_V), type: "scatter", mode: "lines", name: t("vgs.fold"), line: { color: c.hrs, width: 1.4, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>V<sub>LU</sub> = %{y:.3f} V<extra>${t("vgs.fold")}</extra>`, ...hide },
-      { x: vg, y: nums(data.VLD_fold_V), type: "scatter", mode: "lines", name: t("axis.leg.vldFold"), line: { color: c.lrs, width: 1.4, dash: "dot" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>V<sub>LD</sub> = %{y:.3f} V<extra>${t("axis.leg.vldFold")}</extra>`, ...hide },
-      { x: vg, y: sdMv, type: "scatter", mode: "lines+markers", name: t("axis.leg.sdTotal"), yaxis: "y2", line: { color: c.hrs, width: 2 }, marker: { size: 5 }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("axis.leg.sdTotal")}</extra>` },
-      { x: vg, y: keep(nums(data.state_sd_mV)), type: "scatter", mode: "lines", name: t("vgs.state"), yaxis: "y2", line: { color: c.categorical[1], width: 1.5, dash: "dash" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.state")}</extra>`, ...hide },
-      { x: vg, y: keep(nums(data.noise_sd_mV)), type: "scatter", mode: "lines", name: t("vgs.noise"), yaxis: "y2", line: { color: c.categorical[2], width: 1.5, dash: "dot" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.noise")}</extra>`, ...hide },
+      { x: vg, y: mean, type: "scatter", mode: "lines+markers", name: `${t("axis.leg.vluMean")} ± σ`, line: { color: c.hrs, width: 2.2 }, marker: { size: 6 }, hovertemplate: "<i>V</i><sub>G</sub> = %{x:.2f} V<br>⟨<i>V</i><sub>LU</sub>⟩ = %{y:.3f} V<extra></extra>" },
+      { x: vg, y: nums(data.fold_centre_V), type: "scatter", mode: "lines", name: t("vgs.fold"), line: { color: c.hrs, width: 1.4, dash: "dash" }, hovertemplate: `<i>V</i><sub>G</sub> = %{x:.2f} V<br><i>V</i><sub>LU</sub> = %{y:.3f} V<extra>${t("vgs.fold")}</extra>`, ...hide },
+      { x: vg, y: nums(data.VLD_fold_V), type: "scatter", mode: "lines", name: t("axis.leg.vldFold"), line: { color: c.lrs, width: 1.4, dash: "dot" }, hovertemplate: `<i>V</i><sub>G</sub> = %{x:.2f} V<br><i>V</i><sub>LD</sub> = %{y:.3f} V<extra>${t("axis.leg.vldFold")}</extra>`, ...hide },
+      { x: vg, y: sdMv, type: "scatter", mode: "lines+markers", name: t("axis.leg.sdTotal"), yaxis: "y2", line: { color: c.hrs, width: 2 }, marker: { size: 5 }, hovertemplate: `<i>V</i><sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("axis.leg.sdTotal")}</extra>` },
+      { x: vg, y: keep(nums(data.state_sd_mV)), type: "scatter", mode: "lines", name: t("vgs.state"), yaxis: "y2", line: { color: c.categorical[1], width: 1.5, dash: "dash" }, hovertemplate: `<i>V</i><sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.state")}</extra>`, ...hide },
+      { x: vg, y: keep(nums(data.noise_sd_mV)), type: "scatter", mode: "lines", name: t("vgs.noise"), yaxis: "y2", line: { color: c.categorical[2], width: 1.5, dash: "dot" }, hovertemplate: `<i>V</i><sub>G</sub> = %{x:.2f} V<br>σ = %{y:.1f} mV<extra>${t("vgs.noise")}</extra>`, ...hide },
     ];
     if (data.measured?.length) {
       traces.push(
-        { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.mean_V), error_y: { type: "data", array: data.measured.map((m) => m.sd_mV / 1e3), visible: true, color: c.meas, thickness: 1.2, width: 4 }, type: "scatter", mode: "markers", name: t("axis.leg.meanMeas"), marker: { color: c.meas, size: 8, symbol: "square" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>⟨V<sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("measured")}</extra>` },
-        { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.sd_mV), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.sdMeas"), marker: { color: c.meas, size: 8, symbol: "square-open" }, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("measured")}</extra>`, showlegend: false },
+        { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.mean_V), error_y: { type: "data", array: data.measured.map((m) => m.sd_mV / 1e3), visible: true, color: c.meas, thickness: 1.2, width: 4 }, type: "scatter", mode: "markers", name: t("axis.leg.meanMeas"), marker: { color: c.meas, size: 8, symbol: "square" }, hovertemplate: `<i>V</i><sub>G</sub> = %{x:.2f} V<br>⟨<i>V</i><sub>LU</sub>⟩ = %{y:.3f} V<extra>${t("measured")}</extra>` },
+        { x: data.measured.map((m) => m.vg), y: data.measured.map((m) => m.sd_mV), yaxis: "y2", type: "scatter", mode: "markers", name: t("axis.leg.sdMeas"), marker: { color: c.meas, size: 8, symbol: "square-open" }, hovertemplate: `<i>V</i><sub>G</sub> = %{x:.2f} V<br>σ<sub>LU</sub> = %{y:.1f} mV<extra>${t("measured")}</extra>`, showlegend: false },
       );
     }
     // censoring at the sweep maximum (engines fix): stacked bars on a right-hand % axis of the σ strip
     const cens = censoredShares(data);
     if (cens) {
       traces.push(
-        { x: vg, y: cens.noLatch.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("axis.leg.noLatch"), marker: { color: c.unstable }, opacity: 0.35, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>%{y:.1f} %<extra>${t("axis.leg.noLatch")}</extra>`, ...hide },
-        { x: vg, y: cens.beyond.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("axis.leg.beyond", { v: cens.vdMax }), marker: { color: c.warn }, opacity: 0.35, hovertemplate: `V<sub>G</sub> = %{x:.2f} V<br>%{y:.1f} %<extra>${t("axis.leg.beyond", { v: cens.vdMax })}</extra>` },
+        { x: vg, y: cens.noLatch.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("axis.leg.noLatch"), marker: { color: c.unstable }, opacity: 0.35, hovertemplate: `<i>V</i><sub>G</sub> = %{x:.2f} V<br>%{y:.1f} %<extra>${t("axis.leg.noLatch")}</extra>`, ...hide },
+        { x: vg, y: cens.beyond.map((v) => (v == null ? null : 100 * v)), yaxis: "y3", type: "bar", name: t("axis.leg.beyond", { v: cens.vdMax }), marker: { color: c.warn }, opacity: 0.35, hovertemplate: `<i>V</i><sub>G</sub> = %{x:.2f} V<br>%{y:.1f} %<extra>${t("axis.leg.beyond", { v: cens.vdMax })}</extra>` },
       );
     }
     // the sweep peak on the mean axis: points pinned just under it are censoring artefacts
@@ -601,7 +601,7 @@ export function VgStochPanel() {
     const ann: NonNullable<Partial<Layout>["annotations"]> = [];
     if (isNum(vdMax) && vdMax > 0) {
       shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: vdMax, y1: vdMax, line: { dash: "dot", color: c.warn, width: 1.2 } });
-      ann.push({ x: 0.01, y: vdMax, xref: "paper", yref: "y", xanchor: "left", yanchor: "bottom", text: `V<sub>D,max</sub> ${vdMax} V`, showarrow: false, font: { size: 10.5, color: c.warn } });
+      ann.push({ x: 0.01, y: vdMax, xref: "paper", yref: "y", xanchor: "left", yanchor: "bottom", text: `<i>V</i><sub>D,max</sub> ${vdMax} V`, showarrow: false, font: { size: 10.5, color: c.warn } });
     }
     const layout: Partial<Layout> = {
       xaxis: { title: { text: t("axis.vg") }, anchor: "y2" },
@@ -706,8 +706,8 @@ export function CyclePanel() {
     const unit = ax?.unit ?? "V";
     const toDisp = (v: number | null) => (v == null ? null : unit === "V" ? v * 1e3 : v);
     const traces: Data[] = [
-      { x: idx, y: nums(data.V_LU), type: "scatter", mode: "lines+markers", name: "V<sub>LU</sub>", line: { color: c.hrs, width: 1 }, marker: { size: 4 }, hovertemplate: `${t("axis.h.cycle")}<br>V<sub>LU</sub> = %{y:.3f} V<extra></extra>` },
-      { x: idx, y: nums(data.V_LD), type: "scatter", mode: "lines+markers", name: "V<sub>LD</sub>", line: { color: c.lrs, width: 1 }, marker: { size: 4 }, hovertemplate: `${t("axis.h.cycle")}<br>V<sub>LD</sub> = %{y:.3f} V<extra></extra>` },
+      { x: idx, y: nums(data.V_LU), type: "scatter", mode: "lines+markers", name: "<i>V</i><sub>LU</sub>", line: { color: c.hrs, width: 1 }, marker: { size: 4 }, hovertemplate: `${t("axis.h.cycle")}<br><i>V</i><sub>LU</sub> = %{y:.3f} V<extra></extra>` },
+      { x: idx, y: nums(data.V_LD), type: "scatter", mode: "lines+markers", name: "<i>V</i><sub>LD</sub>", line: { color: c.lrs, width: 1 }, marker: { size: 4 }, hovertemplate: `${t("axis.h.cycle")}<br><i>V</i><sub>LD</sub> = %{y:.3f} V<extra></extra>` },
     ];
     const cs = nums(data.cycle_state);
     const hasState = cs.some((v) => v != null && v !== 0);

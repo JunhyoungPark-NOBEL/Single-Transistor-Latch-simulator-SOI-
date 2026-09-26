@@ -1,0 +1,136 @@
+{
+  "first": {
+    "wall_s": 0.264036163003766,
+    "cpu_s": 0.26399680699999983,
+    "reported_s": 0.2637958520062966,
+    "solver": {
+      "steps": 3466,
+      "rejected": 47,
+      "newton_iters": 7024,
+      "runtime_s": 0.13487432700640056
+    },
+    "warnings": [
+      "a drain junction became forward biased (min r = -0.211 V): symmetric forward drain-diode extension used (outside the calibrated model)"
+    ],
+    "engine": null,
+    "t_reached_s": [
+      0.004
+    ],
+    "saved_points": [
+      3467
+    ],
+    "event_count": 2
+  },
+  "warm": [
+    {
+      "wall_s": 0.13477627000247594,
+      "cpu_s": 0.13477838800000086,
+      "reported_s": 0.1346901409997372,
+      "solver": {
+        "steps": 3466,
+        "rejected": 47,
+        "newton_iters": 7024,
+        "runtime_s": 0.13239918000181206
+      },
+      "warnings": [
+        "a drain junction became forward biased (min r = -0.211 V): symmetric forward drain-diode extension used (outside the calibrated model)"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.004
+      ],
+      "saved_points": [
+        3467
+      ],
+      "event_count": 2
+    },
+    {
+      "wall_s": 0.13080976100172848,
+      "cpu_s": 0.1308114370000002,
+      "reported_s": 0.13072998099960387,
+      "solver": {
+        "steps": 3466,
+        "rejected": 47,
+        "newton_iters": 7024,
+        "runtime_s": 0.12869744800264016
+      },
+      "warnings": [
+        "a drain junction became forward biased (min r = -0.211 V): symmetric forward drain-diode extension used (outside the calibrated model)"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.004
+      ],
+      "saved_points": [
+        3467
+      ],
+      "event_count": 2
+    },
+    {
+      "wall_s": 0.1318263540015323,
+      "cpu_s": 0.13182840600000034,
+      "reported_s": 0.13171746999432798,
+      "solver": {
+        "steps": 3466,
+        "rejected": 47,
+        "newton_iters": 7024,
+        "runtime_s": 0.1295891529880464
+      },
+      "warnings": [
+        "a drain junction became forward biased (min r = -0.211 V): symmetric forward drain-diode extension used (outside the calibrated model)"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.004
+      ],
+      "saved_points": [
+        3467
+      ],
+      "event_count": 2
+    },
+    {
+      "wall_s": 0.13187236699741334,
+      "cpu_s": 0.1318741879999994,
+      "reported_s": 0.13179454099736176,
+      "solver": {
+        "steps": 3466,
+        "rejected": 47,
+        "newton_iters": 7024,
+        "runtime_s": 0.12972728500608355
+      },
+      "warnings": [
+        "a drain junction became forward biased (min r = -0.211 V): symmetric forward drain-diode extension used (outside the calibrated model)"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.004
+      ],
+      "saved_points": [
+        3467
+      ],
+      "event_count": 2
+    },
+    {
+      "wall_s": 0.12985495700559113,
+      "cpu_s": 0.12983358299999992,
+      "reported_s": 0.12977081000281032,
+      "solver": {
+        "steps": 3466,
+        "rejected": 47,
+        "newton_iters": 7024,
+        "runtime_s": 0.12742443500610534
+      },
+      "warnings": [
+        "a drain junction became forward biased (min r = -0.211 V): symmetric forward drain-diode extension used (outside the calibrated model)"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.004
+      ],
+      "saved_points": [
+        3467
+      ],
+      "event_count": 2
+    }
+  ]
+}

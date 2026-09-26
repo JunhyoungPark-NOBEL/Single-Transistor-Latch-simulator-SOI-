@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import accepted from "./fixtures/csvm-payload.json";
+import accepted from "../../e2e/fixtures/csvm/payload.json";
 import { BUILTIN_META } from "../state/presets";
 import { canonical } from "../utils/object";
 import { presetRoot } from "../utils/payload";
@@ -13,7 +13,8 @@ describe("device forcing", () => {
     expect(payload.netlist.elements[3]).toMatchObject({ device: { geometry: REFERENCE_GEOMETRY, vbg: 0 } });
     // The recording predates these explicit defaults. Its accepted request and numerical result stay unchanged;
     // only the known-equivalent baseline fields are omitted for this compatibility comparison.
-    expect(legacyGeometryPayload(payload)).toEqual(accepted);
+    expect(legacyGeometryPayload({ ...payload, probes: payload.probes!.filter((key) => key !== "X1.vb") })).toEqual(accepted);
+    expect(payload.probes).toContain("X1.vb");
   });
   it("preserves valid mode/settings and rejects corrupt persisted settings", () => {
     expect(restoreForcing("not JSON")).toEqual({ forcing: "vscm", settings: DEFAULT_CSVM });

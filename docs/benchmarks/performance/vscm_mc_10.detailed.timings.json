@@ -1,0 +1,64 @@
+{
+  "first": {
+    "wall_s": 0.0370457679964602,
+    "cpu_s": 0.03703908299999625,
+    "reported_s": 0.0370365349954227,
+    "solver": null,
+    "warnings": [
+      "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous"
+    ],
+    "engine": "calibrated_lookup"
+  },
+  "warm": [
+    {
+      "wall_s": 0.03339051399962045,
+      "cpu_s": 0.03338500699999969,
+      "reported_s": 0.03338322299532592,
+      "solver": null,
+      "warnings": [
+        "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous"
+      ],
+      "engine": "calibrated_lookup"
+    },
+    {
+      "wall_s": 0.03673057300329674,
+      "cpu_s": 0.03673212599999687,
+      "reported_s": 0.03672418299538549,
+      "solver": null,
+      "warnings": [
+        "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous"
+      ],
+      "engine": "calibrated_lookup"
+    },
+    {
+      "wall_s": 0.03411537400097586,
+      "cpu_s": 0.03411655500000421,
+      "reported_s": 0.034109845000784844,
+      "solver": null,
+      "warnings": [
+        "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous"
+      ],
+      "engine": "calibrated_lookup"
+    },
+    {
+      "wall_s": 0.03392449700913858,
+      "cpu_s": 0.033925250000002904,
+      "reported_s": 0.03391880900016986,
+      "solver": null,
+      "warnings": [
+        "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous"
+      ],
+      "engine": "calibrated_lookup"
+    },
+    {
+      "wall_s": 0.033902783994562924,
+      "cpu_s": 0.033898981000000106,
+      "reported_s": 0.03389691500342451,
+      "solver": null,
+      "warnings": [
+        "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous"
+      ],
+      "engine": "calibrated_lookup"
+    }
+  ]
+}

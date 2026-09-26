@@ -11,11 +11,13 @@ Element outputs (``out`` array of length ``N_EV``)::
     out[3] Q     body-charge coordinate                              (C)
                  Reference: Q = C_ox (psi - V_GS) + Q_exc + q N_A A L_n
                  Geometry: Q = C_body psi - C_front V_GS - C_back V_BG + Q_exc + q N_A A L_n
-                 psi = u - V_T ln(1 + delta/N_A),  Q_exc = z[13] - C_ox u,  L_n = z[11]
+                 psi = u - V_T ln(1 + delta_inj/N_A) + alpha V_BG,  Q_exc = z[13] - C_ox u,  L_n = z[11]
     out[4] unit  unit-event current  z[8] + z[9] + z[18]            (A)   (junction BTBT + GIDL + photo)
     out[5] G     total hole generation current  z[1] - z[3] - z[16] (A)
     out[6] L     hole loss current  z[5] + z[6] + z[7]              (A)
     out[7] flag  1 = u < 0 extension used, 2 = r < 0 extension used, 3 = both
+    out[8] psi   electrostatic body potential relative to source      (V)
+    out[9:11]    front/back electrode charge C_gate (V_gate - psi)     (C)
 
 Extensions outside the engine's steady-state domain (the engine never evaluates them):
 
@@ -27,8 +29,7 @@ Extensions outside the engine's steady-state domain (the engine never evaluates 
   (R_c + R_acc) dI_D; Q uses the exact psi(u) and source depletion width w_s(u).
 * ``r < 0`` (drain junction forward biased, e.g. fast down-ramps or photovoltaic charging at
   V_D ~ 0): the core is evaluated at r = 0 and a *symmetric forward drain diode* is added — the
-  same n+ emitter diffusion saturation current as the source (q A D_n n_i^2 / (N_A L_ref beta) with the
-  calibrated N_A and L_ref: the n+ doping is fixed, so a changed geometry scales it with the junction area A only;
+  same n+ emitter diffusion saturation current as the source (q A D_n n_i^2 / (N_A L_ref beta),
   without the source-edge state phi_E) plus depletion SRH q A w_d n_i / (2 tau_j) expm1(-r/2V_T).
   Its current is a hole loss (L += I_fwd, F -= I_fwd) and flows out of the drain terminal
   (I_D -= I_fwd); the channel current is re-evaluated with the true u + r; V_D = V_D(u,0) + r +
@@ -40,7 +41,8 @@ import numpy as np
 from numba import njit
 
 from server.engine_bridge import m
-from server.geometry_model import channel_current, constants_from_p, gate_charge_offset, params_NA, params_VBI
+from server.geometry_model import channel_current, constants_from_p, gate_charge_offset, body_potential, terminal_capacitances
+from server.simple_model import is_simple, evaluate as evaluate_simple
 
 components = m.components
 
@@ -54,10 +56,8 @@ LCH = float(m.LENGTH_M) * 100.0          # channel length (cm)
 WREF = float(m.WIDTH_M) * 100.0          # calibrated width (cm)
 TSIREF = float(m.TSI_M) * 100.0          # calibrated silicon thickness (cm)
 EPS_SI = 11.7 * float(m.EPS0) / 100.0    # F/cm (as in photo_mean)
-NA_REF = float(params_NA)                # calibrated body doping (cm^-3)
-VBI_REF = float(params_VBI)              # its source/drain built-in potential (V)
 
-N_EV = 8
+N_EV = 11  # original eight outputs, electrostatic body potential, front/back electrode charge
 
 
 @njit(cache=True)
@@ -76,6 +76,10 @@ def ch_formula(u, r, p):
 def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
     """Evaluate the element at internal state (u, r); p[11] must hold V_GS.  Returns False
     (and NaNs in ``out``) outside the valid domain."""
+    # Simple Model has its own closed-form transport, charge and gate partition.
+    # Dispatch before any detailed-field/SRH calculation or detailed-domain extension.
+    if is_simple(p):
+        return evaluate_simple(u, r, p, out)
     # Geometry and fixed backgate bias travel with each cell's parameter vector.
     # The gate offset keeps front- and back-gate capacitance coefficients separate.
     lch, width, tsi, area, cox, na, vbi = constants_from_p(p)
@@ -95,11 +99,8 @@ def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
     rser = p[3] / width_scale + z[12]
     flag = 0.0
     if u >= 0.0:
-        psi = u - VT * np.log1p(z[10])
-        if len(p) < 32:   # reference cell: legacy expression, bit-identical to the calibrated path
-            q = COX * (psi - p[11]) + (z[13] - COX * u) + QE * na * AREA * z[11]
-        else:
-            q = cox * psi + gate_charge_offset(p) + (z[13] - cox * u) + QE * na * area * z[11]
+        psi = body_potential(u, p)
+        q = cox * psi + gate_charge_offset(p) + (z[13] - cox * u) + QE * na * area * z[11]
     else:
         flag += 1.0
         du = 1e-4
@@ -119,16 +120,15 @@ def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
         unit += d_u * e
         vd = vd + u + rser * (id_new - idr)
         idr = id_new
-        prod = NI * NI * np.expm1(u / VT)
-        delta = 2 * prod / (na + np.sqrt(na * na + 4 * prod))
-        sb = vbi - u + VT * np.log1p(delta / na)
+        sb = vbi - body_potential(u, p)
+        if not np.isfinite(sb) or sb <= 0.0:
+            for i in range(N_EV):
+                out[i] = np.nan
+            return False
         ws = wdep(sb, na)
         wd = wdep(vbi + rc, na)
-        psi = u - VT * np.log1p(delta / na)
-        if len(p) < 32:
-            q = COX * (psi - p[11]) + z[13] + QE * na * AREA * (LCH - wd - ws)
-        else:
-            q = cox * psi + gate_charge_offset(p) + z[13] + QE * na * area * (lch - wd - ws)
+        psi = body_potential(u, p)
+        q = cox * psi + gate_charge_offset(p) + z[13] + QE * na * area * (lch - wd - ws)
     if r < 0.0:
         flag += 2.0
         if vbi + r < 0.02:
@@ -137,10 +137,8 @@ def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
             return False
         wd0 = wdep(vbi, na)
         wdr = wdep(vbi + r, na)
-        # n+ drain diode: fixed emitter doping, so the saturation current scales with the junction area only
-        # (as the source in geometry_model.geometry_components); reference cell: na, vbi, lch are these constants
-        lref = LCH - 2.0 * wdep(VBI_REF, NA_REF)
-        isd = QE * area * DN * NI * NI / (NA_REF * lref * p[0])
+        lref = lch - 2.0 * wd0
+        isd = QE * area * DN * NI * NI / (na * lref * p[0])
         tj = p[2] * (tsi / TSIREF)
         ifwd = isd * np.expm1(-r / VT) + QE * area * wdr * NI / (2.0 * tj) * np.expm1(-r / (2.0 * VT))
         dch = ch_formula(u, r, p) - ch_formula(u, 0.0, p)
@@ -157,6 +155,13 @@ def stl_eval(u, r, p, na, vbi, rg, fg, table, out):
     out[5] = gq
     out[6] = lq
     out[7] = flag
+    cf, cb = terminal_capacitances(p)
+    out[8] = psi
+    out[9] = cf * (p[11] - psi)
+    out[10] = cb * ((p[32] if len(p) >= 33 else 0.0) - psi)
+    for i in range(N_EV):
+        if not np.isfinite(out[i]):
+            return False
     return True
 
 

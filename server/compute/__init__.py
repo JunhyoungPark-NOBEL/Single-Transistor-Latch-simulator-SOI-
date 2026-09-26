@@ -5,7 +5,9 @@ import importlib
 from typing import Callable
 
 KINDS: dict[str, str] = {
+    "performance_calibrate": "server.compute.performance:run_performance_calibrate",
     "branches": "server.compute.deterministic:run_branches",
+    "simple_calibrate": "server.compute.simple_calibration:run_simple_calibrate",
     "charge_balance": "server.compute.deterministic:run_charge_balance",
     "vg_curve": "server.compute.deterministic:run_vg_curve",
     "hazard": "server.compute.stochastic:run_hazard",

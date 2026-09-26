@@ -22,6 +22,8 @@ const SPECS: Record<Kind, Check[]> = {
   vg_curve_stochastic: [["vg", arr], ["mean_VLU", arr], ["sd_VLU_mV", arr]],
   circuit: [["runs", arr], ["summary", arr], ["schematic.nodes", arr], ["schematic.elements", arr]],
   validation: [["checks", arr]],
+  performance_calibrate: [["samples", arr], ["measured_at", numOrNull]],
+  simple_calibrate: [["device", obj], ["points", arr], ["rmse_log10", numOrNull]],
 };
 
 function at(v: unknown, path: string): unknown {

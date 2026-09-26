@@ -1,3 +1,4 @@
+import { hasSimpleModel, SIMPLE_LIVE_REQUIRED } from "../params/model";
 // Static snapshot backend: precomputed model results for the built-in presets and examples, served as static
 // files next to the page (web/snapshot/, copied into the artifact build by scripts/build-artifact.mjs).
 //
@@ -418,7 +419,7 @@ export function isSnapshotFallback(result: unknown): boolean {
 const FB = "fb:";
 
 /** Backend that answers from the snapshot and delegates everything else to `fallback` (the demo backend). */
-export function createSnapshotBackend(snap: Snapshot, opt: { fallback: () => Backend }): Backend {
+export function createSnapshotBackend(snap: Snapshot, opt: { fallback: () => Backend; exactOnly?: boolean }): Backend {
   let fb: Backend | null = null;
   const fallback = () => (fb ??= opt.fallback());
   let seq = 0;
@@ -437,15 +438,18 @@ export function createSnapshotBackend(snap: Snapshot, opt: { fallback: () => Bac
     }),
     meta: async () => snap.index.meta ?? fallback().meta(),
     submit: async (kind: Kind, payload: unknown) => {
-      let result = await snap.resolve(kind, payload);
+      if (hasSimpleModel(payload) || kind === "simple_calibrate") throw new Error(SIMPLE_LIVE_REQUIRED);
+      const lookup = opt.exactOnly ? snap.lookup.bind(snap) : snap.resolve.bind(snap);
+      let result = await lookup(kind, payload);
       if (result === undefined && !hasChangedGeometry(payload)) {
         const legacy = legacyGeometryPayload(payload);
-        if (canonicalJson(legacy) !== canonicalJson(payload)) result = await snap.resolve(kind, legacy);
+        if (canonicalJson(legacy) !== canonicalJson(payload)) result = await lookup(kind, legacy);
       }
       if (result !== undefined) {
         return { job_id: `snap-${++seq}`, kind, status: "done", progress: 1, message: "snapshot", result, cached: true, elapsed_s: 0 };
       }
       if (hasChangedGeometry(payload)) throw new Error(GEOMETRY_LIVE_REQUIRED);
+      if (opt.exactOnly) throw new Error("snapshot-missing");
       return wrap(await fallback().submit(kind, payload));
     },
     job: async (id: string) => {

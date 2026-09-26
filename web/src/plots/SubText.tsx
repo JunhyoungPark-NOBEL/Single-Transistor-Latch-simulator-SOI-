@@ -1,17 +1,22 @@
-// Renders a dictionary string that uses the Plotly label markup (<sub>…</sub>, <sup>…</sup>) as React
-// elements, so panel footers read the same as the plot labels. Only these two tags are recognised; the
-// input comes from the app's own dictionary, never from user data.
-import { Fragment } from "react";
+// React renderer for the small, trusted label vocabulary shared with Plotly.
+// Unknown HTML is displayed literally; this never injects HTML into the page.
+import { createElement, Fragment, type ReactNode } from "react";
+import { mathMarkup } from "./labels";
+import "../math/typography.css";
+
+function elements(text: string): ReactNode[] {
+  const result: ReactNode[] = [];
+  const pattern = /<(i|sub|sup)>([\s\S]*?)<\/\1>/g;
+  let cursor = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index! > cursor) result.push(text.slice(cursor, match.index));
+    result.push(createElement(match[1], { key: match.index, ...(match[1] === "i" ? { className: "math-var" } : {}) }, ...elements(match[2])));
+    cursor = match.index! + match[0].length;
+  }
+  if (cursor < text.length) result.push(text.slice(cursor));
+  return result;
+}
 
 export function SubText({ text }: { text: string }) {
-  const parts = text.split(/(<su[bp]>.*?<\/su[bp]>)/g);
-  return (
-    <>
-      {parts.map((p, i) => {
-        const m = /^<(su[bp])>(.*)<\/su[bp]>$/.exec(p);
-        if (!m) return <Fragment key={i}>{p}</Fragment>;
-        return m[1] === "sub" ? <sub key={i}>{m[2]}</sub> : <sup key={i}>{m[2]}</sup>;
-      })}
-    </>
-  );
+  return <span className="math-label">{elements(mathMarkup(text)).map((part, i) => <Fragment key={i}>{part}</Fragment>)}</span>;
 }

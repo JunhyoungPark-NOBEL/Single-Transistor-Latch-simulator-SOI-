@@ -1,0 +1,25 @@
+.model-controls { border-bottom: 1px solid var(--border); padding: 14px 16px 16px; }
+.model-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.model-head h2 { font-size: 15px; margin: 0; font-weight: 650; }
+.model-switch { min-height: 38px; }
+.model-switch button { font-size: 13px; flex: 1; }
+.model-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 4px; font-size: 12px; color: var(--muted); }
+.model-status .link-btn { font-size: 13px; white-space: nowrap; }
+.simple-main-fields .field, .simple-advanced .field { margin-top: 12px; }
+.simple-advanced { margin-top: 14px; }
+.simple-advanced summary { display: flex; gap: 7px; align-items: center; cursor: pointer; font-size: 13px; color: var(--muted); }
+.simple-advanced summary::before { content: "›"; transform: rotate(0); font-size: 18px; }
+.simple-advanced[open] summary::before { transform: rotate(90deg); }
+.simple-advanced summary span { margin-left: auto; font-variant-numeric: tabular-nums; }
+.model-note { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.model-error { color: var(--danger, #bc4242); font-size: 13px; line-height: 1.5; }
+.simple-calibration-intro { font-size: 14px; line-height: 1.6; margin-top: 0; }
+.simple-calibration-label, .simple-calibration-fit { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 8px; font-size: 14px; }
+.simple-calibration-label > span:last-child { color: var(--muted); font-size: 12px; }
+.simple-calibration-data { width: 100%; font-family: var(--mono, monospace); font-size: 14px; line-height: 1.8; resize: vertical; }
+.simple-calibration-fit .select { width: 150px; }
+.simple-calibration-result { padding: 14px; border: 1px solid var(--border); border-radius: 10px; margin-top: 14px; font-size: 14px; }
+.simple-calibration-result > div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
+.simple-calibration-result strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.simple-calibration-result details { font-size: 13px; margin-top: 10px; color: var(--muted); }
+.simple-calibration-result summary { cursor: pointer; }

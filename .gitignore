@@ -221,8 +221,9 @@ web/playwright-report/
 web/dist-artifact/
 web/snapshot/
 # NOTE: the Python template above ignores lib/ — never name a source folder "lib".
-# lab-server deployment (deploy/lab): secrets and local settings, never committed
-deploy/lab/stl.env
-deploy/lab/.env
-# local installer kits (scripts/build_local_bundle.py): generated, contain the encrypted app, never committed
-dist-local/
+
+# runtime / large binaries kept out of git
+.studio-launch.lock
+vendor/*.exe
+studio-startup.log
+studio-python-install.log

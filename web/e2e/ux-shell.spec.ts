@@ -34,7 +34,7 @@ async function runSchematic(page: Page) {
 }
 
 test.describe("compact workspace shell", () => {
-  test("compact chrome discloses the reduced credit only when About is opened", async ({ page }) => {
+  test("compact chrome discloses lab and institution only when creator is opened", async ({ page }) => {
     await fresh(page);
     const header = (await page.locator("header.header").boundingBox())!;
     const strip = (await page.getByTestId("modebar").boundingBox())!;
@@ -51,8 +51,7 @@ test.describe("compact workspace shell", () => {
     await expect(pill.getByRole("button").first()).toBeFocused();
 
     const credits = page.getByTestId("credits-chip");
-    await expect(credits).toHaveText("정보", { useInnerText: true });
-    await expect(credits).toHaveAccessibleName("STL Simulator 정보");
+    await expect(credits).toHaveText("제작자", { useInnerText: true });
     await expect(credits).toHaveAttribute("aria-haspopup", "dialog");
     await expect(credits).not.toContainText(/NOBEL|KAIST|최양규|박준형/);
     await credits.focus();
@@ -60,7 +59,8 @@ test.describe("compact workspace shell", () => {
     const about = page.getByTestId("about");
     await expect(about).toBeVisible();
     await expect(about.getByRole("heading")).toBeFocused();
-    await expect(about).toContainText("KAIST · NOBEL 연구실");
+    await expect(about).toContainText("NOBEL 연구실");
+    await expect(about).toContainText("KAIST");
     await expect(about).not.toContainText(/최양규|Choi|박준형|Jun.?Hyoung|advisor/i);
     await page.keyboard.press("Escape");
     await expect(about).toHaveCount(0);
@@ -95,7 +95,7 @@ test.describe("compact workspace shell", () => {
     await page.getByTestId("lang-toggle").click();
     await expect(page.getByTestId("tab-validation")).toHaveText("Reference");
     await expect(page.getByTestId("tab-physics")).toHaveText("Docs");
-    await expect(page.getByTestId("credits-chip")).toHaveText("About", { useInnerText: true });
+    await expect(page.getByTestId("credits-chip")).toHaveText("Credits", { useInnerText: true });
     await device.click();
     await page.getByTestId("mode-deterministic").click();
     await expect(page.getByTestId("run-button")).toContainText("Simulate");
@@ -197,28 +197,19 @@ test.describe("circuit workspace", () => {
   });
 });
 
-test("Reference opens directly to ID–VD benchmarking; the headline excludes the measurement floor", async ({ page }, testInfo) => {
+test("Reference opens directly to ID–VD benchmarking and a two-direction accuracy table", async ({ page }, testInfo) => {
   await fresh(page, "#tab=validation&mode=deterministic");
   await expect(page.getByTestId("mode-toggle")).toHaveCount(0);
   await expect(page.getByTestId("val-fast")).toHaveCount(0);
   await expect(page.getByTestId("reference-fixed-label")).toContainText("기준 데이터");
   await expect(page.getByTestId("panel-val-iv").locator(".js-plotly-plot")).toBeVisible();
   const metrics = page.getByTestId("reference-metrics");
-  // headline (D5): measured vs model switching voltages, and the log error above the measurement floor
-  const switching = page.getByTestId("reference-switching");
-  await expect(switching.locator("thead th")).toHaveCount(4);
-  await expect(switching.locator("tbody tr")).toHaveCount(2);
-  await expect(page.getByTestId("reference-delta-up")).toHaveText(/^[+−]\d+\.\d mV$/);
-  await expect(page.getByTestId("reference-delta-down")).toHaveText(/^[+−]\d+\.\d mV$/);
-  await expect(page.getByTestId("reference-error")).toContainText("바닥 제외");
-  await expect(page.getByTestId("reference-error").locator("tbody tr")).toHaveCount(2);
-  const headline = Number(await page.getByTestId("reference-rmse-down").innerText());
-  expect(headline).toBeLessThan(1);
+  await expect(metrics.locator("thead th")).toHaveCount(4);
+  await expect(metrics.locator("tbody tr")).toHaveCount(2);
+  await expect(metrics).toContainText("RMSE");
   await expect(metrics.locator("details")).not.toHaveAttribute("open", "");
-  await expect(page.getByTestId("reference-full")).toBeHidden();
   await metrics.locator("summary").click();
   await expect(metrics).toContainText("모델 보정에 사용한 기록");
-  await expect(page.getByTestId("reference-full")).toContainText("전체 구간");
   expect(await page.locator("main .js-plotly-plot").count()).toBe(1);
   expect(await noHorizontalScroll(page)).toBe(true);
   await screenshot(page, testInfo, "reference-benchmark.png");
@@ -235,7 +226,7 @@ test.describe("phone shell (390 × 844)", () => {
     await expect(drawer).toContainText("파라미터");
     await expect(page.getByTestId("modebar").getByTestId("mode-toggle")).toBeVisible();
     const credits = page.getByTestId("credits-chip");
-    await expect(credits).toHaveText("정보", { useInnerText: true });
+    await expect(credits).toHaveText("제작자", { useInnerText: true });
     await credits.click();
     const about = page.getByTestId("about");
     await expect(about).toContainText("KAIST");

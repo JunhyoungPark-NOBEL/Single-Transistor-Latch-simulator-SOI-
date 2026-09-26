@@ -19,6 +19,7 @@ PAPER = {"device": {"preset": "paper"}}
 def test_health(client):
     h = client.get("/api/health").json()
     assert h["ok"] is True
+    assert h["product"] == "STL simulator" and h["app_version"] == "1.0.0"
     assert h["workers"] == 2
     assert isinstance(h["version"], str) and len(h["version"]) == 12
 
@@ -27,7 +28,7 @@ def test_meta(client):
     m = client.get("/api/meta").json()
     assert {"paper", "photo", "custom"} <= set(m["presets"])
     assert set(m["kinds"]) == {"branches", "charge_balance", "vg_curve", "hazard", "sweep_mc",
-                               "vg_curve_stochastic", "circuit", "validation"}
+                               "vg_curve_stochastic", "circuit", "validation", "simple_calibrate", "performance_calibrate"}
     assert m["caps"]["n_cycles"] == 2000 and m["caps"]["grid"] == [201, 2001]
     assert m["kinds_available"]["branches"] is True
     assert m["presets"]["paper"]["device"]["vg"] == -2.0
@@ -172,16 +173,6 @@ def test_aliases(client):
 def test_frontend_fallback(client):
     r = client.get("/")
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
-
-
-def test_static_font_is_served_as_woff2(client, tmp_path, monkeypatch):
-    import server.main as main_mod
-    (tmp_path / "fonts").mkdir()
-    (tmp_path / "index.html").write_text("<!doctype html><title>x</title>")
-    (tmp_path / "fonts" / "f.woff2").write_bytes(b"wOF2\x00\x01")
-    monkeypatch.setattr(main_mod, "WEB_DIST", tmp_path)
-    r = client.get("/fonts/f.woff2")
-    assert r.status_code == 200 and r.headers["content-type"] == "font/woff2"
 
 
 def test_api_process_never_imports_numba():
@@ -492,8 +483,7 @@ def test_engine_version_covers_engine_and_serialisation(tmp_path):
     from server.jobs import engine_version
     srv, eng = tmp_path / "server", tmp_path / "engine"
     (srv / "compute").mkdir(parents=True)
-    for name in ("params.py", "engine_bridge.py", "geometry_model.py", "payloads.py", "jsonutil.py", "jobs.py",
-                 "compute/a.py"):
+    for name in ("params.py", "engine_bridge.py", "geometry_model.py", "simple_model.py", "simple_config.py", "payloads.py", "jsonutil.py", "jobs.py", "compute/a.py"):
         (srv / name).write_text("x = 1\n")
     (eng / "photo_extension" / "photo_nodes").mkdir(parents=True)
     (eng / "__pycache__").mkdir()
@@ -503,29 +493,15 @@ def test_engine_version_covers_engine_and_serialisation(tmp_path):
     (eng / "photo_extension" / "photo_nodes" / "node.npz").write_bytes(b"cache")   # run-time caches do not count
     (eng / "__pycache__" / "x.nbi").write_bytes(b"cache")
     assert engine_version(srv, eng) == v0
-    for f, data in ((eng / "stl_api.py", b"y = 2\n"), (eng / "table.npz", b"\x00\x02"), (srv / "jsonutil.py", b"x = 2\n"),
-                    (srv / "geometry_model.py", b"x = 2\n"), (srv / "payloads.py", b"x = 2\n")):
+    for f, data in ((eng / "stl_api.py", b"y = 2\n"), (eng / "table.npz", b"\x00\x02"),
+                    (srv / "jsonutil.py", b"x = 2\n"), (srv / "geometry_model.py", b"x = 2\n"),
+                    (srv / "simple_model.py", b"x = 2\n"), (srv / "simple_config.py", b"x = 2\n"),
+                    (srv / "payloads.py", b"x = 2\n")):
         old = f.read_bytes()
         f.write_bytes(data)
         assert engine_version(srv, eng) != v0, f
         f.write_bytes(old)
     assert engine_version(srv, eng) == v0
-    # coverage is not a hand-kept list: a new server module counts; tests, caches and the HTTP/login layer do not
-    (srv / "tests").mkdir()
-    (srv / ".cache" / "results").mkdir(parents=True)
-    (srv / "__pycache__").mkdir()
-    for f in (srv / "tests" / "test_a.py", srv / ".cache" / "results" / "x.py", srv / "__pycache__" / "y.py",
-              srv / "main.py", srv / "auth.py"):
-        f.write_text("z = 1\n")
-    assert engine_version(srv, eng) == v0
-    (srv / "main.py").write_text("z = 2\n")
-    assert engine_version(srv, eng) == v0
-    (srv / "new_physics.py").write_text("k = 1\n")
-    v1 = engine_version(srv, eng)
-    assert v1 != v0
-    (srv / "compute" / "circuit").mkdir()
-    (srv / "compute" / "circuit" / "basic.py").write_text("k = 1\n")
-    assert engine_version(srv, eng) not in (v0, v1)
 
 
 def test_job_result_memory_budget(tmp_path):

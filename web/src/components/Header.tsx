@@ -1,8 +1,5 @@
-// App chrome: the 52 px header (brand, single-language tabs, one-word mode toggle on the Device and Circuit
-// tabs, backend status dot, KO/EN, theme) and the 32 px context strip under it (one plain sentence about the
-// current tab and mode, the backend status pill that replaces the old Demo / Offline / Snapshot banners, and
-// the credits corner). On phones (≤ 760 px) the tabs take a second header row and the mode toggle moves into
-// the context strip.
+// App chrome: brand, navigation and connection controls above a persistent simulation-mode strip.
+// The navigation takes a second row on smaller screens; the mode control remains easy to find.
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { Mode } from "../api/types";
 import { useT, type T } from "../i18n";
@@ -10,19 +7,22 @@ import type { StrKey } from "../i18n/strings";
 import type { Tab } from "../params/schema";
 import { initBackend } from "../state/runner";
 import { useStore } from "../state/store";
+import { useSch } from "../schematic/store";
 import { useForcing } from "../device/forcing";
 import { subs } from "../plots/labels";
 import { SubText } from "../plots/SubText";
 import { Credits } from "./Credits";
 import { IconMenu, IconMoon, IconSun } from "./icons";
 import { Logo } from "./Logo";
-import { SnapshotDetails, snapshotStatusText, useSnapshotState } from "./SnapshotNotice";
+import { useSnapshotState } from "./SnapshotNotice";
+import { ConnectionButton } from "./ConnectionDialog";
 
 const TABS: { id: Tab; key: StrKey }[] = [
   { id: "device", key: "tab.device" },
   { id: "circuit", key: "tab.circuit" },
   { id: "validation", key: "tab.validation" },
   { id: "physics", key: "tab.physics" },
+  { id: "performance", key: "tab.performance" },
 ];
 
 /** Tabs whose results depend on the Deterministic | Stochastic mode (the toggle shows only there). */
@@ -33,6 +33,7 @@ export function modeHint(t: T, tab: Tab, mode: Mode, method: string): string {
   if (tab === "circuit") return t(mode === "deterministic" ? "mode.circuit.deterministic.hint" : "mode.circuit.stochastic.hint", { method });
   if (tab === "validation") return t("mode.validation.hint");
   if (tab === "physics") return t("mode.physics.hint");
+  if (tab === "performance") return t.lang === "ko" ? "모델별 실행 시간과 계산 환경의 예상 시간" : "Model runtimes and compute-host estimates";
   return t(mode === "deterministic" ? "mode.deterministic.hint" : "mode.stochastic.hint");
 }
 
@@ -41,6 +42,7 @@ export function modeHintTech(t: T, tab: Tab, mode: Mode, method: string): string
   if (tab === "circuit") return t(mode === "deterministic" ? "mode.circuit.deterministic.tech" : "mode.circuit.stochastic.tech", { method });
   if (tab === "validation") return t("mode.validation.tech");
   if (tab === "physics") return t("mode.physics.tech");
+  if (tab === "performance") return t.lang === "ko" ? "결과 캐시·첫 준비·작업 대기를 분리한 계산 시간" : "Compute times with result cache, first-run setup, and queueing treated separately";
   return t(mode === "deterministic" ? "mode.deterministic.tech" : "mode.stochastic.tech");
 }
 
@@ -69,16 +71,32 @@ function arrowNav<V>(e: KeyboardEvent, items: V[], cur: V, set: (v: V) => void) 
   btns[j]?.focus();
 }
 
-/** [결정론 | 확률]: one word per mode, the plain hint of each mode in its tooltip. */
+/** A distinct trace icon keeps the active mode legible without relying on colour alone. */
+function ModeTrace({ mode }: { mode: Mode }) {
+  return (
+    <svg className="mode-trace" viewBox="0 0 20 18" width="20" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      {mode === "deterministic" ? <path d="M2 14 H7 V4 H18" /> : <>
+        <path d="M2 14 H5 V6 H18 M2 12 H9 V3 H18" opacity=".4" strokeWidth="1.2" />
+        <path d="M2 15 H7 V5 H18" />
+      </>}
+    </svg>
+  );
+}
+
+/** [결정론적 | 확률적]: persistent mode selection with a plain tooltip explanation. */
 export function ModeToggle({ compact }: { compact?: boolean }) {
   const t = useT();
   const mode = useStore((s) => s.mode);
   const setMode = useStore((s) => s.setMode);
   const tab = useStore((s) => s.tab);
   const method = useStore((s) => s.params.circuit.solver.method);
+  const simpleDevice = useStore((s) => s.params.device.model === "simple");
+  const simpleCircuit = useSch((s) => s.doc.elements.some((e) => e.stl?.device.model === "simple"));
+  const simple = tab === "circuit" ? simpleCircuit : simpleDevice;
+  useEffect(() => { if (simple && mode === "stochastic") setMode("deterministic"); }, [simple, mode, setMode]);
   const modes: Mode[] = ["deterministic", "stochastic"];
   return (
-    <div className={`mode-toggle${compact ? " compact" : ""}`} role="radiogroup" aria-label={t("mode.aria")} data-testid="mode-toggle" onKeyDown={(e) => arrowNav(e, modes, mode, setMode)}>
+    <div className={`mode-toggle${compact ? " compact" : ""}`} role="radiogroup" aria-label={t("mode.aria")} data-testid="mode-toggle" onKeyDown={(e) => arrowNav(e, simple ? ["deterministic"] : modes, mode, setMode)}>
       {modes.map((m) => (
         <button
           key={m}
@@ -87,31 +105,16 @@ export function ModeToggle({ compact }: { compact?: boolean }) {
           aria-checked={mode === m}
           tabIndex={mode === m ? 0 : -1}
           className={`mode-btn ${m === "deterministic" ? "det" : "sto"}`}
+          disabled={simple && m === "stochastic"}
           onClick={() => setMode(m)}
-          title={modeHint(t, tab === "circuit" ? "circuit" : "device", m, method)}
+          title={simple && m === "stochastic" ? (t.lang === "ko" ? "Simple Model은 현재 결정론적 해석을 지원합니다." : "Simple Model currently supports deterministic analysis.") : modeHint(t, tab === "circuit" ? "circuit" : "device", m, method)}
           data-testid={`mode-${m}`}
         >
-          <span className="mode-dot" aria-hidden />
+          <ModeTrace mode={m} />
           <span>{t(m === "deterministic" ? "mode.deterministic" : "mode.stochastic")}</span>
         </button>
       ))}
     </div>
-  );
-}
-
-/** Backend status as an 8 px dot; the text stays in the DOM for screen readers (and tests), the tooltip has the rest. */
-function StatusDot() {
-  const t = useT();
-  const backend = useStore((s) => s.backend);
-  const health = useStore((s) => s.health);
-  const text =
-    backend === "online" ? t("status.online", { n: health?.workers ?? "?" }) : backend === "mock" ? t("status.mock") : backend === "offline" ? t("status.offline") : backend === "snapshot" ? snapshotStatusText(t, health) : t("status.checking");
-  const short = backend === "online" ? `API · ${health?.workers ?? "?"}w` : backend === "mock" ? "mock" : backend === "offline" ? "offline" : backend === "snapshot" ? t("snapshot.status.short") : "…";
-  return (
-    <button type="button" className="status" title={`${text}${health?.version ? ` · v${health.version}` : ""}`} aria-label={text} data-testid="backend-status" onClick={() => void initBackend()}>
-      <span className={`dot ${backend}`} aria-hidden />
-      <span className="sr-only status-text">{short}</span>
-    </button>
   );
 }
 
@@ -125,7 +128,6 @@ export function Header() {
   const setTheme = useStore((s) => s.setTheme);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebar = useStore((s) => s.setSidebar);
-  const phone = usePhone();
   const hasSidebar = tab === "device" || tab === "circuit";
   return (
     <header className="header" role="banner">
@@ -138,8 +140,8 @@ export function Header() {
         </button>
       )}
       <div className="brand" title={t("app.subtitle")}>
-        <Logo size={30} className="brand-logo" />
-        <span className="brand-title">{t("app.title")}</span>
+        <Logo size={35} className="brand-logo" />
+        <span className="brand-title"><strong>STL</strong> simulator</span>
         <span className="tech-chip" title={t("brand.tech.title")} data-testid="tech-chip">
           {t("brand.tech")}
         </span>
@@ -147,13 +149,12 @@ export function Header() {
       <nav className="tabs" role="tablist" aria-label={t("tabs.aria")} onKeyDown={(e) => arrowNav(e, TABS.map((x) => x.id), tab, setTab)}>
         {TABS.map((x) => (
           <button key={x.id} type="button" role="tab" id={`tab-${x.id}`} aria-selected={tab === x.id} aria-controls="main" tabIndex={tab === x.id ? 0 : -1} className="tab" onClick={() => setTab(x.id)} data-testid={`tab-${x.id}`}>
-            {t(x.key)}
+            {x.id === "physics" ? (lang === "ko" ? "가이드" : "Guide") : t(x.key)}
           </button>
         ))}
       </nav>
       <span className="spacer" />
-      {hasMode(tab) && !phone && <ModeToggle />}
-      <StatusDot />
+      <ConnectionButton />
       <button type="button" className="icon-btn lang-btn" onClick={() => setLang(lang === "ko" ? "en" : "ko")} aria-label={t("lang.toggle")} title={t("lang.toggle")} data-testid="lang-toggle">
         {lang === "ko" ? "EN" : "한"}
       </button>
@@ -208,7 +209,7 @@ function StatusPill() {
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label={t("pill.more", { what: label })}
-        title={backend === "mock" ? t("banner.mockForced") : backend === "offline" ? t("banner.offline") : t("snapshot.banner")}
+        title={backend === "mock" ? t("banner.mockForced") : backend === "offline" ? (t.lang === "ko" ? "계산 서버에 연결하면 시뮬레이션할 수 있습니다." : "Connect a compute server to simulate.") : (t.lang === "ko" ? "현재 조건과 일치하는 저장된 계산 결과입니다." : "Recorded computation matching the selected parameters.")}
         onClick={() => setOpen((o) => !o)}
       >
         <span className={`dot ${backend}`} aria-hidden />
@@ -228,28 +229,27 @@ function StatusPill() {
       {open && (
         <div className="status-pop" role="dialog" aria-label={label}>
           <strong>{label}</strong>
-          {backend === "snapshot" ? <SnapshotDetails /> : <p>{backend === "mock" ? t("banner.mockForced") : t("banner.offline")}</p>}
+          {backend === "snapshot" ? <p>{t.lang === "ko" ? "저장된 계산 결과입니다. 파라미터를 바꿔 계산하려면 서버에 연결하세요." : "These are recorded computations. Connect a server to calculate other parameter sets."}</p> : <p>{backend === "mock" ? t("banner.mockForced") : t.lang === "ko" ? "파라미터와 회로를 편집할 수 있습니다. 계산하려면 상단의 연결 버튼에서 로컬 또는 연구실 서버에 연결하세요." : "You can edit parameters and circuits. Use Connect above to select a local or laboratory compute server."}</p>}
         </div>
       )}
     </div>
   );
 }
 
-/** Context strip (`modebar`): plain hint · status pill · credits. At ≤ 960 px the mode toggle sits here instead. */
+/** Context strip (`modebar`): mode control · quantity hint · connection status · credits. */
 export function ContextStrip() {
   const t = useT();
   const mode = useStore((s) => s.mode);
   const tab = useStore((s) => s.tab);
   const method = useStore((s) => s.params.circuit.solver.method);
   const forcing = useForcing((s) => s.forcing);
-  const phone = usePhone();
   const csvm = tab === "device" && forcing === "csvm";
-  const hint = csvm ? (t.lang === "ko" ? "전류 구동 · 드레인 전압 파형" : "Current forcing · drain-voltage waveform") : modeHint(t, tab, mode, method);
+  const hint = csvm ? (t.lang === "ko" ? "전류 구동 · 드레인 전압 파형" : "Current forcing · drain-voltage transient") : modeHint(t, tab, mode, method);
   return (
     <div className={`modestrip${hasMode(tab) ? "" : " no-mode"}`} data-testid="modebar">
-      {phone && hasMode(tab) && <ModeToggle compact />}
+      {hasMode(tab) && <ModeToggle compact />}
       <span className="hint" data-testid="mode-hint" title={csvm ? hint : `${hint} · ${modeHintTech(t, tab, mode, method)}`}>
-        <SubText text={subs(tab === "device" ? (csvm ? "FDSOI · V_D(t)" : "FDSOI · I_D–V_D") : tab === "circuit" ? t("tab.circuit") : t(tab === "validation" ? "tab.validation" : "tab.physics"))} />
+        <SubText text={subs(tab === "device" ? (csvm ? "FDSOI · VD(t)" : "FDSOI · ID–VD") : tab === "circuit" ? t("tab.circuit") : t(tab === "validation" ? "tab.validation" : tab === "performance" ? "tab.performance" : "tab.physics"))} />
       </span>
       <StatusPill />
       <Credits />

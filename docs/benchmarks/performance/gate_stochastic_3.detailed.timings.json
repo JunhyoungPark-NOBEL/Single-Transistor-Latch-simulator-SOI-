@@ -1,0 +1,76 @@
+{
+  "first": {
+    "wall_s": 4.676635251002153,
+    "cpu_s": 4.676272964000006,
+    "reported_s": 4.6766212200018344,
+    "solver": null,
+    "warnings": [
+      "evolving local states: V_G curve uses their stationary Gaussian distribution (frozen-state mixture per cycle)",
+      "emitter state σ_E is not included in the V_LU curve (it mainly moves V_LD)",
+      "V_LU beyond the sweep maximum 4 V for part of the cycles at 2 V_G value(s) (up to 6.1 %, -2.000 … -1.800 V): mean and σ are over the cycles that latch within the sweep, as in sweep_mc (beyond_sweep_weight / censored_weight)"
+    ],
+    "engine": null
+  },
+  "warm": [
+    {
+      "wall_s": 0.007488360002753325,
+      "cpu_s": 0.007489161999998828,
+      "reported_s": 0.007479597014025785,
+      "solver": null,
+      "warnings": [
+        "evolving local states: V_G curve uses their stationary Gaussian distribution (frozen-state mixture per cycle)",
+        "emitter state σ_E is not included in the V_LU curve (it mainly moves V_LD)",
+        "V_LU beyond the sweep maximum 4 V for part of the cycles at 2 V_G value(s) (up to 6.1 %, -2.000 … -1.800 V): mean and σ are over the cycles that latch within the sweep, as in sweep_mc (beyond_sweep_weight / censored_weight)"
+      ],
+      "engine": null
+    },
+    {
+      "wall_s": 0.007065654994221404,
+      "cpu_s": 0.007066593000004673,
+      "reported_s": 0.007058383998810314,
+      "solver": null,
+      "warnings": [
+        "evolving local states: V_G curve uses their stationary Gaussian distribution (frozen-state mixture per cycle)",
+        "emitter state σ_E is not included in the V_LU curve (it mainly moves V_LD)",
+        "V_LU beyond the sweep maximum 4 V for part of the cycles at 2 V_G value(s) (up to 6.1 %, -2.000 … -1.800 V): mean and σ are over the cycles that latch within the sweep, as in sweep_mc (beyond_sweep_weight / censored_weight)"
+      ],
+      "engine": null
+    },
+    {
+      "wall_s": 0.0071853450062917545,
+      "cpu_s": 0.00718653199999153,
+      "reported_s": 0.00717818399425596,
+      "solver": null,
+      "warnings": [
+        "evolving local states: V_G curve uses their stationary Gaussian distribution (frozen-state mixture per cycle)",
+        "emitter state σ_E is not included in the V_LU curve (it mainly moves V_LD)",
+        "V_LU beyond the sweep maximum 4 V for part of the cycles at 2 V_G value(s) (up to 6.1 %, -2.000 … -1.800 V): mean and σ are over the cycles that latch within the sweep, as in sweep_mc (beyond_sweep_weight / censored_weight)"
+      ],
+      "engine": null
+    },
+    {
+      "wall_s": 0.007266435990459286,
+      "cpu_s": 0.007228433000008749,
+      "reported_s": 0.007258805009769276,
+      "solver": null,
+      "warnings": [
+        "evolving local states: V_G curve uses their stationary Gaussian distribution (frozen-state mixture per cycle)",
+        "emitter state σ_E is not included in the V_LU curve (it mainly moves V_LD)",
+        "V_LU beyond the sweep maximum 4 V for part of the cycles at 2 V_G value(s) (up to 6.1 %, -2.000 … -1.800 V): mean and σ are over the cycles that latch within the sweep, as in sweep_mc (beyond_sweep_weight / censored_weight)"
+      ],
+      "engine": null
+    },
+    {
+      "wall_s": 0.007253486997797154,
+      "cpu_s": 0.007281591999998227,
+      "reported_s": 0.0072461370000382885,
+      "solver": null,
+      "warnings": [
+        "evolving local states: V_G curve uses their stationary Gaussian distribution (frozen-state mixture per cycle)",
+        "emitter state σ_E is not included in the V_LU curve (it mainly moves V_LD)",
+        "V_LU beyond the sweep maximum 4 V for part of the cycles at 2 V_G value(s) (up to 6.1 %, -2.000 … -1.800 V): mean and σ are over the cycles that latch within the sweep, as in sweep_mc (beyond_sweep_weight / censored_weight)"
+      ],
+      "engine": null
+    }
+  ]
+}

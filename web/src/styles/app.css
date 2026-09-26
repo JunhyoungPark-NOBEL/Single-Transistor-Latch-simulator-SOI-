@@ -470,7 +470,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .toc-list button { width: 100%; text-align: left; border: 0; background: transparent; padding: 5px 10px; border-radius: 7px; font-size: 13px; color: var(--text-2); display: flex; gap: 8px; align-items: baseline; }
 .toc-list button:hover { background: var(--surface-3); color: var(--text); }
 .toc-list button.active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 650; }
-.toc-list .toc-n { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 18px; flex: none; }
+.toc-list .toc-n { font-family: var(--mono); font-size: 11px; color: var(--faint); width: 18px; flex: none; }
 .doc { display: flex; flex-direction: column; gap: var(--s4); max-width: 920px; }
 .doc-topic { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r3); padding: 18px 22px; box-shadow: var(--shadow-1); scroll-margin-top: calc(var(--header-h) + var(--modebar-h) + 16px); }
 .doc-topic h2 { margin: 0 0 4px; font-size: 19px; letter-spacing: -0.015em; display: flex; align-items: center; gap: 10px; }
@@ -625,21 +625,25 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 .input::placeholder { color: var(--faint); font-family: var(--font); }
 
 /* ================================================================== [brand] logo, technology chip,
-   About chip, About card (brand colour = the deterministic green --det, in both themes). Owned by the brand package — keep additions inside this section. */
+   credits corner, About card. Owned by the brand package — keep additions inside this section. */
+:root { --logo-a: #10ab9e; --logo-b: #4f6bef; --logo-c: #7c3aed; }
+:root[data-theme="dark"] { --logo-a: #14b8a6; --logo-b: #5b76f5; --logo-c: #8b5cf6; }
 .logo { display: block; flex: none; }
+.brand-logo { filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--logo-b) 28%, transparent)); }
 .tech-chip {
   display: inline-flex; align-items: center; flex: none;
   height: 18px; padding: 0 7px; border-radius: 999px;
   font-size: 10.5px; font-weight: 700; letter-spacing: .04em; line-height: 1;
-  color: var(--det-strong);
-  background: color-mix(in srgb, var(--det) 10%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--det) 28%, var(--border));
+  color: var(--logo-b);
+  background: color-mix(in srgb, var(--logo-b) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--logo-b) 28%, var(--border));
   cursor: default; white-space: nowrap;
 }
+:root[data-theme="dark"] .tech-chip { color: #a5b4fc; }
 /* Korean: break lines between words (eojeol), never inside one */
 :root[lang="ko"] body { word-break: keep-all; overflow-wrap: break-word; }
 
-/* About chip: right end of the sticky context strip ("정보 ⓘ" / "About ⓘ") */
+/* credits corner: right end of the sticky context strip — the full attribution at ≥ 1280 px, "KAIST · NOBEL Lab ⓘ" below */
 .credits {
   flex: none; margin-left: auto;
   display: inline-flex; align-items: center; gap: 6px;
@@ -650,10 +654,15 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 }
 .credits:hover, .credits[aria-expanded="true"] { color: var(--text); background: var(--surface); border-color: var(--border); }
 .credits-i { flex: none; opacity: .75; }
+.credits-text.short { display: none; }
+@media (max-width: 1279px) {
+  .credits-text.full { display: none; }
+  .credits-text.short { display: inline; }
+}
 @media (max-width: 760px) {
   /* never pushes the strip wider than the phone: the text ellipsizes below ~370 px */
   .credits { padding: 0 2px 0 4px; gap: 3px; font-size: 10.5px; min-width: 0; flex-shrink: 1; }
-  .credits-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .credits-text.short { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 
 /* About card (non-modal popover under the credits) */
@@ -671,14 +680,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 18px; ma
 @keyframes aboutIn { from { opacity: 0; transform: translateY(-4px); } }
 .about::before {
   content: ""; position: absolute; inset: 0 0 auto 0; height: 132px; border-radius: 16px 16px 0 0; pointer-events: none;
-  background: linear-gradient(120deg, color-mix(in srgb, var(--det) 14%, transparent), transparent 75%);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--logo-a) 16%, transparent), color-mix(in srgb, var(--logo-c) 13%, transparent) 75%);
   -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent);
   mask-image: linear-gradient(to bottom, #000 30%, transparent);
 }
 .about > * { position: relative; }
 .about-close { position: absolute; top: 10px; right: 10px; z-index: 1; }
 .about-head { display: flex; align-items: center; gap: 14px; padding-right: 28px; }
-.about-logo { color: var(--det-strong); }
+.about-logo { filter: drop-shadow(0 6px 16px color-mix(in srgb, var(--logo-b) 35%, transparent)); }
 .about-titles h2 { margin: 0; font-size: 18px; letter-spacing: -0.01em; line-height: 1.2; }
 .about-titles h2:focus { outline: none; box-shadow: none; }
 .about-tagline { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }

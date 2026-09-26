@@ -4,7 +4,7 @@ import type { DeviceBlock } from "../api/types";
 import { BUILTIN_META } from "../state/presets";
 import { clone } from "../utils/object";
 import { resolveBackGate } from "../params/geometry";
-import { LIBRARY_VERSION, geometryFromDevice, newDeviceId, stochOf, uniqueName, validateDevice, type DeviceStochastic, type LibDevice } from "./library";
+import { LIBRARY_VERSION, geometryFromDevice, isSupportedTechnology, newDeviceId, stochOf, uniqueName, validateDevice, type DeviceStochastic, type LibDevice } from "./library";
 
 export const MAX_USER_DEVICES = 5;
 
@@ -77,7 +77,12 @@ export const useDeviceLib = create<DeviceLibState>((set, get) => ({
     set((s) => ({ devices: [...s.devices, dev] }));
     return dev;
   },
-  update: (id, patch) => set((s) => ({ devices: s.devices.map((d) => (d.id === id ? canonicalDevice({ ...d, ...clone(patch) }) : d)) })),
+  update: (id, patch) => set((s) => ({ devices: s.devices.map((d) => {
+    if (d.id !== id) return d;
+    // A saved unsupported record is an archive, never an FDSOI calibration target.
+    if (!isSupportedTechnology(d.technology)) return d;
+    return canonicalDevice({ ...d, ...clone(patch) });
+  }) })),
   rename: (id, name) =>
     set((s) => {
       const n = name.trim();
