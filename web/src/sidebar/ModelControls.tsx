@@ -121,7 +121,7 @@ export function ModelControls() {
       <div className="model-status"><span>{deepEqual(values, SIMPLE_DEFAULTS) ? (t.lang === "ko" ? "초기값 · HRS 보정 필요" : "Initial values · fit HRS") : (t.lang === "ko" ? "사용자값 · 결정론적" : "Custom · deterministic")}</span><button type="button" className="link-btn" onClick={() => setCalibration(true)} data-testid="simple-calibrate-open">{t.lang === "ko" ? "HRS 보정" : "Fit HRS"}</button></div>
       {startBias && <p className="model-note">{t.lang === "ko" ? "시작 바이어스 " : "Starting bias "}<Tex tex="V_G = -3\,\mathrm{V}" /></p>}
       <div className="simple-main-fields">{FIELDS.filter((f) => f.main).map(field)}</div>
-      <details className="simple-advanced"><summary>{t.lang === "ko" ? "세부 파라미터" : "More parameters"}<span>8</span></summary>{FIELDS.filter((f) => !f.main).map(field)}</details>
+      <details className="simple-advanced"><summary>{t.lang === "ko" ? "세부 파라미터" : "More parameters"}<span>{FIELDS.filter((f) => !f.main).length}</span></summary>{FIELDS.filter((f) => !f.main).map(field)}</details>
     </>}
     {calibration && <CalibrationDialog onClose={() => setCalibration(false)} />}
   </section>;

@@ -42,7 +42,8 @@
 <span class="line">d<i>Q</i>/d<i>t</i> = (<i>M</i>−1)<i>I</i><sub>seed</sub> + <i>I</i><sub>BTBT</sub> + <i>I</i><sub>ph</sub></span>
 <span class="line">　　　　− <i>I</i><sub>seed</sub>/<i>β</i> − <i>Q</i>/<i>τ</i><sub>B</sub> + <i>I</i><sub>B,ext</sub></span>
 </div>
-<p><span class="math"><i>I</i><sub>BTBT</sub></span>는 측방향 BTBT와 GIDL의 합입니다. GIDL 전계에는 내부 전압 <span class="math"><i>r</i></span>를 사용하는 근사를 적용합니다. 기존 모델의 비선형 SRH 손실·추가 수송 전하·채널 전류를 중복해서 더하지 않습니다.</p>
+<p><span class="math"><i>I</i><sub>BTBT</sub></span>는 접합(측방향) BTBT와 GIDL의 합이며, 논문 Table I의 Kane 생성률 <span class="math"><i>A</i><i>E</i><sup>2.5</sup>exp(−<i>B</i>/<i>E</i>)</span>을 논문 참고 스크립트처럼 “한 전계 × 생성 체적”으로 계산합니다. 접합 BTBT는 급격 드레인 접합의 최대 전계 <span class="math">2(<i>V</i><sub>bi</sub>+<i>r</i>)/<i>W</i><sub>d</sub></span>와 체적 <span class="math"><i>W</i><i>T</i><sub>Si</sub><i>W</i><sub>d</sub></span>를, GIDL은 수직 전계 <span class="math">(<i>r</i> − <i>V</i><sub>G</sub> + 1.2 − 1.12)/(3 EOT)</span>와 입력 체적 <span class="math"><i>V</i><sub>GIDL</sub>·<i>W</i>/<i>W</i><sub>ref</sub></span>를 씁니다. <span class="math"><i>V</i><sub>GIDL</sub></span>은 GIDL 정공이 생성되는 체적을 nm³ 단위로 직접 입력하는 파라미터입니다(기준 폭 200 nm 기준, 폭에 비례). 기본값 4.55 × 10<sup>5</sup> nm³는 논문 참고 스크립트의 유효 체적 <span class="math"><i>W</i>·5 nm·4.55 nm × 100</span>이며, 물리 체적 <span class="math"><i>W</i>·5 nm·4.55 nm</span>는 4.55 × 10<sup>3</sup> nm³입니다. GIDL 전계에는 내부 전압 <span class="math"><i>r</i></span>를 사용하는 근사를 적용합니다. 기존 모델의 비선형 SRH 손실·추가 수송 전하·채널 전류를 중복해서 더하지 않습니다.</p>
+<p><strong>축적 상태의 결합 차폐.</strong> 게이트 전압이 평탄대 전압 <span class="math"><i>V</i><sub>FB</sub></span> 아래로 내려가면 축적된 정공층이 게이트–바디 결합을 차폐하므로(논문 식 (2)), 각 게이트의 결합 항은 <span class="math">max(<i>V</i> − <i>V</i><sub>FB</sub>, 0)</span>을 씁니다. <span class="math"><i>V</i><sub>G</sub></span>가 더 내려가도 바디 바이어스는 그대로이고 GIDL만 커지므로 <span class="math"><i>V</i><sub>LU</sub>(<i>V</i><sub>G</sub>)</span>는 <span class="math"><i>V</i><sub>FB</sub></span> 부근에서 최대인 종 모양이 됩니다(논문 Fig. 5(a)).</p>
 <p><span class="math"><i>Q</i></span>는 바이어스 기준의 부호 있는 전하 좌표입니다. 음수일 때의 <span class="math"><i>Q</i>/<i>τ</i><sub>B</sub></span>는 선형 복원 항이며, 음의 미시적 재결합률을 뜻하지 않습니다.</p>
 </div></details>
 
@@ -81,11 +82,13 @@
 <tr><td class="math"><i>C</i><sub>B,ref</sub> / <i>R</i><sub>LRS,ref</sub></td><td>0.2646 fF / 143 kΩ</td></tr>
 <tr><td class="math"><i>I</i><sub>S,ref</sub> / <i>V</i><sub>BR</sub></td><td>6.154 × 10<sup>−17</sup> A / 2.35 V</td></tr>
 <tr><td class="math"><i>η</i> / <i>γ</i><sub>G</sub> / <i>γ</i><sub>BG</sub></td><td>4 / 0.2 / 0.0525</td></tr>
+<tr><td class="math"><i>V</i><sub>FB</sub> / <i>s</i><sub>BTBT</sub> / <i>f</i><sub>surf</sub></td><td>−3.35 V / 1 / 1</td></tr>
+<tr><td class="math"><i>V</i><sub>GIDL</sub> (기준 폭 200 nm)</td><td>4.55 × 10<sup>5</sup> nm³ (= 4.55 × 10<sup>−16</sup> cm³)</td></tr>
 </tbody></table></div>
-<p>논문 Table I의 폭 650 nm를 앱 기준 폭 200 nm로 환산한 시작값입니다. β = 2.3과 표면 기여율은 별도 가정입니다. 게이트 결합은 일정한 유효 정전용량을 사용하며, 축적 영역에서의 결합 차폐를 추가로 모델링하지 않습니다.</p>
+<p>논문 Table I의 폭 650 nm를 앱 기준 폭 200 nm로 환산한 시작값입니다. β = 2.3(상수, 논문 식 (8) 미사용)과 표면 기여율은 별도 가정입니다. 게이트 결합은 평탄대 전압에서 잘리는 유효 정전용량 분할로 구현하며, 논문 소자(폭 650 nm, T<sub>ox</sub> 13 nm)에서 논문 Fig. 5(a)–(c)의 <i>V</i><sub>LU</sub> 경향을 재현합니다.</p>
 <p><strong>결정론적 BE</strong> 해석만 지원합니다. Simple Model의 확률적 해석과 LTspice·Verilog-A·Sentaurus 내보내기는 현재 제공하지 않습니다.</p>
 <p>Miller 식의 범위는 <span class="math">0 ≤ <i>r</i> &lt; <i>V</i><sub>BR</sub></span>입니다. 시작·작은 링잉을 위해 −50 mV까지 <span class="math"><i>M</i> = 1</span>, BTBT = 0으로 연장하지만, 정확한 영바이어스 평형이나 역방향 트랜지스터 동작 모델은 아닙니다.</p>
 </div></details>
-<footer>근거: 제공된 accepted 원고 <cite>Analytical Model for Single Transistor Latch in MOSFETs</cite>, 식 (1)–(4) 및 Table I. 바이어스 의존 β 식 (8)은 사용하지 않습니다. 전체 구현식과 변경 내용은 배포본 <code>SIMPLE_MODEL_KO.md</code>에서 확인할 수 있습니다.</footer>
+<footer>근거: J.-H. Park, H.-B. Noh, S.-W. Lee, S.-Y. Yun, and Y.-K. Choi, “<cite>Analytical Model for Single Transistor Latch in MOSFETs</cite>,” IEEE Electron Device Lett., 2026, doi: 10.1109/LED.2026.3737574 — 식 (1)–(4), (7) 및 Table I. Simple Model은 이 논문의 모델이고, Detailed Model은 같은 틀을 확장한 updated accuracy 모델입니다. 바이어스 의존 β 식 (8)은 사용하지 않습니다. 전체 구현식과 변경 내용은 배포본 <code>SIMPLE_MODEL_KO.md</code>에서 확인할 수 있습니다.</footer>
 </body>
 </html>
