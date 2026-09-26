@@ -17,7 +17,7 @@ def packed(**changes):
     p[11] = -3.0
     # Geometry-scaled paper starting values with unfit diffusion beta.
     p[36:49] = [2.3, 200e-9, .86e-15*200/650, 44000*650/200,
-                2e-16*200/650, 2.35, 4, .2, .0525, -3.35, 1, .5, 100]
+                2e-16*200/650, 2.35, 4, .2, .0525, -3.35, 1, .5, 4.55e-16]
     for key, value in changes.items():
         p[int(key.removeprefix('p'))] = value
     return p
@@ -110,19 +110,21 @@ def test_lateral_btbt_is_kane_rate_at_peak_field_over_depletion_volume(reverse, 
     assert lateral == pytest.approx(reference, rel=1e-12, abs=1e-100)
 
 
-def test_gidl_uses_vertical_field_over_scaled_overlap_volume():
-    """GIDL: E=(r-V_G+1.2-Eg)/(3 EOT) over gidl_volume_scale*W*5nm*Wt (paper script)."""
+def test_gidl_uses_vertical_field_over_width_scaled_volume():
+    """GIDL: E=(r-V_G+1.2-Eg)/(3 EOT) over the input volume gidl_volume_ref_cm3*W/Wref."""
     p = packed(p11=-3.35, p32=0.)
     r = 2.2
     _, gidl = sm.btbt_currents(r, p)
     field = (r + 3.35 + 1.2 - 1.12)/(3*14.1e-7)
-    depth = min(np.sqrt(2*sm.EPS_SI*1.12/(sm.QE*7e19)), 50e-7)
-    volume = 100*200e-7*5e-7*depth
-    reference = sm.QE*volume*sm.BB_A*field**2.5*np.exp(-sm.BB_B/field)*(-np.expm1(-r/sm.VT))
+    reference = sm.QE*4.55e-16*sm.BB_A*field**2.5*np.exp(-sm.BB_B/field)*(-np.expm1(-r/sm.VT))
     assert gidl == pytest.approx(reference, rel=1e-12)
-    assert depth == pytest.approx(4.55e-7, rel=.01)
-    # Bare physical volume with the factor set to 1; zero volume switches GIDL off.
-    assert sm.btbt_currents(r, packed(p11=-3.35, p48=1.))[1] == pytest.approx(gidl/100, rel=1e-12)
+    # The default volume is the reference script's W*5nm*4.55nm*100 at Wref=200 nm.
+    depth = np.sqrt(2*sm.EPS_SI*1.12/(sm.QE*7e19))
+    assert 4.55e-16 == pytest.approx(100*200e-7*5e-7*depth, rel=2e-3)
+    # Volume scales with the width only; halving the input halves the current; zero switches GIDL off.
+    assert sm.btbt_currents(r, packed(p11=-3.35, p27=650.))[1] == pytest.approx(gidl*650/200, rel=1e-12)
+    assert sm.btbt_currents(r, packed(p11=-3.35, p28=25., p26=250.))[1] == pytest.approx(gidl, rel=1e-12)
+    assert sm.btbt_currents(r, packed(p11=-3.35, p48=2.275e-16))[1] == pytest.approx(gidl/2, rel=1e-12)
     assert sm.btbt_currents(r, packed(p11=-3.35, p48=0.))[1] == 0
     # Below the tunnelling onset (E <= 0) there is no GIDL; a more negative gate raises it.
     assert sm.btbt_currents(.05, packed(p11=.5))[1] == 0
@@ -156,7 +158,7 @@ def _paper_device():
     geo = dict(Lg_nm=500., W_nm=650., Tsi_nm=50., EOT_nm=13., Tbox_nm=140., Nbody_cm3=3e17)
     simple = dict(beta_ref=2.3*3e17/params.NA_CM3, tau_body_s=2e-7, cb_ref_F=1e-15, r_lrs_ref_ohm=1., is_ref_A=1e-16,
                   vbr_ref_V=2.35, avalanche_eta=4., gamma_fg=.2, gamma_bg=.0525, vfb_V=-3.35,
-                  btbt_scale=1., surface_fraction=1., gidl_volume_scale=100.)
+                  btbt_scale=1., surface_fraction=1., gidl_volume_ref_cm3=4.55e-16)
     p = np.asarray(params.build_p(dict(model="simple", vg=-3., geometry=geo, simple=simple)))
     beta, tau, cb, resistance, saturation, *_ = sm.effective_parameters(p)
     simple["cb_ref_F"] = .86e-15/cb*1e-15

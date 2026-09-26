@@ -27,7 +27,8 @@ BTBT follows the paper's reference script: junction (lateral) BTBT evaluates
 Kane's generation rate at the peak field of the abrupt drain junction over the
 depletion volume W*Tsi*Wd, with the junction built-in voltage lowered by
 gamma_G*(V_G-V_FB) above flat band; GIDL uses the vertical field
-(r - V_G + 1.2 - Eg)/(3*EOT) over the volume gidl_volume_scale*W*5nm*Wt.  The
+(r - V_G + 1.2 - Eg)/(3*EOT) over the generation volume gidl_volume_ref_cm3 *
+W/Wref (the script's effective W * 5 nm * 4.55 nm * 100 by default).  The
 effective collector voltage r replaces the external V_D in GIDL, which avoids an
 implicit ID-dependent tunnelling solve.
 
@@ -53,8 +54,6 @@ BB_A = 4e14          # Kane prefactor, cm^-0.5 V^-2.5 s^-1 (paper Table I)
 BB_B = 19e6          # Kane exponent, V/cm (19 MV/cm, paper Table I)
 EG = 1.12            # Si band gap, eV
 VFB_GIDL = -1.2      # gate/n+ drain flat-band voltage of the GIDL field (reference script)
-LOV_CM = 5e-7        # gate-drain overlap, 5 nm
-ND_CM3 = 7e19        # n+ drain doping bounding the GIDL tunnelling depth
 # Existing reference calibration doping (server.params.NA_CM3). Kept local so
 # this numerical module does not form an import cycle with parameter packing.
 NREF = 2.295773162796593e17
@@ -120,8 +119,9 @@ def btbt_currents(r, p):
     generation volume, as in the paper's reference script (Table I integral
     collapsed to peak field x volume):
       lateral: E = 2(Vbi+r)/Wd of the abrupt junction, volume W*Tsi*Wd;
-      GIDL:    E = (r - V_G + 1.2 - Eg)/(3*EOT), volume gidl_volume_scale*W*5nm*Wt,
-               Wt = min(n+ tunnelling depth, Tsi).
+      GIDL:    E = (r - V_G + 1.2 - Eg)/(3*EOT), volume gidl_volume_ref_cm3 * W/Wref
+               (an explicit volume input; the default is the script's effective
+               W * 5 nm overlap * 4.55 nm tunnelling depth * 100).
     The factor 1-exp(-r/VT) keeps both continuous at r -> 0.
     """
     if r <= 0.0 or p[46] == 0.0:
@@ -136,8 +136,7 @@ def btbt_currents(r, p):
     gidl = 0.0
     field = (r - p[11] - VFB_GIDL - EG) / (3.0 * p[29] * 1e-7)
     if field > 0.0 and p[48] > 0.0:
-        depth = min(np.sqrt(2.0 * EPS_SI * EG / (QE * ND_CM3)), p[28] * 1e-7)
-        volume = p[48] * p[27] * 1e-7 * LOV_CM * depth
+        volume = p[48] * p[27] / WREF
         gidl = QE * volume * BB_A * field**2.5 * np.exp(-BB_B / field)
     return p[46] * lateral * balance, p[46] * gidl * balance
 

@@ -11,7 +11,8 @@ export interface SimpleModelBlock {
   beta_ref: number; tau_body_s: number; cb_ref_F: number; r_lrs_ref_ohm: number;
   is_ref_A: number; vbr_ref_V: number; avalanche_eta: number;
   gamma_fg: number; gamma_bg: number; vfb_V: number; btbt_scale: number; surface_fraction: number;
-  gidl_volume_scale: number;
+  /** GIDL hole-generation volume at W_ref = 200 nm, cm^3 (scaled by W/W_ref). */
+  gidl_volume_ref_cm3: number;
 }
 export interface HrsPoint { vd_V: number; id_A: number }
 export type SimpleFit = "is" | "tau" | "is_tau";

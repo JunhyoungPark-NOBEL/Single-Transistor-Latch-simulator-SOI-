@@ -191,11 +191,11 @@ W_{\mathrm t}=\min\!\left(\sqrt{\frac{2\varepsilon_{\mathrm{Si}}\cdot1.12}{q\cdo
 $$
 
 $$
-I_{\mathrm{GIDL}}=q\,A\,E_{\mathrm g}^{2.5}\exp(-B/E_{\mathrm g})\;s_{\mathrm{GIDL}}\,W\,L_{\mathrm{ov}}\,W_{\mathrm t},\qquad L_{\mathrm{ov}}=5\ \mathrm{nm}.
+I_{\mathrm{GIDL}}=q\,A\,E_{\mathrm g}^{2.5}\exp(-B/E_{\mathrm g})\;V_{\mathrm{GIDL}}\frac{W}{W_{\mathrm{ref}}},\qquad W_{\mathrm{ref}}=200\ \mathrm{nm}.
 $$
 
 - $V_{\mathrm{FB0}}=-1.2\ \mathrm V$는 게이트–n⁺ 드레인 사이의 평탄대 전압으로 논문 스크립트의 값이며, 바디의 $V_{\mathrm{FB}}=-3.35\ \mathrm V$와 다르다. $E_{\mathrm g}\le0$이면 GIDL은 0이다.
-- $s_{\mathrm{GIDL}}$(GIDL 체적 배율, 기본 100)은 논문 스크립트의 GIDL 생성 체적을 재현하기 위한 값이다. 스크립트는 $W\,L_{\mathrm{ov}}$의 단위 환산에 $10^6$을 곱해 물리 체적의 100배를 사용하며, Fig. 5의 결과는 이 체적으로 얻어진 것이다. 1로 두면 물리 체적만 사용하고, 그 경우 GIDL이 너무 작아 $V_{\mathrm{LU}}$가 $V_{\mathrm{BR}}$에 붙는다(이전 구현의 증상).
+- $V_{\mathrm{GIDL}}$(GIDL 생성 체적, `gidl_volume_ref_cm3`)은 기준 폭 200 nm에서의 체적을 부피 단위로 직접 입력하며, 모델은 폭에 비례해 환산한다(화면 단위 nm³, 1 cm³ = $10^{21}$ nm³). 기본값 $4.55\times10^{-16}\ \mathrm{cm^3}=4.55\times10^{5}\ \mathrm{nm^3}$는 논문 참고 스크립트의 유효 체적 $W\,L_{\mathrm{ov}}\,W_{\mathrm t}\times100$($L_{\mathrm{ov}}=5$ nm, 위의 $W_{\mathrm t}=4.55$ nm)이다. 스크립트는 $W\,L_{\mathrm{ov}}$의 m²→cm² 환산에 $10^4$ 대신 $10^6$을 곱해 물리 체적의 100배를 사용했고, Fig. 5의 결과는 이 체적으로 얻어진 것이다. 물리 체적 $W\cdot5\ \mathrm{nm}\cdot4.55\ \mathrm{nm}=4.55\times10^{3}\ \mathrm{nm^3}$을 입력하면 GIDL이 너무 작아 $V_{\mathrm{LU}}$가 $V_{\mathrm{BR}}$에 붙는다(이전 구현의 증상). GIDL은 $\exp(-B/E_{\mathrm g})$에 지배되므로 체적 100배는 전계 길이를 $3\,\mathrm{EOT}$ 대신 약 $2.1$–$2.3\,\mathrm{EOT}$로 잡는 것과 같은 크기의 보정이다.
 - GIDL 전압에는 외부 $V_{\mathrm D}$ 대신 내부 $r$을 사용한다. HRS에서는 $I_{\mathrm D}R_{\mathrm{LRS}}$가 무시할 만해 차이가 없고, LRS에서는 전류에 의존하는 암시적 BTBT 풀이를 피하는 명시적 근사이다.
 - Miller 식은 $0\le r<V_{\mathrm{BR}}$에서 사용한다. $r\ge V_{\mathrm{BR}}$에서는 유효하지 않은 평가로 처리하며, 증배 계수를 임의의 최대값으로 대체하지 않는다.
 - 시작점과 작은 링잉의 수치 연장을 위해 $-50\ \mathrm{mV}\le r\le0$에서는 $M=1$, BTBT = 0을 사용한다. 그보다 작은 $r$은 지원하지 않는다.
@@ -298,7 +298,7 @@ D·S·G·BG·B를 지원한다. G/BG는 회로 전압원으로 변조할 수 있
 | $V_{\mathrm{FB}}$ | −3.35 V | 논문 Table I |
 | BTBT 배율 $s_{\mathrm{BTBT}}$ | 1 | 기본값 |
 | $f_{\mathrm{surf}}$ | 1 | 표면 우세 가정; 미추출 |
-| GIDL 체적 배율 $s_{\mathrm{GIDL}}$ | 100 | 논문 참고 스크립트의 GIDL 생성 체적(§5) |
+| GIDL 생성 체적 $V_{\mathrm{GIDL}}$ | $4.55\times10^{5}$ nm³ ($4.55\times10^{-16}$ cm³) at $W_{\mathrm{ref}}$ | 논문 참고 스크립트의 유효 체적 $W\cdot5\ \mathrm{nm}\cdot4.55\ \mathrm{nm}\times100$(§5) |
 | $V_{\mathrm G},V_{\mathrm{BG}}$ | −3 V, 0 V | UI의 초기 사용 조건 |
 
 논문 수치의 폭 환산이 앱의 다른 EOT·도핑까지 동일한 측정 소자로 만들어 주는 것은 아니다. 모든 Geometry·바이어스에서 논문의 정확도가 자동으로 유지되지 않는다.
@@ -308,8 +308,8 @@ D·S·G·BG·B를 지원한다. G/BG는 회로 전압원으로 변조할 수 있
 2026-09-26 (논문 정합):
 
 - 축적 상태의 결합 차폐를 구현했다: 각 게이트 전압을 $V_{\mathrm{FB}}$에서 잘라 $V_{\mathrm{bias}}$에 넣는다(§4). 이로써 $V_{\mathrm{LU}}(V_{\mathrm G})$의 종 모양이 재현된다.
-- 접합 BTBT와 GIDL을 논문 참고 스크립트의 정의(최대 전계 × 체적, 게이트 변조 내장 전위, $V_{\mathrm{FB0}}=-1.2$ V, 체적 배율 100)로 바꿨다(§5). 이전의 16점 Gauss 적분과 GIDL 상수(−0.3 V)는 제거했다.
-- 새 파라미터 `gidl_volume_scale`(기본 100)을 추가하고 모델 버전을 `simple-edl2026-paper-v2`로 올렸다. `/api/meta`의 `simple_model.reference`에 논문 서지 정보를 넣었다.
+- 접합 BTBT와 GIDL을 논문 참고 스크립트의 정의(최대 전계 × 체적, 게이트 변조 내장 전위, $V_{\mathrm{FB0}}=-1.2$ V)로 바꿨다(§5). 이전의 16점 Gauss 적분과 GIDL 상수(−0.3 V)는 제거했다.
+- GIDL 생성 체적을 부피 단위 파라미터 `gidl_volume_ref_cm3`(기본 $4.55\times10^{-16}$ cm³ = $4.55\times10^{5}$ nm³, 폭에 비례 환산)로 직접 입력하도록 했고 모델 버전을 `simple-edl2026-paper-v3`로 올렸다. `/api/meta`의 `simple_model.reference`에 논문 서지 정보를 넣었다.
 - 논문 소자에 대한 회귀 테스트(`server/tests/test_simple_model.py`)로 종 모양·BTBT 비율·백게이트 경향을 고정했다.
 
 이전 변경:
