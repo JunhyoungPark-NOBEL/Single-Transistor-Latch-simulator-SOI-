@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>모델 범위 · STL simulator</title>
+  <style>
+    :root{color-scheme:light;--ink:#20322e;--muted:#63736c;--line:#dde4df;--accent:#286d58;--paper:#fbfcfa}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{max-width:840px;margin:64px auto 88px;padding:0 28px}.eyebrow{font-size:11px;letter-spacing:.13em;color:var(--accent);font-weight:650;text-transform:uppercase}
+    h1{font-size:32px;line-height:1.3;letter-spacing:-.04em;font-weight:600;margin:12px 0 16px}h2{font-size:18px;letter-spacing:-.025em;font-weight:600;margin:36px 0 12px}p{margin:10px 0;color:var(--muted)}strong{font-weight:600;color:var(--ink)}
+    .intro{max-width:650px;font-size:16px}.rule{height:1px;background:var(--line);margin:30px 0}a{color:var(--accent);text-underline-offset:4px}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:13px 12px 13px 0;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{font-size:12px;font-weight:600;color:var(--muted)}td:first-child{width:24%;font-weight:550}td{color:var(--muted)}code{font-size:.9em;background:#eef2ec;border-radius:4px;padding:2px 5px}footer{margin-top:36px;font-size:12px;color:var(--muted)}
+    @media(max-width:600px){main{margin-top:32px;padding:0 20px}h1{font-size:28px}table{font-size:13px}td:first-child{width:29%}}
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">STL simulator / Model notes</div>
+  <h1>어디까지 계산하나요?</h1>
+  <p class="intro">제공된 소자 데이터에 보정한 <strong>300 K 축약 모델</strong>입니다.
+  ID–VD와 회로 응답을 계산하며, 치수를 바꾸면 미보정 외삽으로 표시합니다.</p>
+
+  <div class="rule"></div>
+  <h2>기본 소자</h2>
+  <p>충격 이온화, BTBT·GIDL, 광생성, SRH 재결합과 확산의 바디 전류 균형을 풉니다.
+  VLU·VLD는 계산한 평형 가지에서 찾습니다. 원하는 문턱전압 곡선을 별도로 더하지 않습니다.</p>
+  <table aria-label="기준값과 계산 범위">
+    <thead><tr><th>항목</th><th>기준과 범위</th></tr></thead>
+    <tbody>
+      <tr><td>기준 Geometry</td><td>L 500 nm · W 200 nm · Tsi 50 nm · EOT 14.1 nm<br>Nbody 2.296×10<sup>17</sup> cm<sup>−3</sup></td></tr>
+      <tr><td>Tbox</td><td>140 nm 기준 가정. 원본 보정 자료에서 추출한 값은 아닙니다.</td></tr>
+      <tr><td>VSCM</td><td>선택한 조건의 결정론적 ID–VD. 기준 IDVD 데이터와 비교할 수 있습니다.</td></tr>
+      <tr><td>CSVM · 회로</td><td>바디 전하의 시간 변화와 회로 KCL을 함께 풉니다. Vtop·Vbottom·주파수는 계산한 파형에서 읽습니다.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Geometry의 두 가지 주요 가정</h2>
+  <p><strong>Tsi와 표면 재결합.</strong> 유효 접합 수명을 Tsi에 비례시킵니다.
+  이는 기존 접합 손실을 표면 우세로 해석한 가정이며, 표면 기여율 100%를 측정으로
+  추출한 것은 아닙니다. 양자 보정이나 인위적인 얇은 바디 전이점은 넣지 않았습니다.</p>
+  <p><strong>Tbox와 VBG.</strong> Si·BOX 직렬 정전용량과 전면 정전용량의 비로
+  백게이트의 바디 퍼텐셜 변화를 근사하고, 이를 BJT 소수 캐리어 주입에 반영합니다.
+  전면 GIDL에는 실제 게이트 전압을 사용합니다. <strong>미보정 BJT 바디 바이어스 근사</strong>이며,
+  독립 백채널이나 2차원 Poisson 해석은 아닙니다.</p>
+  <p><a href="geometry-model.html">치수별 식과 가정 자세히 보기 ↗</a></p>
+
+  <h2>읽어 둘 제한</h2>
+  <table aria-label="해석과 내보내기 제한">
+    <thead><tr><th>기능</th><th>해석할 때</th></tr></thead>
+    <tbody>
+      <tr><td>모델 정확도</td><td>기준 데이터에 대한 보정 비교입니다. 새 치수·백게이트·온도에 대한 독립 검증은 아닙니다.</td></tr>
+      <tr><td>MOS · diode · BJT</td><td>300 K의 기본 compact model입니다. 기생 전하, 바디 다이오드, 항복, 자기발열은 포함하지 않습니다. MOS SS의 하한은 60 mV/dec입니다.</td></tr>
+      <tr><td>5단자 회로</td><td>D·S·G·BG·B를 연결할 수 있습니다. B는 바디 접점이며 R·C 연결을 지원합니다. 접점 전압 u와 정전기적 바디 퍼텐셜 ψ<sub>B</sub>를 구분해 표시합니다. BG·B 외부 연결은 결정론적 BE에서 지원합니다.</td></tr>
+      <tr><td>확률 해석</td><td>변경한 Geometry·VBG에는 아직 지원하지 않습니다. 기준 소자의 잡음 보정을 그대로 재사용하지 않습니다.</td></tr>
+      <tr><td>LTspice · Verilog-A</td><td>고정 치수·바이어스의 준정적 ID–VD behavioral model입니다. CSVM 주파수나 물리적 스위칭 지연을 내보내는 모델은 아닙니다. 상용 실행 검증은 미수행입니다.</td></tr>
+      <tr><td>Sentaurus</td><td>물리 구조·격자·도핑 분포가 필요한 TCAD deck 내보내기는 지원하지 않습니다.</td></tr>
+    </tbody>
+  </table>
+  <p>재결합과 후면 결합은 실제 물리 현상이지만, 이 소자의 계수와 적용 범위는 별도의
+  문제입니다. 범위 밖에서는 결과를 만들기보다 오류 또는 미지원 상태를 표시합니다.</p>
+  <footer>소스 패키지의 <code>docs/PHYSICS_AUDIT_KO.md</code>에 식·출처·감사 결과를 정리했습니다.<br>검토일 2026-09-25</footer>
+</main></body>
+</html>

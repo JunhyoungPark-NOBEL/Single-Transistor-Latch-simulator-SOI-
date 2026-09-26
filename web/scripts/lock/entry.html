@@ -1,0 +1,23 @@
+<title>STL Simulator</title>
+<link rel="stylesheet" href="./lock.css">
+<div id="root"></div>
+<div id="stl-lock" class="stl-lock">
+<div class="stl-lock__wrap">
+<form id="stl-lock-form" class="stl-lock__card" aria-labelledby="stl-lock-title" aria-describedby="stl-lock-lead" aria-busy="false" novalidate>
+<div class="stl-lock__head">
+{{LOGO}}
+<h1 id="stl-lock-title" class="stl-lock__title">STL Simulator</h1>
+<p id="stl-lock-lead" class="stl-lock__lead">비공개 시뮬레이터입니다&nbsp;· 비밀번호를 입력하세요<span lang="en">Private simulator — enter the password</span></p>
+</div>
+<input type="text" autocomplete="username" value="STL Simulator" tabindex="-1" aria-hidden="true" hidden>
+<label class="stl-lock__label" for="stl-lock-pw">비밀번호 / Password</label>
+<input id="stl-lock-pw" class="stl-lock__input" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" autofocus aria-describedby="stl-lock-err">
+<label class="stl-lock__remember"><input id="stl-lock-remember" type="checkbox"> 이 브라우저에서 기억 / Remember on this browser</label>
+<button id="stl-lock-open" class="stl-lock__btn" type="submit" disabled><span class="stl-lock__spin" aria-hidden="true"></span><span id="stl-lock-open-label">열기 / Open</span></button>
+<p id="stl-lock-status" class="stl-lock__status" role="status" hidden></p>
+<p id="stl-lock-err" class="stl-lock__err" role="alert" hidden></p>
+<noscript><p class="stl-lock__err">JavaScript가 필요합니다 / JavaScript is required</p></noscript>
+</form>
+</div>
+</div>
+<script type="module" src="./lock.js"></script>

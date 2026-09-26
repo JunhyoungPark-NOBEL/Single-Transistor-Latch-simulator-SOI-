@@ -1,0 +1,136 @@
+{
+  "first": {
+    "wall_s": 0.041883603000314906,
+    "cpu_s": 0.04188506200000042,
+    "reported_s": 0.04181448899907991,
+    "solver": {
+      "steps": 3557,
+      "rejected": 1,
+      "newton_iters": 5901,
+      "runtime_s": 0.017412159009836614
+    },
+    "warnings": [
+      "negative internal drain voltage r occurred (minimum -0.000 V). Simple Model uses a startup continuation, not a calibrated reverse-junction model."
+    ],
+    "engine": null,
+    "t_reached_s": [
+      0.004
+    ],
+    "saved_points": [
+      3558
+    ],
+    "event_count": 2
+  },
+  "warm": [
+    {
+      "wall_s": 0.020141198998317122,
+      "cpu_s": 0.0201441580000008,
+      "reported_s": 0.020058084002812393,
+      "solver": {
+        "steps": 3557,
+        "rejected": 1,
+        "newton_iters": 5901,
+        "runtime_s": 0.017727914004353806
+      },
+      "warnings": [
+        "negative internal drain voltage r occurred (minimum -0.000 V). Simple Model uses a startup continuation, not a calibrated reverse-junction model."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.004
+      ],
+      "saved_points": [
+        3558
+      ],
+      "event_count": 2
+    },
+    {
+      "wall_s": 0.018785002001095563,
+      "cpu_s": 0.018787199000000143,
+      "reported_s": 0.018722898996202275,
+      "solver": {
+        "steps": 3557,
+        "rejected": 1,
+        "newton_iters": 5901,
+        "runtime_s": 0.016662102003465407
+      },
+      "warnings": [
+        "negative internal drain voltage r occurred (minimum -0.000 V). Simple Model uses a startup continuation, not a calibrated reverse-junction model."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.004
+      ],
+      "saved_points": [
+        3558
+      ],
+      "event_count": 2
+    },
+    {
+      "wall_s": 0.0182759269955568,
+      "cpu_s": 0.018278271999999873,
+      "reported_s": 0.0182144150021486,
+      "solver": {
+        "steps": 3557,
+        "rejected": 1,
+        "newton_iters": 5901,
+        "runtime_s": 0.01612810000369791
+      },
+      "warnings": [
+        "negative internal drain voltage r occurred (minimum -0.000 V). Simple Model uses a startup continuation, not a calibrated reverse-junction model."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.004
+      ],
+      "saved_points": [
+        3558
+      ],
+      "event_count": 2
+    },
+    {
+      "wall_s": 0.01777343198773451,
+      "cpu_s": 0.01777536500000032,
+      "reported_s": 0.017717498005367815,
+      "solver": {
+        "steps": 3557,
+        "rejected": 1,
+        "newton_iters": 5901,
+        "runtime_s": 0.015889641988906078
+      },
+      "warnings": [
+        "negative internal drain voltage r occurred (minimum -0.000 V). Simple Model uses a startup continuation, not a calibrated reverse-junction model."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.004
+      ],
+      "saved_points": [
+        3558
+      ],
+      "event_count": 2
+    },
+    {
+      "wall_s": 0.018381454996415414,
+      "cpu_s": 0.018383117999999143,
+      "reported_s": 0.018320072995265946,
+      "solver": {
+        "steps": 3557,
+        "rejected": 1,
+        "newton_iters": 5901,
+        "runtime_s": 0.016201821010326967
+      },
+      "warnings": [
+        "negative internal drain voltage r occurred (minimum -0.000 V). Simple Model uses a startup continuation, not a calibrated reverse-junction model."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.004
+      ],
+      "saved_points": [
+        3558
+      ],
+      "event_count": 2
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>실행과 연결 · STL simulator</title>
+<style>
+:root{color-scheme:light;font-family:Inter,Pretendard,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172c46;background:#f2f5fa}*{box-sizing:border-box}body{margin:0;padding:48px 20px 70px}main{max-width:720px;margin:auto}a{color:#245eac;text-underline-offset:3px}.brand{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#62738b}h1{font-size:30px;letter-spacing:-.045em;line-height:1.3;margin:14px 0}h2{font-size:19px;letter-spacing:-.025em;margin:0 0 14px}p,li{font-size:15px;line-height:1.8;color:#3c536e}section{background:#fff;border:1px solid #dce4ee;border-radius:16px;padding:24px;margin:22px 0}p:last-child{margin-bottom:0}.lead{max-width:560px;margin-bottom:28px}code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace;background:#eef2ee;border-radius:4px;padding:3px 5px}pre{overflow:auto;background:#edf2ee;padding:16px;border-radius:9px;line-height:1.8}pre code{padding:0}.row{display:flex;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid #edf0ed}.row:last-of-type{border-bottom:0}.row b{min-width:120px;font-size:13px}details{margin:18px 0 0}summary{font-size:13px;color:#245eac;cursor:pointer}ol{padding-left:20px}footer{font-size:12px;color:#75827d}@media(max-width:500px){body{padding:28px 16px}section{padding:20px}.row{align-items:flex-start;flex-direction:column;gap:8px}.row b{min-width:0}h1{font-size:27px}}
+</style></head><body><main>
+<div class="brand">STL simulator / Setup</div><h1>내 PC에서 시작하고,<br>연구실 서버로 연결하세요.</h1>
+<p class="lead">화면은 그대로 두고 계산할 위치만 바꿀 수 있습니다. 연구실 서버 주소를 직접 열면 설치 없이 같은 앱을 사용할 수 있습니다.</p>
+<section><h2>01 &nbsp; 로컬 실행</h2><p>받은 압축파일을 전부 풀어 실행하세요. Windows 10/11 x64에서는 Python이 없으면 자동 설치합니다. macOS/Linux는 Python 3.11 이상을 먼저 설치합니다.</p>
+<div class="row"><b>Windows</b><span><code>start-local.bat</code> 더블클릭</span></div>
+<div class="row"><b>macOS · Linux</b><span>터미널에서 <code>sh start-local.sh</code></span></div>
+<p>첫 실행은 Python 확인·준비 후 필요한 패키지를 설치합니다. 패키지를 받기 위해 인터넷이 필요합니다. 준비되면 브라우저가 자동으로 열립니다. 계산 중 터미널을 유지하고, 종료할 때 <code>Ctrl+C</code>를 누르세요.</p>
+<details><summary>Windows 설치 · 오류 기록</summary><p>패키지에 포함된 공식 Python 설치 파일을 사용하며, 기존 Python을 사용할 수 있으면 재설치하지 않습니다. 설치 상태는 <code>studio-startup.log</code>에 남고, 실패하면 메모장으로 열립니다. 자동 설치는 현재 사용자용으로 구성되어 있습니다.</p><pre><code>start-local.bat --check
+start-local.bat --port 8100</code></pre></details>
+<details><summary>포트 변경 · 실행 확인</summary><pre><code>python launch.py --check
+python launch.py --port 8100
+python launch.py --no-browser</code></pre><p>화면 파일이 포함되어 있으므로 실행만 할 때 Node.js는 필요하지 않습니다. 설치에는 최초 한 번 인터넷 연결이 필요합니다.</p></details></section>
+<section><h2>02 &nbsp; 연구실 서버 연결</h2><ol><li>화면 위 <b>연결</b>에서 <b>연구실 서버</b>를 선택합니다.</li><li>서버 주소를 입력합니다. 예: <code>https://lab.example.edu</code></li><li>필요하면 서버 비밀번호를 입력하고 <b>연결 확인</b>을 누릅니다.</li></ol><p>주소 끝에 <code>/api</code>는 붙이지 않습니다. URL만 기억하며, 비밀번호와 세션 토큰은 저장하지 않습니다. 새로고침 후에는 다시 로그인합니다.</p>
+<details><summary>연결이 안 될 때</summary><p>관리자가 서버의 <code>STL_CORS_ORIGINS</code>에 현재 화면의 주소를 허용해야 합니다. <code>localhost</code>와 <code>127.0.0.1</code>, 서로 다른 포트는 각각 등록합니다. HTTPS 화면에서는 HTTPS 서버를 사용합니다.</p><pre><code>STL_CORS_ORIGINS=http://127.0.0.1:8000,http://localhost:8000</code></pre><p>로컬 서버로 돌아가려면 연결 창에서 <b>로컬</b>을 선택하세요. 저장한 소자는 현재 브라우저에 남아 있습니다.</p></details></section>
+<section><h2>03 &nbsp; 서버 관리자</h2><p>배포 패키지의 <code>STUDIO_START_KO.md</code>에 전체 설치 순서가 있습니다. <code>compose.yml</code>과 <code>deploy/</code>에는 Docker·nginx·systemd 설정이 포함되어 있습니다.</p>
+<details><summary>기본 구성 보기</summary><p>환경 파일을 <code>/etc/biristor-studio/server.env</code>에 두고 비밀번호와 세션 키를 설정합니다. 컨테이너는 기본적으로 서버 내부의 8000 포트에만 열리며 HTTPS 프록시로 연결합니다.</p><pre><code>docker compose up -d --build
+docker compose logs -f --tail 80 studio</code></pre><p>API 서버 하나가 별도의 계산 프로세스 2개를 관리합니다. <code>STL_WORKERS</code>로 계산 작업 수를 조절하고 uvicorn의 <code>--workers</code>는 추가하지 않습니다.</p></details></section>
+<footer>STL simulator · KAIST NOBEL Lab &nbsp; / &nbsp; <a href="/">시뮬레이터로 돌아가기</a></footer>
+</main></body></html>

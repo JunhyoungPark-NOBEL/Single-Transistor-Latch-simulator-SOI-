@@ -1,0 +1,5 @@
+.studio-doc-links{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 26px;padding-bottom:22px;border-bottom:1px solid var(--border)}
+.studio-doc-links a{display:flex;align-items:center;gap:20px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;font-size:12px;font-weight:600;background:var(--panel)}
+.studio-doc-links a:hover{border-color:var(--accent);color:var(--accent)}
+.studio-doc-links a span{margin-left:auto;font-size:14px;color:var(--muted)}
+@media(max-width:600px){.studio-doc-links{flex-direction:column}.studio-doc-links a{width:100%}}

@@ -1,0 +1,71 @@
+{
+  "bench": "custom",
+  "mode": "deterministic",
+  "netlist": {
+    "elements": [
+      {
+        "type": "V",
+        "name": "VG",
+        "nodes": [
+          "gate",
+          "0"
+        ],
+        "wave": {
+          "kind": "dc",
+          "value": -3
+        }
+      },
+      {
+        "type": "I",
+        "name": "I1",
+        "nodes": [
+          "0",
+          "drain"
+        ],
+        "wave": {
+          "kind": "dc",
+          "value": 1e-09
+        }
+      },
+      {
+        "type": "C",
+        "name": "C1",
+        "nodes": [
+          "drain",
+          "0"
+        ],
+        "value": 1e-15
+      },
+      {
+        "type": "STL",
+        "name": "X1",
+        "nodes": {
+          "d": "drain",
+          "g": "gate",
+          "s": "0"
+        },
+        "device": {
+          "vg": -3,
+          "model": "simple"
+        }
+      }
+    ]
+  },
+  "tran": {
+    "t_stop_s": 4e-05,
+    "t_start_save_s": 0,
+    "dt_max_s": 1.3333333333333334e-08,
+    "dt_min_s": 1e-15,
+    "method": "BE",
+    "reltol": 0.001
+  },
+  "detect": {
+    "i_threshold_A": 1e-08,
+    "hysteresis": 10
+  },
+  "probes": [
+    "V(drain)",
+    "I(X1.d)",
+    "X1.vb"
+  ]
+}

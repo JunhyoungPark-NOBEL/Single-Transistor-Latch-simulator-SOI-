@@ -1,0 +1,22 @@
+# Linux systemd alternative to Docker. Replace User, Group and project paths.
+[Unit]
+Description=Biristor Studio
+After=network.target
+
+[Service]
+Type=simple
+User=biristor
+Group=biristor
+WorkingDirectory=/opt/biristor-studio
+EnvironmentFile=/etc/biristor-studio/server.env
+Environment=STL_WORKERS=2
+Environment=OMP_NUM_THREADS=1
+Environment=OPENBLAS_NUM_THREADS=1
+ExecStart=/opt/biristor-studio/.venv/bin/python -m uvicorn server.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

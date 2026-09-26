@@ -1,0 +1,136 @@
+{
+  "first": {
+    "wall_s": 0.26896177300659474,
+    "cpu_s": 0.2689394909999976,
+    "reported_s": 0.2688594589999411,
+    "solver": {
+      "steps": 21969,
+      "rejected": 2431,
+      "newton_iters": 50600,
+      "runtime_s": 0.21536515199113637
+    },
+    "warnings": [
+      "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+    ],
+    "engine": null,
+    "t_reached_s": [
+      4e-05
+    ],
+    "saved_points": [
+      3721
+    ],
+    "event_count": 68
+  },
+  "warm": [
+    {
+      "wall_s": 0.23035527199681383,
+      "cpu_s": 0.23033493699999497,
+      "reported_s": 0.23025455098832026,
+      "solver": {
+        "steps": 21969,
+        "rejected": 2431,
+        "newton_iters": 50600,
+        "runtime_s": 0.21669339800428133
+      },
+      "warnings": [
+        "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        3721
+      ],
+      "event_count": 68
+    },
+    {
+      "wall_s": 0.233537031992455,
+      "cpu_s": 0.23353746200000103,
+      "reported_s": 0.23343974600720685,
+      "solver": {
+        "steps": 21969,
+        "rejected": 2431,
+        "newton_iters": 50600,
+        "runtime_s": 0.21972984999592882
+      },
+      "warnings": [
+        "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        3721
+      ],
+      "event_count": 68
+    },
+    {
+      "wall_s": 0.2897754269943107,
+      "cpu_s": 0.28977468000000073,
+      "reported_s": 0.2895476349949604,
+      "solver": {
+        "steps": 21969,
+        "rejected": 2431,
+        "newton_iters": 50600,
+        "runtime_s": 0.2705551110120723
+      },
+      "warnings": [
+        "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        3721
+      ],
+      "event_count": 68
+    },
+    {
+      "wall_s": 0.2628051490028156,
+      "cpu_s": 0.2628044980000013,
+      "reported_s": 0.2626995390019147,
+      "solver": {
+        "steps": 21969,
+        "rejected": 2431,
+        "newton_iters": 50600,
+        "runtime_s": 0.2434859549975954
+      },
+      "warnings": [
+        "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        3721
+      ],
+      "event_count": 68
+    },
+    {
+      "wall_s": 0.2343144609912997,
+      "cpu_s": 0.2340108960000009,
+      "reported_s": 0.23421468999003991,
+      "solver": {
+        "steps": 21969,
+        "rejected": 2431,
+        "newton_iters": 50600,
+        "runtime_s": 0.2205116239929339
+      },
+      "warnings": [
+        "X1: B is a source-side effective body contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages."
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        3721
+      ],
+      "event_count": 68
+    }
+  ]
+}

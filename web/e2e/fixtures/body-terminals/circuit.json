@@ -1,0 +1,344 @@
+{
+  "format": "stl-circuit",
+  "v": 2,
+  "doc": {
+    "v": 2,
+    "name": "Gate · back gate · body RC",
+    "elements": [
+      {
+        "id": "X1",
+        "name": "X1",
+        "kind": "STL",
+        "x": 360,
+        "y": 220,
+        "rot": 0,
+        "stl": {
+          "libId": "builtin:paper",
+          "name": "Device 1",
+          "technology": "FDSOI",
+          "device": {
+            "geometry": {
+              "Lg_nm": 500.0,
+              "W_nm": 200.0,
+              "Tsi_nm": 50.0,
+              "EOT_nm": 14.1,
+              "Tbox_nm": 140.0,
+              "Nbody_cm3": 2.295773162796593e+17
+            },
+            "vg": -2.0,
+            "vbg": 0.0,
+            "light": {
+              "mode": "iph",
+              "iph_pA": 0.0,
+              "power_mW": 0.0,
+              "responsivity_pA_per_mW": 0.7500000000000002
+            },
+            "calib": {
+              "beta": 7.166501201841884,
+              "tau_bulk_s": 9.266283807625294e-07,
+              "tau_junction_s": 5.358373401760838e-09,
+              "r_contact_ohm": 1.0000000009063326,
+              "l_gidl_nm": 28.754392875051614,
+              "t_access_nm": 3.312683950426714,
+              "na_access_cm3": 1.0002399957771266e+17,
+              "l_access_nm": 70.0,
+              "tau_ratio": 117.42471623552643,
+              "phi_gidl0_V": 0.0002721229842976664,
+              "phi_emitter0_V": 5.908461490149247e-05,
+              "channel_ii_scale": 1.0
+            },
+            "ext": {
+              "dibl": 0.0,
+              "gamma": 0.0,
+              "kappa": 0.0,
+              "seed_ip_pA": 0.0,
+              "seed_S": 1.0,
+              "dj": 0.0,
+              "dm": 0.0,
+              "aloc": 0.0,
+              "isat_pA": 20.0,
+              "dloc": 0.0,
+              "loc_carriers": 0,
+              "kappaF": 0.0
+            },
+            "state": {
+              "delta_phi_G0_V": 0.0,
+              "delta_phi_E0_V": 0.0
+            },
+            "numerics": {
+              "grid": 601
+            },
+            "preset": "paper"
+          },
+          "local_state": {
+            "mode": "evolving",
+            "action": "gidl",
+            "sigma": 0.15339035678526572,
+            "tau_s": 5.0,
+            "sigma_E_V": 0.00043696121025623943,
+            "tau_E_s": 1.6205564347468981,
+            "acquisition_trend": true
+          }
+        },
+        "light": null
+      },
+      {
+        "id": "VD",
+        "name": "VD",
+        "kind": "V",
+        "x": 100,
+        "y": 40,
+        "rot": 0,
+        "wave": {
+          "kind": "dc",
+          "value": 1
+        }
+      },
+      {
+        "id": "VBG",
+        "name": "VBG",
+        "kind": "V",
+        "x": 100,
+        "y": 200,
+        "rot": 0,
+        "wave": {
+          "kind": "sine",
+          "vo": 0,
+          "va": 0.1,
+          "freq": 50000,
+          "td": 0,
+          "theta": 0
+        }
+      },
+      {
+        "id": "VG",
+        "name": "VG",
+        "kind": "V",
+        "x": 100,
+        "y": 360,
+        "rot": 0,
+        "wave": {
+          "kind": "pulse",
+          "v1": -2,
+          "v2": -1.95,
+          "td": 5e-06,
+          "tr": 1e-06,
+          "tf": 1e-06,
+          "pw": 8e-06,
+          "per": 2e-05,
+          "ncycles": 0
+        }
+      },
+      {
+        "id": "Rb",
+        "name": "Rb",
+        "kind": "R",
+        "x": 540,
+        "y": 300,
+        "rot": 0,
+        "value": 10000000000.0
+      },
+      {
+        "id": "Cb",
+        "name": "Cb",
+        "kind": "C",
+        "x": 700,
+        "y": 300,
+        "rot": 0,
+        "value": 1e-14
+      },
+      {
+        "id": "GVD",
+        "name": "GVD",
+        "kind": "GND",
+        "x": 100,
+        "y": 80,
+        "rot": 0
+      },
+      {
+        "id": "GVBG",
+        "name": "GVBG",
+        "kind": "GND",
+        "x": 100,
+        "y": 240,
+        "rot": 0
+      },
+      {
+        "id": "GVG",
+        "name": "GVG",
+        "kind": "GND",
+        "x": 100,
+        "y": 400,
+        "rot": 0
+      },
+      {
+        "id": "GS",
+        "name": "GS",
+        "kind": "GND",
+        "x": 360,
+        "y": 260,
+        "rot": 0
+      },
+      {
+        "id": "GR",
+        "name": "GR",
+        "kind": "GND",
+        "x": 540,
+        "y": 340,
+        "rot": 0
+      },
+      {
+        "id": "GC",
+        "name": "GC",
+        "kind": "GND",
+        "x": 700,
+        "y": 340,
+        "rot": 0
+      },
+      {
+        "id": "LD",
+        "name": "LD",
+        "kind": "LABEL",
+        "x": 360,
+        "y": 100,
+        "rot": 0,
+        "label": "drain"
+      },
+      {
+        "id": "LG",
+        "name": "LG",
+        "kind": "LABEL",
+        "x": 240,
+        "y": 320,
+        "rot": 0,
+        "label": "gate"
+      },
+      {
+        "id": "LBG",
+        "name": "LBG",
+        "kind": "LABEL",
+        "x": 200,
+        "y": 160,
+        "rot": 0,
+        "label": "backgate"
+      },
+      {
+        "id": "LB",
+        "name": "LB",
+        "kind": "LABEL",
+        "x": 600,
+        "y": 230,
+        "rot": 0,
+        "label": "body"
+      }
+    ],
+    "wires": [
+      {
+        "id": "w1",
+        "x1": 100,
+        "y1": 0,
+        "x2": 360,
+        "y2": 0
+      },
+      {
+        "id": "w2",
+        "x1": 360,
+        "y1": 0,
+        "x2": 360,
+        "y2": 180
+      },
+      {
+        "id": "w3",
+        "x1": 100,
+        "y1": 160,
+        "x2": 260,
+        "y2": 160
+      },
+      {
+        "id": "w4",
+        "x1": 260,
+        "y1": 160,
+        "x2": 260,
+        "y2": 190
+      },
+      {
+        "id": "w5",
+        "x1": 260,
+        "y1": 190,
+        "x2": 310,
+        "y2": 190
+      },
+      {
+        "id": "w6",
+        "x1": 100,
+        "y1": 320,
+        "x2": 240,
+        "y2": 320
+      },
+      {
+        "id": "w7",
+        "x1": 240,
+        "y1": 320,
+        "x2": 240,
+        "y2": 220
+      },
+      {
+        "id": "w8",
+        "x1": 240,
+        "y1": 220,
+        "x2": 320,
+        "y2": 220
+      },
+      {
+        "id": "w9",
+        "x1": 410,
+        "y1": 230,
+        "x2": 700,
+        "y2": 230
+      },
+      {
+        "id": "w10",
+        "x1": 540,
+        "y1": 230,
+        "x2": 540,
+        "y2": 260
+      },
+      {
+        "id": "body-cap-wire",
+        "x1": 700,
+        "y1": 230,
+        "x2": 700,
+        "y2": 260
+      }
+    ],
+    "tran": {
+      "t_stop_s": 4e-05,
+      "t_start_save_s": 0,
+      "dt_max_s": 2e-07,
+      "dt_min_s": 1e-15,
+      "method": "BE",
+      "reltol": 0.001
+    },
+    "stoch": {
+      "n_runs": 20,
+      "seed": 2026092920,
+      "carrier_noise": true,
+      "ld_carrier_noise": false,
+      "local_source": "device",
+      "local_state": {
+        "mode": "none",
+        "action": "gidl",
+        "sigma": 0,
+        "tau_s": 5,
+        "sigma_E_V": 0,
+        "tau_E_s": 1.62,
+        "acquisition_trend": false
+      }
+    },
+    "detect": {
+      "i_threshold_A": 1e-08,
+      "hysteresis": 10
+    },
+    "save_all": true
+  }
+}

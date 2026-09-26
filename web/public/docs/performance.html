@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>성능 측정 · STL simulator</title>
+<link rel="stylesheet" href="../fonts/noto-sans-kr/index.css">
+<style>
+:root{font-family:"Noto Sans KR Variable",system-ui,sans-serif;font-size:17px;line-height:1.75;color:#203144;background:#f5f7fa;color-scheme:light dark;--panel:#fff;--border:#dbe4ee;--muted:#52657a;--accent:#245ea7}*{box-sizing:border-box}body{max-width:850px;margin:auto;padding:40px 24px 70px}header{padding-bottom:25px;border-bottom:1px solid var(--border)}.eyebrow{font-size:13px;font-weight:650;letter-spacing:.08em;color:var(--accent)}h1{font-size:34px;line-height:1.25;letter-spacing:-.04em;margin:12px 0}h2{font-size:21px;margin:28px 0 12px}p{margin:10px 0}.muted{color:var(--muted)}.steps{padding-left:24px}.steps li{padding:5px 0}details{background:var(--panel);border:1px solid var(--border);border-radius:12px;margin:14px 0}summary{padding:16px 18px;font-weight:650;cursor:pointer}.content{padding:0 18px 18px}table{width:100%;border-collapse:collapse;font-size:16px}th,td{text-align:left;padding:11px 8px;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--muted);font-weight:600}.scroll{overflow:auto}a{color:var(--accent);text-underline-offset:3px}code{font-size:.9em;overflow-wrap:anywhere}summary:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}footer{margin-top:30px;padding-top:20px;border-top:1px solid var(--border);font-size:15px;color:var(--muted)}@media(prefers-color-scheme:dark){:root{background:#13202e;color:#dce8f6;--panel:#1c2b3b;--border:#34485d;--muted:#adc0d4;--accent:#8fbafa}}@media(max-width:540px){body{padding:28px 16px 50px}h1{font-size:29px}th,td{padding:9px 5px}.content{padding:0 14px 15px}}
+</style>
+</head>
+<body>
+<header><div class="eyebrow">STL SIMULATOR · PERFORMANCE</div><h1>성능 측정과 예상 시간</h1><p class="muted">모델별 기준 시간과 현재 계산 환경의 기록을 함께 사용합니다.</p></header>
+<h2>사용 방법</h2>
+<ol class="steps"><li><strong>성능</strong> 탭에서 모델·해석 종류별 기준 시간을 확인합니다.</li><li><strong>이 환경 측정</strong>으로 현재 연결된 Python 계산 환경을 측정합니다.</li><li>소자·회로 실행 버튼 근처에서 현재 설정의 예상 시간을 확인합니다.</li></ol>
+<p>로컬 앱은 사용자 PC, 원격 연결은 연구실 서버의 속도를 사용합니다. 환경 측정 전에는 <strong>기준 환경</strong> 추정으로 표시합니다.</p>
+<details><summary>표의 숫자는 어떻게 측정하나요?</summary><div class="content"><p>같은 외부 입력과 수치 허용오차로 모델을 직접 실행합니다. 반복 계산의 중앙값을 표시하고 최소–최대, 반복 횟수와 실제 요청을 함께 기록합니다. 최종 결과 캐시에서 응답한 시간은 모델 계산 속도에 포함하지 않습니다.</p><p>첫 호출은 기존 컴파일 캐시 읽기나 조건별 계산표 생성이 섞일 수 있어 따로 기록합니다. 이 숫자는 새 설치에서 모든 수치 커널을 처음 컴파일한 시간과 다릅니다.</p><p>Simple의 확률적 해석처럼 지원하지 않는 조합은 <strong>미지원</strong>으로 표시합니다. MOSFET·diode·BJT만 있는 회로는 STL 모델에 무관한 공통 결과입니다.</p></div></details>
+<details><summary>내 PC의 예상 시간은 어떻게 구하나요?</summary><div class="content"><p>모델과 해석 종류가 같은 기준 결과를 찾아 격자·게이트 점수, 회로 크기, 해석 길이·시간 간격, 구동 조건과 반복 횟수에 맞춰 환산합니다. 환경 측정은 브라우저의 연산이 아닌 실제 Python 모델 계산입니다.</p><p>측정한 모델·해석 종류에 보정을 적용하고, 성공한 실제 실행으로 예측을 갱신합니다. 측정 자료가 없는 종류는 기준 환경 추정으로 구분합니다. 다른 서버나 새 엔진의 기록을 섞지 않습니다.</p><p>실패·취소·중도 종료, 캐시 응답, 동일 계산을 함께 요청한 사용자의 중복 시간은 정상 실행 시간으로 학습하지 않습니다.</p></div></details>
+<details><summary>첫 실행과 서버 대기는요?</summary><div class="content"><div class="scroll"><table><thead><tr><th>시간</th><th>표시 기준</th></tr></thead><tbody><tr><td>계산</td><td>기준 표와 해당 환경의 기록으로 추정</td></tr><tr><td>초기 준비</td><td>컴파일·캐시 준비가 남아 있으면 추가 시간 가능성 표시</td></tr><tr><td>작업 대기</td><td>서버의 진행 중인 작업과 사용 가능한 작업자 수 고려</td></tr><tr><td>결과 캐시</td><td>모델 재계산과 구분하여 표시</td></tr><tr><td>전송·화면 표시</td><td>계산 벤치마크에서 제외</td></tr></tbody></table></div><p>첫 환경 측정은 준비 과정 때문에 더 오래 걸릴 수 있습니다. 확률적 해석도 새로운 조건의 내부 계산표를 만들 때 추가 시간이 생길 수 있습니다.</p></div></details>
+<details><summary>예상 범위와 비교의 한계</summary><div class="content"><p>표시 범위는 실행 부담을 판단하기 위한 추정이며 통계적 신뢰구간이 아닙니다. 적응 시간 간격, 수렴 난이도, 새로운 바이어스·기하·회로, 동시 사용량에 따라 실제 시간이 달라질 수 있습니다.</p><p>실행 버튼이 여러 계산을 요청하면 병렬 실행과 순차 의존성을 함께 고려합니다. 아직 수치 풀이를 하지 않았으므로 실제 스텝 수나 모든 수렴 실패를 미리 확정할 수는 없습니다.</p><p>속도 비교는 물리 정확도 비교가 아닙니다. Simple과 Detailed는 근사와 기본 파라미터가 달라 같은 입력에서도 다른 파형을 만들 수 있습니다.</p></div></details>
+<footer>재현 스크립트와 원자료는 배포본의 <code>scripts/benchmark_performance.py</code>, <code>docs/benchmarks/performance/</code>에 있습니다. 상세 설명은 <code>PERFORMANCE_KO.md</code>를 참고하세요.</footer>
+</body></html>

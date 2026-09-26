@@ -1,0 +1,76 @@
+{
+  "first": {
+    "wall_s": 0.09168138499080669,
+    "cpu_s": 0.09168312699999603,
+    "reported_s": 0.09167179100040812,
+    "solver": null,
+    "warnings": [
+      "HRS fit error is not independent validation; fold and transient accuracy require held-out data",
+      "CB is held fixed: DC HRS data constrain tau/CB, not tau and CB independently"
+    ],
+    "engine": null,
+    "rmse_log10": 2.8355368246349497e-14
+  },
+  "warm": [
+    {
+      "wall_s": 0.08877478800422978,
+      "cpu_s": 0.08877814400000261,
+      "reported_s": 0.08876526400854345,
+      "solver": null,
+      "warnings": [
+        "HRS fit error is not independent validation; fold and transient accuracy require held-out data",
+        "CB is held fixed: DC HRS data constrain tau/CB, not tau and CB independently"
+      ],
+      "engine": null,
+      "rmse_log10": 2.8355368246349497e-14
+    },
+    {
+      "wall_s": 0.08834633500373457,
+      "cpu_s": 0.08834294599999737,
+      "reported_s": 0.08833848300855607,
+      "solver": null,
+      "warnings": [
+        "HRS fit error is not independent validation; fold and transient accuracy require held-out data",
+        "CB is held fixed: DC HRS data constrain tau/CB, not tau and CB independently"
+      ],
+      "engine": null,
+      "rmse_log10": 2.8355368246349497e-14
+    },
+    {
+      "wall_s": 0.09003435999329668,
+      "cpu_s": 0.09002965700000232,
+      "reported_s": 0.09002573799807578,
+      "solver": null,
+      "warnings": [
+        "HRS fit error is not independent validation; fold and transient accuracy require held-out data",
+        "CB is held fixed: DC HRS data constrain tau/CB, not tau and CB independently"
+      ],
+      "engine": null,
+      "rmse_log10": 2.8355368246349497e-14
+    },
+    {
+      "wall_s": 0.08962282299762592,
+      "cpu_s": 0.08962508400000502,
+      "reported_s": 0.0896135380025953,
+      "solver": null,
+      "warnings": [
+        "HRS fit error is not independent validation; fold and transient accuracy require held-out data",
+        "CB is held fixed: DC HRS data constrain tau/CB, not tau and CB independently"
+      ],
+      "engine": null,
+      "rmse_log10": 2.8355368246349497e-14
+    },
+    {
+      "wall_s": 0.09085274000244681,
+      "cpu_s": 0.09085576500000059,
+      "reported_s": 0.09084350700140931,
+      "solver": null,
+      "warnings": [
+        "HRS fit error is not independent validation; fold and transient accuracy require held-out data",
+        "CB is held fixed: DC HRS data constrain tau/CB, not tau and CB independently"
+      ],
+      "engine": null,
+      "rmse_log10": 2.8355368246349497e-14
+    }
+  ]
+}

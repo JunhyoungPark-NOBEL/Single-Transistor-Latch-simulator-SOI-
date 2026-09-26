@@ -1,0 +1,55 @@
+{
+  "parameter_names": [
+    "mean_GIDL_phi_V",
+    "mean_emitter_phi_mV",
+    "SD_GIDL_phi_V",
+    "SD_emitter_phi_mV"
+  ],
+  "parameters": [
+    0.0002721229842976664,
+    0.059084614901492465,
+    0.15339035678526572,
+    0.4369612102562394
+  ],
+  "fit_targets": [
+    "mean_VLU",
+    "mean_VLD",
+    "SD_VLU",
+    "SD_VLD"
+  ],
+  "target": [
+    3.6455,
+    2.7001,
+    0.12311918344975055,
+    0.019514045705541935
+  ],
+  "predicted": [
+    3.6455,
+    2.7001,
+    0.12311918344975055,
+    0.019514045705541935
+  ],
+  "outside_static_fraction": 3.0517578125e-05,
+  "kinetic_fit": {
+    "fraction_slow": 5.561580619897564e-14,
+    "tau_fast_s": 1.6205564347468981,
+    "slow_tau_s": 1000.0,
+    "up_residual_tau_s": 5.0,
+    "training_voltage_V": [
+      3,
+      3.5
+    ],
+    "heldout_voltage_V": [
+      3.6,
+      4
+    ],
+    "heldout_covariance_RMSE": 3.772695384642759e-05,
+    "heldout_r_RMSE": 0.06904005279701557,
+    "static_heldout_r_RMSE": 0.8207239378803453,
+    "LD_event_derivatives": [
+      -0.00019900247405502114,
+      -41.165502338724735
+    ]
+  },
+  "scope": "Internal-state amplitudes calibrated to widths; kinetics to same-record training covariance. No microscopic defect identification. Up residual tau5s and slow1000s are conditional choices, not extracted lifetimes."
+}

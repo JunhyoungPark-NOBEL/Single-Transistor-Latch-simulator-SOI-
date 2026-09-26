@@ -205,3 +205,25 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# --- STL web simulator ---
+# engine run-time caches (FPT nodes, numba JIT caches are under __pycache__/)
+engine/photo_extension/photo_nodes/
+engine/model/**/fpt_nodes/
+engine/model/**/conditional_table/
+engine/model/**/fast_fpt/
+server/.cache/
+# frontend
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+web/dist-artifact/
+web/snapshot/
+# NOTE: the Python template above ignores lib/ — never name a source folder "lib".
+
+# runtime / large binaries kept out of git
+.studio-launch.lock
+vendor/*.exe
+studio-startup.log
+studio-python-install.log

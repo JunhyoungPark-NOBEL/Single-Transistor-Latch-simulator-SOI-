@@ -1,0 +1,160 @@
+{
+  "first": {
+    "wall_s": 0.33494410999992397,
+    "cpu_s": 0.33438186700000117,
+    "reported_s": 0.33480791600595694,
+    "solver": {
+      "steps": 16847,
+      "rejected": 971,
+      "newton_iters": 37722,
+      "runtime_s": 0.29860359500162303
+    },
+    "warnings": [
+      "X1: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+      "X2: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+      "X3: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+      "X4: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+      "X1, X2, X3, X4: current-biased above the HRS (the load line at t = 0 does not cross the HRS, so the DC operating point would be an equilibrium on the negative-resistance branch or the LRS): the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto'; 'op' uses the DC operating point)"
+    ],
+    "engine": null,
+    "t_reached_s": [
+      0.015
+    ],
+    "saved_points": [
+      3868
+    ],
+    "event_count": 184
+  },
+  "warm": [
+    {
+      "wall_s": 0.3176485840085661,
+      "cpu_s": 0.3176412830000004,
+      "reported_s": 0.31749315100023523,
+      "solver": {
+        "steps": 16847,
+        "rejected": 971,
+        "newton_iters": 37722,
+        "runtime_s": 0.301038610006799
+      },
+      "warnings": [
+        "X1: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X2: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X3: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X4: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X1, X2, X3, X4: current-biased above the HRS (the load line at t = 0 does not cross the HRS, so the DC operating point would be an equilibrium on the negative-resistance branch or the LRS): the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto'; 'op' uses the DC operating point)"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.015
+      ],
+      "saved_points": [
+        3868
+      ],
+      "event_count": 184
+    },
+    {
+      "wall_s": 0.3142472049948992,
+      "cpu_s": 0.31423647700000146,
+      "reported_s": 0.31410399900050834,
+      "solver": {
+        "steps": 16847,
+        "rejected": 971,
+        "newton_iters": 37722,
+        "runtime_s": 0.29766420100349933
+      },
+      "warnings": [
+        "X1: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X2: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X3: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X4: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X1, X2, X3, X4: current-biased above the HRS (the load line at t = 0 does not cross the HRS, so the DC operating point would be an equilibrium on the negative-resistance branch or the LRS): the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto'; 'op' uses the DC operating point)"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.015
+      ],
+      "saved_points": [
+        3868
+      ],
+      "event_count": 184
+    },
+    {
+      "wall_s": 0.3180759700044291,
+      "cpu_s": 0.3180480070000016,
+      "reported_s": 0.31789379598922096,
+      "solver": {
+        "steps": 16847,
+        "rejected": 971,
+        "newton_iters": 37722,
+        "runtime_s": 0.2989902120025363
+      },
+      "warnings": [
+        "X1: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X2: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X3: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X4: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X1, X2, X3, X4: current-biased above the HRS (the load line at t = 0 does not cross the HRS, so the DC operating point would be an equilibrium on the negative-resistance branch or the LRS): the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto'; 'op' uses the DC operating point)"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.015
+      ],
+      "saved_points": [
+        3868
+      ],
+      "event_count": 184
+    },
+    {
+      "wall_s": 0.3276950690051308,
+      "cpu_s": 0.3276952659999992,
+      "reported_s": 0.3275136169977486,
+      "solver": {
+        "steps": 16847,
+        "rejected": 971,
+        "newton_iters": 37722,
+        "runtime_s": 0.31164206900575664
+      },
+      "warnings": [
+        "X1: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X2: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X3: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X4: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X1, X2, X3, X4: current-biased above the HRS (the load line at t = 0 does not cross the HRS, so the DC operating point would be an equilibrium on the negative-resistance branch or the LRS): the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto'; 'op' uses the DC operating point)"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.015
+      ],
+      "saved_points": [
+        3868
+      ],
+      "event_count": 184
+    },
+    {
+      "wall_s": 0.3135095280013047,
+      "cpu_s": 0.31347844900000155,
+      "reported_s": 0.31336631199519616,
+      "solver": {
+        "steps": 16847,
+        "rejected": 971,
+        "newton_iters": 37722,
+        "runtime_s": 0.29661325199413113
+      },
+      "warnings": [
+        "X1: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X2: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X3: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X4: relaxation oscillator — fed by 1 nA (current source) with 1 pF across the cell, the load line crosses only the negative-resistance branch (fold currents I_LU = 38.73 pA, I_LD = 47.96 nA): V_DS saws between ≈ V_LD and V_LU with a quasi-static period ≈ 560.6 µs (~23 latch-ups in t_stop; the fold lags lengthen it by a few %)",
+        "X1, X2, X3, X4: current-biased above the HRS (the load line at t = 0 does not cross the HRS, so the DC operating point would be an equilibrium on the negative-resistance branch or the LRS): the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto'; 'op' uses the DC operating point)"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        0.015
+      ],
+      "saved_points": [
+        3868
+      ],
+      "event_count": 184
+    }
+  ]
+}

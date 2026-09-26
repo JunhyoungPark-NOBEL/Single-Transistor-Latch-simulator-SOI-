@@ -1,0 +1,154 @@
+{
+  "first": {
+    "wall_s": 0.5152851839957293,
+    "cpu_s": 0.5150331090000009,
+    "reported_s": 0.5152104919980047,
+    "solver": {
+      "steps": 271,
+      "rejected": 0,
+      "newton_iters": 530,
+      "runtime_s": 0.008888303011190146
+    },
+    "warnings": [
+      "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+      "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+      "a source junction became reverse biased (min u = -0.10 mV): low-injection diode extension used for u < 0",
+      "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+    ],
+    "engine": null,
+    "t_reached_s": [
+      4e-05
+    ],
+    "saved_points": [
+      272
+    ],
+    "event_count": 0
+  },
+  "warm": [
+    {
+      "wall_s": 0.011086936996434815,
+      "cpu_s": 0.011088907000001313,
+      "reported_s": 0.011029629997210577,
+      "solver": {
+        "steps": 271,
+        "rejected": 0,
+        "newton_iters": 530,
+        "runtime_s": 0.00894971600791905
+      },
+      "warnings": [
+        "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+        "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+        "a source junction became reverse biased (min u = -0.10 mV): low-injection diode extension used for u < 0",
+        "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        272
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.011879446989041753,
+      "cpu_s": 0.011881936999998288,
+      "reported_s": 0.011817243997938931,
+      "solver": {
+        "steps": 271,
+        "rejected": 0,
+        "newton_iters": 530,
+        "runtime_s": 0.009599522003554739
+      },
+      "warnings": [
+        "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+        "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+        "a source junction became reverse biased (min u = -0.10 mV): low-injection diode extension used for u < 0",
+        "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        272
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.01195100400946103,
+      "cpu_s": 0.011953011999999319,
+      "reported_s": 0.011892145994352177,
+      "solver": {
+        "steps": 271,
+        "rejected": 0,
+        "newton_iters": 530,
+        "runtime_s": 0.009566391003318131
+      },
+      "warnings": [
+        "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+        "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+        "a source junction became reverse biased (min u = -0.10 mV): low-injection diode extension used for u < 0",
+        "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        272
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.011027537009795196,
+      "cpu_s": 0.011028967999997974,
+      "reported_s": 0.010975579003570601,
+      "solver": {
+        "steps": 271,
+        "rejected": 0,
+        "newton_iters": 530,
+        "runtime_s": 0.009085989993764088
+      },
+      "warnings": [
+        "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+        "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+        "a source junction became reverse biased (min u = -0.10 mV): low-injection diode extension used for u < 0",
+        "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        272
+      ],
+      "event_count": 0
+    },
+    {
+      "wall_s": 0.011401069001294672,
+      "cpu_s": 0.011402844000002688,
+      "reported_s": 0.011347868014127016,
+      "solver": {
+        "steps": 271,
+        "rejected": 0,
+        "newton_iters": 530,
+        "runtime_s": 0.009389276005094871
+      },
+      "warnings": [
+        "X1: the gate-source voltage varies (-3 … -2.95 V, linear estimate): latch-state fold values and noise bands are taken over this range",
+        "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+        "a source junction became reverse biased (min u = -0.10 mV): low-injection diode extension used for u < 0",
+        "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        272
+      ],
+      "event_count": 0
+    }
+  ]
+}

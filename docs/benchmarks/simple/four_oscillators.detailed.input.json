@@ -1,0 +1,182 @@
+{
+  "bench": "custom",
+  "mode": "deterministic",
+  "netlist": {
+    "elements": [
+      {
+        "type": "V",
+        "name": "VG",
+        "nodes": [
+          "gate",
+          "0"
+        ],
+        "wave": {
+          "kind": "dc",
+          "value": -3
+        }
+      },
+      {
+        "type": "I",
+        "name": "I1",
+        "nodes": [
+          "0",
+          "d1"
+        ],
+        "wave": {
+          "kind": "dc",
+          "value": 1e-09
+        }
+      },
+      {
+        "type": "C",
+        "name": "C1",
+        "nodes": [
+          "d1",
+          "0"
+        ],
+        "value": 1e-12
+      },
+      {
+        "type": "STL",
+        "name": "X1",
+        "nodes": {
+          "d": "d1",
+          "g": "gate",
+          "s": "0"
+        },
+        "device": {
+          "vg": -3,
+          "model": "detailed"
+        }
+      },
+      {
+        "type": "I",
+        "name": "I2",
+        "nodes": [
+          "0",
+          "d2"
+        ],
+        "wave": {
+          "kind": "dc",
+          "value": 1e-09
+        }
+      },
+      {
+        "type": "C",
+        "name": "C2",
+        "nodes": [
+          "d2",
+          "0"
+        ],
+        "value": 1e-12
+      },
+      {
+        "type": "STL",
+        "name": "X2",
+        "nodes": {
+          "d": "d2",
+          "g": "gate",
+          "s": "0"
+        },
+        "device": {
+          "vg": -3,
+          "model": "detailed"
+        }
+      },
+      {
+        "type": "I",
+        "name": "I3",
+        "nodes": [
+          "0",
+          "d3"
+        ],
+        "wave": {
+          "kind": "dc",
+          "value": 1e-09
+        }
+      },
+      {
+        "type": "C",
+        "name": "C3",
+        "nodes": [
+          "d3",
+          "0"
+        ],
+        "value": 1e-12
+      },
+      {
+        "type": "STL",
+        "name": "X3",
+        "nodes": {
+          "d": "d3",
+          "g": "gate",
+          "s": "0"
+        },
+        "device": {
+          "vg": -3,
+          "model": "detailed"
+        }
+      },
+      {
+        "type": "I",
+        "name": "I4",
+        "nodes": [
+          "0",
+          "d4"
+        ],
+        "wave": {
+          "kind": "dc",
+          "value": 1e-09
+        }
+      },
+      {
+        "type": "C",
+        "name": "C4",
+        "nodes": [
+          "d4",
+          "0"
+        ],
+        "value": 1e-12
+      },
+      {
+        "type": "STL",
+        "name": "X4",
+        "nodes": {
+          "d": "d4",
+          "g": "gate",
+          "s": "0"
+        },
+        "device": {
+          "vg": -3,
+          "model": "detailed"
+        }
+      }
+    ]
+  },
+  "tran": {
+    "t_stop_s": 0.015,
+    "t_start_save_s": 0,
+    "dt_max_s": 4.9999999999999996e-06,
+    "dt_min_s": 1e-15,
+    "method": "BE",
+    "reltol": 0.001
+  },
+  "detect": {
+    "i_threshold_A": 1e-08,
+    "hysteresis": 10
+  },
+  "probes": [
+    "V(d1)",
+    "I(X1.d)",
+    "X1.vb",
+    "V(d2)",
+    "I(X2.d)",
+    "X2.vb",
+    "V(d3)",
+    "I(X3.d)",
+    "X3.vb",
+    "V(d4)",
+    "I(X4.d)",
+    "X4.vb"
+  ]
+}

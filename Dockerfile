@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+# Biristor Studio: bundled React UI + one API process + isolated compute workers.
+# Lab server: see STUDIO_START_KO.md and compose.yml.
+
+# ---------------------------------------------------------------- 1. frontend build
+FROM node:22-slim AS web
+WORKDIR /build/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web/ ./
+RUN npm run build
+
+# ---------------------------------------------------------------- 2. runtime
+FROM python:3.11-slim AS runtime
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    STL_WORKERS=2 \
+    FORWARDED_ALLOW_IPS=127.0.0.1 \
+    PORT=8000
+# Non-root user (uid 1000, as Hugging Face Spaces requires); /app must stay writable for the numba caches
+# (engine/**/__pycache__), the FPT node cache (engine/photo_extension/photo_nodes) and server/.cache.
+RUN useradd -m -u 1000 app
+WORKDIR /app
+# requirements go outside /app: copying them to /app/server first would create /app/server as root, and a later
+# `COPY --chown` keeps an existing destination directory's owner (server/.cache could then not be created)
+COPY server/requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
+COPY --chown=app:app engine/ engine/
+COPY --chown=app:app server/ server/
+COPY --chown=app:app scripts/ scripts/
+COPY --chown=app:app launch.py ./
+COPY --chown=app:app --from=web /build/web/dist web/dist
+RUN mkdir -p server/.cache && chown app:app /app /app/server /app/server/.cache
+USER app
+# Compile the numba kernels and fill the engine caches at build time (first request is then fast).
+RUN python scripts/warmup.py --quick
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD python -c "import urllib.request,os;urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"8000\")}/api/health',timeout=4)" || exit 1
+# One uvicorn process: the compute process pool (STL_WORKERS) lives inside it.
+# Set FORWARDED_ALLOW_IPS=* only behind a trusted proxy with no public container port.
+CMD ["python", "launch.py", "--use-current-python", "--no-install", "--no-browser", "--host", "0.0.0.0"]

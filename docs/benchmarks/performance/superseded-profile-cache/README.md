@@ -1,0 +1,1 @@
+These circuit timing records were superseded: clearing the profile cache for each model removed the previous model's profile, so its first purported warm sample rebuilt that profile. The final catalog uses a rerun with one cache clear before each Detailed/Simple pair. These samples are excluded from all displayed medians and estimates.
