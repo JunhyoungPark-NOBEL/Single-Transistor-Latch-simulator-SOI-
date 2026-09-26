@@ -26,6 +26,10 @@ if not os.environ.get("STL_CACHE_DIR"):
     os.environ["STL_CACHE_DIR"] = _TMP_CACHE
 os.environ.setdefault("STL_PREWARM", "1")
 
+from server.numba_cache import purge_if_stale  # noqa: E402
+
+purge_if_stale()   # a stale numba cache under server/ must never leak old physics into a test run
+
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "slow: long-running test (deselect with -m 'not slow')")

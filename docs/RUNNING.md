@@ -59,3 +59,7 @@ npm run e2e
 ```
 
 최초 계산은 numba 컴파일이 추가됩니다. 선택적으로 `python scripts/warmup.py --quick`을 실행해 기준 소자 커널을 준비할 수 있습니다. Docker는 빌드 시 이 빠른 준비를 수행하며 회로 커널은 첫 회로 계산 시 준비합니다.
+
+## numba caches after an update
+
+numba only re-compiles a cached function when the file that defines it changes; a cached caller in another file would keep the old inlined callee. The server therefore fingerprints `server/**/*.py` at start-up (`server/numba_cache.py`) and deletes `server/**/__pycache__/*.nbi|*.nbc` when any server source changed; they rebuild on first use in a few seconds. `STL_KEEP_NUMBA_CACHE=1` skips this. The engine caches under `engine/` are never touched.

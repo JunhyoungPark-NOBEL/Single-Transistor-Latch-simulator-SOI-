@@ -38,6 +38,7 @@ def main() -> int:
     args = ap.parse_args()
     t0 = time.perf_counter()
 
+    step("drop stale server numba caches", lambda: __import__("server.numba_cache", fromlist=["purge_if_stale"]).purge_if_stale())
     step("import engine (numba cache load/compile)", lambda: __import__("server.engine_bridge"))
     from server.compute import deterministic as D
 

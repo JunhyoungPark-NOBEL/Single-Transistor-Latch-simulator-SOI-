@@ -26,6 +26,9 @@ from server.compute import KINDS
 from server.compute import data as data_mod
 from server.jobs import ALL_KINDS, EXTRA_KINDS, JobManager, QueueFull
 from server.payloads import CAPS
+from server.numba_cache import purge_if_stale
+
+purge_if_stale()   # server sources changed -> stale numba caches under server/ are dropped before workers start
 
 APP_VERSION = "1.0.0"
 ROOT = Path(__file__).resolve().parents[1]

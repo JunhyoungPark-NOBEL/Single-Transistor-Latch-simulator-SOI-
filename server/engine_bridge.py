@@ -18,6 +18,10 @@ from pathlib import Path
 
 import numpy as np
 
+from server.numba_cache import purge_if_stale
+
+purge_if_stale()   # before numba loads any cached server function in this process
+
 ENGINE = Path(__file__).resolve().parents[1] / "engine"
 if str(ENGINE) not in sys.path:
     sys.path.insert(0, str(ENGINE))
