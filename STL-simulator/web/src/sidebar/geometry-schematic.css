@@ -1,0 +1,68 @@
+.geometry-controls {
+  --geo-blue: #245eac;
+  --geo-teal: #087f83;
+  --geo-amber: #986215;
+  --geo-gate: #275783;
+  --geo-si: #e5f2ef;
+  --geo-junction: #b9dcd9;
+  --geo-box: #e7eef8;
+  --geo-oxide: #e5c280;
+  --geo-substrate: #d1dce9;
+  --geo-ink: #36506b;
+}
+:root[data-theme="dark"] .geometry-controls {
+  --geo-blue: #86b8f3;
+  --geo-teal: #74ccc9;
+  --geo-amber: #e9bd73;
+  --geo-gate: #4879a3;
+  --geo-si: #254744;
+  --geo-junction: #366766;
+  --geo-box: #293b51;
+  --geo-oxide: #a98245;
+  --geo-substrate: #35465a;
+  --geo-ink: #b4c8dd;
+}
+.geometry-technology { display: flex; gap: 5px; margin-bottom: 14px; padding: 3px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); }
+.geometry-technology button { min-width: 0; flex: 1; padding: 7px 4px; border: 0; border-radius: 4px; background: transparent; font-size: 12px; line-height: 1.3; font-weight: 600; }
+.geometry-technology button[aria-pressed="true"] { color: var(--geo-blue); background: var(--surface); box-shadow: 0 1px 3px #172c4615; }
+.geometry-technology button:disabled { color: var(--muted); opacity: .6; cursor: not-allowed; }
+.geometry-technology button:focus-visible { outline: 2px solid var(--geo-blue); outline-offset: 2px; }
+.geometry-figure { margin: 0 0 13px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); overflow: hidden; }
+.geometry-figure figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 9px 0; font-size: 12px; color: var(--text-2); }
+.geometry-figure figcaption span:last-child { font-size: 11px; color: var(--muted); }
+.geometry-schematic { display: block; width: 100%; height: auto; color: var(--geo-ink); overflow: visible; }
+.geometry-schematic text { font-family: var(--font); font-size: 12px; fill: currentColor; pointer-events: none; }
+.geometry-schematic .geometry-variable { font-family: Cambria, "Times New Roman", serif; font-size: 15px; }
+.geometry-schematic .geo-terminal { font-size: 12px; font-weight: 650; }
+.geometry-schematic .geo-gate-label { fill: #fff; font-size: 12px; font-weight: 650; }
+.geometry-schematic .geo-material { font-size: 12px; }
+.geometry-schematic .geo-eot-label { font-size: 12px; font-weight: 600; }
+.geometry-schematic .geo-view-label { font-size: 12px; fill: var(--muted); }
+.geometry-schematic .geo-pin-label { font-size: 12px; }
+.geo-substrate { fill: var(--geo-substrate); }
+.geo-box { fill: var(--geo-box); }
+.geo-silicon { fill: var(--geo-si); }
+.geo-junction { fill: var(--geo-junction); }
+.geo-oxide { fill: var(--geo-oxide); }
+.geo-gate { fill: var(--geo-gate); }
+.geo-lit { stroke: var(--geo-teal); stroke-width: 1.8; }
+.geo-contact { stroke: var(--geo-ink); stroke-width: 2; }
+.geo-divider { stroke: var(--border); }
+.geometry-target { color: var(--geo-ink); cursor: pointer; outline: none; }
+.geo-dimension, .geo-callout { fill: none; stroke: currentColor; stroke-width: 1.1; stroke-linecap: round; stroke-linejoin: round; }
+.geo-point { fill: currentColor; }
+.geo-label-bg { fill: var(--surface-2); }
+.geo-hit { fill: transparent; stroke: transparent; stroke-width: 1; }
+.geometry-target:hover, .geometry-target.is-active { color: var(--geo-teal); }
+.geometry-target.is-active .geo-dimension { stroke-width: 1.6; }
+.geometry-target:hover .geo-hit, .geometry-target:focus-visible .geo-hit { fill: color-mix(in srgb, var(--geo-teal) 8%, transparent); stroke: var(--geo-teal); }
+.geometry-target:focus-visible .geo-hit { stroke-width: 1.5; stroke-dasharray: 2 2; }
+.geo-plan-outline { fill: none; stroke: transparent; stroke-width: 1.8; pointer-events: all; }
+.geometry-target.is-active .geo-plan-outline { stroke: var(--geo-teal); }
+.geo-circuit-symbol { fill: none; stroke: var(--geo-blue); stroke-width: 2; stroke-linejoin: miter; stroke-linecap: square; }
+.geo-circuit-symbol .geo-symbol-state { stroke: var(--geo-teal); stroke-width: 2.8; }
+.geometry-controls .geometry-field[data-active="true"] label { color: var(--geo-teal); }
+.sidebar .geometry-controls .geometry-field[data-active="true"] .input { border-color: var(--geo-teal); }
+.geometry-controls .geometry-field label { font-size: 14px; }
+.sidebar .geometry-controls .geometry-field .input { height: 35px; font-size: 14px; }
+.geometry-controls .geometry-field .geometry-unit { font-size: 11px; font-style: normal; }

@@ -1,0 +1,26 @@
+# Render Blueprint — one web service built from the repository's Dockerfile.
+# Render dashboard → New → Blueprint → pick this repository → Apply. The service URL appears on the dashboard.
+# See docs/DEPLOY.md for plan sizing and the other hosting options.
+services:
+  - type: web
+    name: stl-simulator
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter            # 512 MB RAM; use "standard" (2 GB) for STL_WORKERS=2–3
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: STL_WORKERS
+        value: "1"           # ~200 MB per compute worker (numba + engine)
+      - key: STL_MAX_PENDING
+        value: "32"
+      # Password gate (docs/DEPLOY.md §4). The password is a secret: Render asks for its value when a NEW blueprint
+      # is applied; for an existing service add it in dashboard → Environment. Never write it in this file.
+      - key: STL_ACCESS_PASSWORD
+        sync: false
+      - key: STL_REQUIRE_PASSWORD
+        value: "1"           # not a secret: without a password every request answers 503 (deploy fails, never open)
+      - key: STL_SESSION_SECRET
+        generateValue: true  # random 256-bit value made by Render: sessions survive restarts and redeploys
+      - key: STL_TRUST_PROXY
+        value: "1"           # login limiter keys on the address Render's proxy appends to X-Forwarded-For

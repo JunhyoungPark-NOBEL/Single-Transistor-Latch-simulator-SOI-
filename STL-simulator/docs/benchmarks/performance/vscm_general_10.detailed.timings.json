@@ -1,0 +1,70 @@
+{
+  "first": {
+    "wall_s": 5.139473011993687,
+    "cpu_s": 5.138878684,
+    "reported_s": 5.1394323209970025,
+    "solver": null,
+    "warnings": [
+      "acquisition_trend applies only to the calibrated_lookup engine (reference record); ignored",
+      "traces are approximate: quasi-static HRS/LRS branches of the nearest fold-table state with each cycle's own switching voltages"
+    ],
+    "engine": "general"
+  },
+  "warm": [
+    {
+      "wall_s": 0.009548424000968225,
+      "cpu_s": 0.00954950599999993,
+      "reported_s": 0.009542986997985281,
+      "solver": null,
+      "warnings": [
+        "acquisition_trend applies only to the calibrated_lookup engine (reference record); ignored",
+        "traces are approximate: quasi-static HRS/LRS branches of the nearest fold-table state with each cycle's own switching voltages"
+      ],
+      "engine": "general"
+    },
+    {
+      "wall_s": 0.011420066002756357,
+      "cpu_s": 0.011421120999999701,
+      "reported_s": 0.01141528898733668,
+      "solver": null,
+      "warnings": [
+        "acquisition_trend applies only to the calibrated_lookup engine (reference record); ignored",
+        "traces are approximate: quasi-static HRS/LRS branches of the nearest fold-table state with each cycle's own switching voltages"
+      ],
+      "engine": "general"
+    },
+    {
+      "wall_s": 0.009313221991760656,
+      "cpu_s": 0.009314296999999527,
+      "reported_s": 0.009308784996392205,
+      "solver": null,
+      "warnings": [
+        "acquisition_trend applies only to the calibrated_lookup engine (reference record); ignored",
+        "traces are approximate: quasi-static HRS/LRS branches of the nearest fold-table state with each cycle's own switching voltages"
+      ],
+      "engine": "general"
+    },
+    {
+      "wall_s": 0.009523818007437512,
+      "cpu_s": 0.009524609999999711,
+      "reported_s": 0.00951898998755496,
+      "solver": null,
+      "warnings": [
+        "acquisition_trend applies only to the calibrated_lookup engine (reference record); ignored",
+        "traces are approximate: quasi-static HRS/LRS branches of the nearest fold-table state with each cycle's own switching voltages"
+      ],
+      "engine": "general"
+    },
+    {
+      "wall_s": 0.009428904988453723,
+      "cpu_s": 0.009429798000000211,
+      "reported_s": 0.009423686991794966,
+      "solver": null,
+      "warnings": [
+        "acquisition_trend applies only to the calibrated_lookup engine (reference record); ignored",
+        "traces are approximate: quasi-static HRS/LRS branches of the nearest fold-table state with each cycle's own switching voltages"
+      ],
+      "engine": "general"
+    }
+  ]
+}

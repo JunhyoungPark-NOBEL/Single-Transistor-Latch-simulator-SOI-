@@ -1,0 +1,90 @@
+{
+  "device": {
+    "model": "simple",
+    "simple": {
+      "beta_ref": 2.3,
+      "tau_body_s": 1.6e-07,
+      "cb_ref_F": 2.646153846153846e-16,
+      "r_lrs_ref_ohm": 143000.0,
+      "is_ref_A": 8.615384615384615e-17,
+      "vbr_ref_V": 2.35,
+      "avalanche_eta": 4.0,
+      "gamma_fg": 0.2,
+      "gamma_bg": 0.0525,
+      "vfb_V": -3.35,
+      "btbt_scale": 1.0,
+      "surface_fraction": 1.0
+    },
+    "geometry": {
+      "Lg_nm": 500.0,
+      "W_nm": 200.0,
+      "Tsi_nm": 50.0,
+      "EOT_nm": 14.1,
+      "Tbox_nm": 140.0,
+      "Nbody_cm3": 2.295773162796593e+17
+    },
+    "vg": -3.0,
+    "vbg": 0.0,
+    "light": {
+      "mode": "iph",
+      "iph_pA": 0.0,
+      "power_mW": 0.0,
+      "responsivity_pA_per_mW": 0.7500000000000002
+    },
+    "calib": {
+      "beta": 7.166501201841884,
+      "tau_bulk_s": 9.266283807625294e-07,
+      "tau_junction_s": 5.358373401760838e-09,
+      "r_contact_ohm": 1.0000000009063326,
+      "l_gidl_nm": 28.754392875051614,
+      "t_access_nm": 3.312683950426714,
+      "na_access_cm3": 1.0002399957771266e+17,
+      "l_access_nm": 70.0,
+      "tau_ratio": 117.42471623552643,
+      "phi_gidl0_V": 0.0002721229842976664,
+      "phi_emitter0_V": 5.908461490149247e-05,
+      "channel_ii_scale": 1.0
+    },
+    "ext": {
+      "dibl": 0.0,
+      "gamma": 0.0,
+      "kappa": 0.0,
+      "seed_ip_pA": 0.0,
+      "seed_S": 1.0,
+      "dj": 0.0,
+      "dm": 0.0,
+      "aloc": 0.0,
+      "isat_pA": 20.0,
+      "dloc": 0.0,
+      "loc_carriers": 0,
+      "kappaF": 0.0
+    },
+    "state": {
+      "delta_phi_G0_V": 0.0,
+      "delta_phi_E0_V": 0.0
+    },
+    "numerics": {
+      "grid": 601
+    },
+    "preset": "paper"
+  },
+  "fit": "is_tau",
+  "points": [
+    {
+      "vd_V": 1.0,
+      "id_A": 8.510435048276376e-13
+    },
+    {
+      "vd_V": 1.7,
+      "id_A": 1.142967707501993e-12
+    },
+    {
+      "vd_V": 2.1,
+      "id_A": 2.3716085253986285e-12
+    },
+    {
+      "vd_V": 2.25,
+      "id_A": 5.9532969107962995e-12
+    }
+  ]
+}

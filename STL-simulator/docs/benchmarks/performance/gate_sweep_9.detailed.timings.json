@@ -1,0 +1,70 @@
+{
+  "first": {
+    "wall_s": 1.7665306790004252,
+    "cpu_s": 1.765365734,
+    "reported_s": 1.7665195330046117,
+    "solver": null,
+    "warnings": [
+      "the latch window extends below vg_min = -3.6 V",
+      "the latch window extends above vg_max = -2.8 V"
+    ],
+    "engine": null
+  },
+  "warm": [
+    {
+      "wall_s": 1.7248268969997298,
+      "cpu_s": 1.7236728370000005,
+      "reported_s": 1.7248198770103045,
+      "solver": null,
+      "warnings": [
+        "the latch window extends below vg_min = -3.6 V",
+        "the latch window extends above vg_max = -2.8 V"
+      ],
+      "engine": null
+    },
+    {
+      "wall_s": 1.7272703679918777,
+      "cpu_s": 1.7261154000000003,
+      "reported_s": 1.7272641289891908,
+      "solver": null,
+      "warnings": [
+        "the latch window extends below vg_min = -3.6 V",
+        "the latch window extends above vg_max = -2.8 V"
+      ],
+      "engine": null
+    },
+    {
+      "wall_s": 1.7555409599881386,
+      "cpu_s": 1.7543130070000004,
+      "reported_s": 1.7555328280141111,
+      "solver": null,
+      "warnings": [
+        "the latch window extends below vg_min = -3.6 V",
+        "the latch window extends above vg_max = -2.8 V"
+      ],
+      "engine": null
+    },
+    {
+      "wall_s": 1.7445181299990509,
+      "cpu_s": 1.7429234210000004,
+      "reported_s": 1.7445115200098371,
+      "solver": null,
+      "warnings": [
+        "the latch window extends below vg_min = -3.6 V",
+        "the latch window extends above vg_max = -2.8 V"
+      ],
+      "engine": null
+    },
+    {
+      "wall_s": 1.7901797439990332,
+      "cpu_s": 1.7889554519999997,
+      "reported_s": 1.7901725940027973,
+      "solver": null,
+      "warnings": [
+        "the latch window extends below vg_min = -3.6 V",
+        "the latch window extends above vg_max = -2.8 V"
+      ],
+      "engine": null
+    }
+  ]
+}

@@ -1,0 +1,461 @@
+{
+  "seconds": 2.9319745999964653,
+  "records": [
+    {
+      "mode": "fast_only",
+      "seed": 2026092920,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        0.0
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.646199999999999,
+          "SD_mV": 9.132028219072652,
+          "pre_current_median_A": 5.1708458930665975e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.6461192861994336e-05,
+          "current_CV_I4": 0.0,
+          "r_I4": NaN,
+          "r_I3": -9.872718369373433e-14
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.7004999999999995,
+          "SD_mV": 7.703468981143171,
+          "pre_current_median_A": 1.861087203144589e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.6461192861994336e-05,
+          "current_CV_I4": 0.0,
+          "r_I4": NaN,
+          "r_I3": 6.257344144146816e-14
+        }
+      ]
+    },
+    {
+      "mode": "frozen",
+      "seed": 2026092920,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        0.0
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.6601999999999997,
+          "SD_mV": 122.39594632489946,
+          "pre_current_median_A": 5.0036309024777e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.6454846387706423e-05,
+          "current_CV_I4": 0.026977134649640917,
+          "r_I4": -0.04929057260563252,
+          "r_I3": -0.9974825529490083
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.6997999999999998,
+          "SD_mV": 19.7192414876558,
+          "pre_current_median_A": 1.9344227205012638e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.6450649026176758e-05,
+          "current_CV_I4": 0.02816266911845662,
+          "r_I4": -0.8983432750259747,
+          "r_I3": -0.8986795479284039
+        }
+      ]
+    },
+    {
+      "mode": "dynamic",
+      "seed": 2026092920,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        0.0
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.6343939393939393,
+          "SD_mV": 118.95650192675203,
+          "pre_current_median_A": 5.144791599690976e-12,
+          "censored": 1,
+          "current_mean_I4_A": 2.614734520075991e-05,
+          "current_CV_I4": 0.10518891587862,
+          "r_I4": 0.1054114644747452,
+          "r_I3": -0.9368864466965142
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.6998999999999995,
+          "SD_mV": 21.390784384067302,
+          "pre_current_median_A": 1.9691380805240024e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.640750744861488e-05,
+          "current_CV_I4": 0.024988338990084426,
+          "r_I4": -0.2329650788737004,
+          "r_I3": -0.7329128592735428
+        }
+      ]
+    },
+    {
+      "mode": "dynamic",
+      "seed": 2026093000,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        0.0
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.6647000000000003,
+          "SD_mV": 120.93453442322259,
+          "pre_current_median_A": 4.926438665206331e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.6442244901288056e-05,
+          "current_CV_I4": 0.026242288801479368,
+          "r_I4": 0.0883932615136649,
+          "r_I3": -0.9072010791334969
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.6989,
+          "SD_mV": 20.83581803364854,
+          "pre_current_median_A": 1.9889046023646278e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.6523174001257576e-05,
+          "current_CV_I4": 0.026524127176630975,
+          "r_I4": -0.13227650493623974,
+          "r_I3": -0.5992231368530665
+        }
+      ]
+    },
+    {
+      "mode": "dynamic",
+      "seed": 2026093001,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        0.0
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.653300000000001,
+          "SD_mV": 143.13273489310473,
+          "pre_current_median_A": 4.894552267610426e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.6473885567204584e-05,
+          "current_CV_I4": 0.029075368680515887,
+          "r_I4": 0.281032759230363,
+          "r_I3": -0.9206883382924242
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.6999999999999993,
+          "SD_mV": 16.84750378656685,
+          "pre_current_median_A": 1.9707274869604077e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.648381998239444e-05,
+          "current_CV_I4": 0.02617379367962489,
+          "r_I4": -0.23432938643331816,
+          "r_I3": -0.44364900477258146
+        }
+      ]
+    },
+    {
+      "mode": "dynamic",
+      "seed": 2026093002,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        0.0004347826086956522
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.6418,
+          "SD_mV": 131.47093237900938,
+          "pre_current_median_A": 5.089980406208264e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.6525555720198975e-05,
+          "current_CV_I4": 0.02553338115168711,
+          "r_I4": -0.10422318895755932,
+          "r_I3": -0.9172911751508923
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.7023999999999995,
+          "SD_mV": 17.50151508592986,
+          "pre_current_median_A": 1.9957856346764093e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.6459113602763442e-05,
+          "current_CV_I4": 0.03265356635041477,
+          "r_I4": -0.174858253927578,
+          "r_I3": -0.5123415648312718
+        }
+      ]
+    },
+    {
+      "mode": "dynamic",
+      "seed": 2026093003,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        0.0
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.6529000000000007,
+          "SD_mV": 132.43099975825035,
+          "pre_current_median_A": 4.975377146177631e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.645804150725723e-05,
+          "current_CV_I4": 0.025226427344752913,
+          "r_I4": -0.09803585154925458,
+          "r_I3": -0.9124961844389101
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.7018999999999993,
+          "SD_mV": 20.58218313557294,
+          "pre_current_median_A": 1.9913867102976325e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.655604268110243e-05,
+          "current_CV_I4": 0.026026369677591553,
+          "r_I4": -0.09861675653862885,
+          "r_I3": -0.5880950055046658
+        }
+      ]
+    },
+    {
+      "mode": "dynamic",
+      "seed": 2026093004,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        4.9975012493753125e-06
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.6454000000000004,
+          "SD_mV": 130.49184346970202,
+          "pre_current_median_A": 5.031467008767757e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.6414695445812017e-05,
+          "current_CV_I4": 0.027082015308748354,
+          "r_I4": -0.05548181984608184,
+          "r_I3": -0.9265659095385367
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.7010999999999994,
+          "SD_mV": 19.586379518079998,
+          "pre_current_median_A": 2.03416511494146e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.6445851937831403e-05,
+          "current_CV_I4": 0.02582447529923173,
+          "r_I4": 0.019208694426392836,
+          "r_I3": -0.6155730369021456
+        }
+      ]
+    },
+    {
+      "mode": "dynamic",
+      "seed": 2026093005,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        0.0002448775612193903
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.6365000000000003,
+          "SD_mV": 123.51235982808781,
+          "pre_current_median_A": 5.125434115331993e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.639173330860364e-05,
+          "current_CV_I4": 0.03056897639631077,
+          "r_I4": -0.1568597932783843,
+          "r_I3": -0.8867955029266238
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.6989999999999994,
+          "SD_mV": 20.150945537631888,
+          "pre_current_median_A": 1.934894106630271e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.647603739136787e-05,
+          "current_CV_I4": 0.02744742745598343,
+          "r_I4": -0.2444964002550103,
+          "r_I3": -0.5932827986805486
+        }
+      ]
+    },
+    {
+      "mode": "dynamic",
+      "seed": 2026093006,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        0.0
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.6512000000000002,
+          "SD_mV": 103.25784143677333,
+          "pre_current_median_A": 4.9315436332722e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.647472725096076e-05,
+          "current_CV_I4": 0.0258063406126138,
+          "r_I4": -0.05718751287099755,
+          "r_I3": -0.8730549620257684
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.7005999999999997,
+          "SD_mV": 21.664102412362585,
+          "pre_current_median_A": 1.9748883593694688e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.6505818326134138e-05,
+          "current_CV_I4": 0.027768248334565947,
+          "r_I4": -0.38267587347082,
+          "r_I3": -0.6520719417864231
+        }
+      ]
+    },
+    {
+      "mode": "dynamic",
+      "seed": 2026093007,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        4.9975012493753125e-06
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.6489,
+          "SD_mV": 127.51624970721944,
+          "pre_current_median_A": 5.067120293337474e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.6401473281385582e-05,
+          "current_CV_I4": 0.028048427600273363,
+          "r_I4": -0.05867445283256712,
+          "r_I3": -0.9253896374089366
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.6971000000000003,
+          "SD_mV": 19.658447178110137,
+          "pre_current_median_A": 1.9414646262359932e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.6358621516924078e-05,
+          "current_CV_I4": 0.028700201365441266,
+          "r_I4": -0.044722857501061634,
+          "r_I3": -0.5523492502187273
+        }
+      ]
+    },
+    {
+      "mode": "dynamic",
+      "seed": 2026093008,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        0.0
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.6351999999999998,
+          "SD_mV": 114.36235164925334,
+          "pre_current_median_A": 5.016265856323178e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.6505596297603076e-05,
+          "current_CV_I4": 0.026836492341321155,
+          "r_I4": 0.012844022385213776,
+          "r_I3": -0.9156877815498056
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.699999999999999,
+          "SD_mV": 19.253754717121325,
+          "pre_current_median_A": 1.935663837256461e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.6491158228939843e-05,
+          "current_CV_I4": 0.025636601602223995,
+          "r_I4": -0.07716744415393549,
+          "r_I3": -0.5558950869104917
+        }
+      ]
+    },
+    {
+      "mode": "dynamic",
+      "seed": 2026093009,
+      "internal_voltage_step": 0.002,
+      "rate_V_per_s": 0.4,
+      "amplitude_scale": 1.0,
+      "outside_fraction": [
+        0.0,
+        0.0
+      ],
+      "records": [
+        {
+          "direction": "LU",
+          "mean_V": 3.641,
+          "SD_mV": 129.4510554517643,
+          "pre_current_median_A": 5.0162903227381885e-12,
+          "censored": 0,
+          "current_mean_I4_A": 2.6498330296667742e-05,
+          "current_CV_I4": 0.02717518606933641,
+          "r_I4": 0.1432139009091865,
+          "r_I3": -0.9206096352219754
+        },
+        {
+          "direction": "LD",
+          "mean_V": 2.6989000000000005,
+          "SD_mV": 19.32680140440351,
+          "pre_current_median_A": 1.943983455972945e-07,
+          "censored": 0,
+          "current_mean_I4_A": 2.6339342026818227e-05,
+          "current_CV_I4": 0.025801606297437166,
+          "r_I4": 0.11416925025268662,
+          "r_I3": -0.5484976889128454
+        }
+      ]
+    }
+  ],
+  "protocol": "Up/down unpaired; .4V/s assumed for both; current readout is quasistatic branch, no empirically added current floor or gain noise. Trend included only in up-state and fitted to this observed record."
+}

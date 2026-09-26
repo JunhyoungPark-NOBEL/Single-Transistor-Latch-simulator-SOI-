@@ -1,0 +1,36 @@
+# keep the build context small; caches are rebuilt by scripts/warmup.py inside the image
+.git
+.github
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+*.log
+.env
+.env.*
+**/server.env
+**/*secrets*.env
+.venv
+.studio-launch.lock
+vendor/*.exe
+venv
+server/.cache
+engine/photo_extension/photo_nodes
+engine/model/**/fpt_nodes
+engine/model/**/conditional_table
+engine/model/**/fast_fpt
+web/node_modules
+web/dist
+web/test-results
+web/playwright-report
+web/.vite
+web/review
+web/snapshot
+web/dist-artifact
+web/.tsbuildinfo
+**/*.tsbuildinfo
+# legacy Streamlit app (not part of the web simulator image)
+app.py
+config.toml
+requirements.txt

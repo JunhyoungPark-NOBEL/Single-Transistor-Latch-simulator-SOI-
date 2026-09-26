@@ -1,0 +1,54 @@
+/* Quiet drafting surface with visible, named tools and concise properties. */
+.sch-view { --sch-wire: #4c6e65; --sch-wire-2: #31584d; --sch-bg: #fcfcfa; --sch-dot: rgba(62,72,67,.13); --sch-major: transparent; }
+:root[data-theme="dark"] .sch-view { --sch-wire: #91b9aa; --sch-wire-2: #b2d0c2; --sch-bg: #191e1c; --sch-dot: rgba(204,219,210,.13); }
+.sch-toolbar { background: var(--surface); padding: 10px 12px; gap: 8px; }
+.sch-tgroup { border: 0; background: transparent; gap: 3px; border-radius: 0; padding: 0 8px 0 0; border-right: 1px solid var(--border); }
+.sch-tool.sch-tool-labeled { width: auto; min-width: 38px; height: 43px; display: flex; flex-direction: column; gap: 4px; padding: 4px 7px; border-radius: 5px; }
+.sch-tool-caption { font-size: 9px; line-height: 1; font-weight: 500; white-space: nowrap; }
+.sch-tool.active { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.sch-parts { flex-wrap: wrap; }
+.sch-stl-select { max-width: 120px; }
+.sch-menu-pop { border-radius: 7px; min-width: 230px; }
+.sch-body { grid-template-columns: minmax(0, 1fr) 260px; }
+.sch-side { background: var(--surface); }
+.sch-svg { background-image: radial-gradient(circle, var(--sch-dot) .8px, transparent 1px); }
+.sch-wire { stroke-width: 1.65; }
+.sch-stroke { stroke-width: 1.75; }
+.sch-accent { stroke: var(--sch-wire); stroke-width: 1.8; }
+.sch-name { font-size: 12px; font-weight: 600; }
+.sch-value { font-size: 10px; }
+.sch-tag { fill: var(--sch-bg); stroke-width: .8; }
+.sch-pin-letter { font-size: 8px; }
+.sch-empty { gap: 10px; padding: 24px; color: var(--muted); }
+.sch-empty strong { font-size: 16px; font-weight: 500; color: var(--text-2); }
+.sch-empty-keys { display: flex; justify-content: center; align-items: center; gap: 7px; font-size: 10px; margin-top: 9px; }
+.sch-empty-keys kbd { border: 1px solid var(--border); border-radius: 4px; padding: 3px 5px; background: var(--surface); font-size: 10px; }
+.insp { padding: 14px; gap: 12px; }
+.insp-head { padding-bottom: 7px; border-bottom: 1px solid var(--border); }
+.insp-meta { font-size: 10px; }
+.insp-help { padding-top: 4px; font-size: 11px; }
+.insp-help p { font-size: 11px; line-height: 1.55; color: var(--muted); margin: 8px 0 0; }
+.insp-help .sch-row { margin-top: 10px; }
+.insp-conn { padding-top: 8px; }
+.insp-conn .chip { font-size: 10px; padding: 2px 5px; }
+.sch-row { position: relative; }
+.sch-field-help { position: relative; flex: 0 0 auto; font-size: 11px; }
+.sch-field-help > summary { list-style: none; cursor: pointer; border: 1px solid var(--border-strong); border-radius: 50%; width: 15px; height: 15px; display: grid; place-items: center; font-size: 10px; color: var(--muted); }
+.sch-field-help > summary::-webkit-details-marker { display: none; }
+.sch-field-help > div { z-index: 70; position: absolute; top: 23px; right: 0; width: min(250px, 80vw); padding: 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text-2); box-shadow: var(--shadow-2); line-height: 1.5; }
+.sch-row-name { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.sch-row-name > .sch-field-help > div { right: auto; left: 0; width: 190px; }
+.sch-card .group-head > .sch-field-help { margin-right: 12px; }
+.sch-card .lib-meta { display: none; }
+.sch-card .lib-list { gap: 3px; }
+.sch-card .lib-item { padding: 6px 8px; }
+.sch-status { padding: 7px 12px; }
+.sch-status .erc-pill { font-size: 10px; }
+@media (max-width: 1050px) { .sch-stl-select { width: 100px; } .sch-tool.sch-tool-labeled { min-width: 34px; padding-inline: 5px; } }
+@media (max-width: 760px) { .sch-body { grid-template-columns: 1fr; } .sch-side { max-height: 280px; border-top: 1px solid var(--border); } .sch-toolbar { gap: 5px; padding: 8px; } .sch-parts { flex: 1 1 100%; order: 3; border-right: 0; } }
+
+/* Five-terminal STL: readable pin labels and compact optional-terminal status. */
+.sch-el[data-kind="STL"] .sch-pin-letter { font-size: 10px; fill: var(--muted); }
+.insp-terminal-defaults { display: flex; gap: 8px; margin: 8px 0 12px; flex-wrap: wrap; }
+.insp-terminal-defaults > span { display: flex; gap: 8px; align-items: baseline; padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 12px; }
+.insp-terminal-defaults strong { font-size: 13px; font-weight: 550; color: var(--text); }

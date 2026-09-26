@@ -1,0 +1,38 @@
+[
+  {
+    "case_id": "csvm_half_holdout.detailed",
+    "reference_id": "csvm_1fF.detailed",
+    "model": "detailed",
+    "predicted_s": 0.14037855999777094,
+    "measured_s": 0.1387760290017468,
+    "relative_error": 0.01154760665477733,
+    "within_factor_two": true
+  },
+  {
+    "case_id": "csvm_half_holdout.simple",
+    "reference_id": "csvm_1fF.simple",
+    "model": "simple",
+    "predicted_s": 0.05957025899988366,
+    "measured_s": 0.05790323049586732,
+    "relative_error": 0.028789904980091274,
+    "within_factor_two": true
+  },
+  {
+    "case_id": "csvm_ui_half_holdout.detailed",
+    "reference_id": "csvm_1fF.detailed",
+    "model": "detailed",
+    "predicted_s": 0.20054079999681562,
+    "measured_s": 0.15672869549598545,
+    "relative_error": 0.2795410525314581,
+    "within_factor_two": true
+  },
+  {
+    "case_id": "csvm_ui_half_holdout.simple",
+    "reference_id": "csvm_1fF.simple",
+    "model": "simple",
+    "predicted_s": 0.08510036999983381,
+    "measured_s": 0.06205420150217833,
+    "relative_error": 0.3713877213752637,
+    "within_factor_two": true
+  }
+]

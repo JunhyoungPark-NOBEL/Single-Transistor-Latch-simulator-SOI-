@@ -1,0 +1,328 @@
+{
+  "scope": "Independent invocation of production solver; trends and dimensional consistency, not TCAD/measurement fit validation",
+  "reference_geometry": {
+    "Lg_nm": 500.0,
+    "W_nm": 200.0,
+    "Tsi_nm": 50.0,
+    "EOT_nm": 14.1,
+    "Tbox_nm": 140.0,
+    "Nbody_cm3": 2.295773162796593e+17
+  },
+  "width_double_errors": {
+    "HRS": {
+      "max_vd_difference_V": 0.0,
+      "max_current_ratio_error": 0.0
+    },
+    "unstable": {
+      "max_vd_difference_V": 0.0,
+      "max_current_ratio_error": 0.0
+    },
+    "LRS": {
+      "max_vd_difference_V": 0.0,
+      "max_current_ratio_error": 0.0
+    },
+    "full": {
+      "max_vd_difference_V": 0.0,
+      "max_current_ratio_error": 0.0
+    }
+  },
+  "thin_body_VLU_slope_V_per_nm": 0.034401529484708426,
+  "moderate_body_VLU_slope_V_per_nm": 0.0055486331735215225,
+  "cases": [
+    {
+      "parameter": "Lg_nm",
+      "value": 200,
+      "latch": true,
+      "VLU": 2.6503799721367964,
+      "VLD": 2.149015109482515,
+      "warnings": []
+    },
+    {
+      "parameter": "Lg_nm",
+      "value": 300,
+      "latch": true,
+      "VLU": 3.4489717949580854,
+      "VLD": 2.4734580192484157,
+      "warnings": []
+    },
+    {
+      "parameter": "Lg_nm",
+      "value": 400,
+      "latch": true,
+      "VLU": 3.6095375589967023,
+      "VLD": 2.5556220033219597,
+      "warnings": []
+    },
+    {
+      "parameter": "Lg_nm",
+      "value": 500,
+      "latch": true,
+      "VLU": 3.7036889854063517,
+      "VLD": 2.59786693912648,
+      "warnings": []
+    },
+    {
+      "parameter": "Lg_nm",
+      "value": 700,
+      "latch": true,
+      "VLU": 3.8230623100870016,
+      "VLD": 2.6466205262735913,
+      "warnings": []
+    },
+    {
+      "parameter": "Tsi_nm",
+      "value": 5,
+      "latch": true,
+      "VLU": 4.24094319715632,
+      "VLD": 2.818399375590626,
+      "warnings": [
+        "V_LU = 4.2409 V exceeds the sweep maximum 4 V: the quasi-static sweep never latches"
+      ]
+    },
+    {
+      "parameter": "Tsi_nm",
+      "value": 10,
+      "latch": true,
+      "VLU": 4.068935549732778,
+      "VLD": 2.7333555341585543,
+      "warnings": [
+        "V_LU = 4.0689 V exceeds the sweep maximum 4 V: the quasi-static sweep never latches"
+      ]
+    },
+    {
+      "parameter": "Tsi_nm",
+      "value": 20,
+      "latch": true,
+      "VLU": 3.9059681801113357,
+      "VLD": 2.6676810593168514,
+      "warnings": []
+    },
+    {
+      "parameter": "Tsi_nm",
+      "value": 30,
+      "latch": true,
+      "VLU": 3.814661648876782,
+      "VLD": 2.6350828996465783,
+      "warnings": []
+    },
+    {
+      "parameter": "Tsi_nm",
+      "value": 50,
+      "latch": true,
+      "VLU": 3.7036889854063517,
+      "VLD": 2.59786693912648,
+      "warnings": []
+    },
+    {
+      "parameter": "Tsi_nm",
+      "value": 70,
+      "latch": true,
+      "VLU": 3.6329829989246956,
+      "VLD": 2.5749530141964994,
+      "warnings": []
+    },
+    {
+      "parameter": "EOT_nm",
+      "value": 10,
+      "latch": true,
+      "VLU": 2.7607194041594463,
+      "VLD": 2.5954664870459108,
+      "warnings": []
+    },
+    {
+      "parameter": "EOT_nm",
+      "value": 14.1,
+      "latch": true,
+      "VLU": 3.7036889854063517,
+      "VLD": 2.59786693912648,
+      "warnings": []
+    },
+    {
+      "parameter": "EOT_nm",
+      "value": 20,
+      "latch": true,
+      "VLU": 5.120654043175099,
+      "VLD": 2.5978732668716327,
+      "warnings": [
+        "V_LU = 5.1207 V exceeds the sweep maximum 4 V: the quasi-static sweep never latches"
+      ]
+    },
+    {
+      "parameter": "Tbox_nm",
+      "value": 70,
+      "latch": true,
+      "VLU": 3.7036889854063517,
+      "VLD": 2.59786693912648,
+      "warnings": []
+    },
+    {
+      "parameter": "Tbox_nm",
+      "value": 140,
+      "latch": true,
+      "VLU": 3.7036889854063517,
+      "VLD": 2.59786693912648,
+      "warnings": []
+    },
+    {
+      "parameter": "Tbox_nm",
+      "value": 280,
+      "latch": true,
+      "VLU": 3.7036889854063517,
+      "VLD": 2.59786693912648,
+      "warnings": []
+    },
+    {
+      "parameter": "Nbody_cm3",
+      "value": 1e+17,
+      "latch": true,
+      "VLU": 4.080700087175886,
+      "VLD": 3.9442355086267042,
+      "warnings": [
+        "V_LU = 4.0807 V exceeds the sweep maximum 4 V: the quasi-static sweep never latches"
+      ]
+    },
+    {
+      "parameter": "Nbody_cm3",
+      "value": 2.295773162796593e+17,
+      "latch": true,
+      "VLU": 3.7036889854063517,
+      "VLD": 2.59786693912648,
+      "warnings": []
+    },
+    {
+      "parameter": "Nbody_cm3",
+      "value": 3e+17,
+      "latch": true,
+      "VLU": 3.632867465890284,
+      "VLD": 2.2467432933945286,
+      "warnings": []
+    }
+  ],
+  "storage_at_u_0p6_VD_3p3": [
+    {
+      "changed": {},
+      "C_body_F": 2.449030671625532e-16,
+      "body_capacitive_charge_C": 1.469416960288896e-16,
+      "excess_charge_C": 1.3000337366105014e-21,
+      "dopant_charge_C": 1.1239688747973148e-16,
+      "I_D_A": 4.101543160987311e-11
+    },
+    {
+      "changed": {
+        "W_nm": 400
+      },
+      "C_body_F": 4.898061343251065e-16,
+      "body_capacitive_charge_C": 2.9388339205777925e-16,
+      "excess_charge_C": 2.600067473221003e-21,
+      "dopant_charge_C": 2.2479377495946296e-16,
+      "I_D_A": 8.203086321974622e-11
+    },
+    {
+      "changed": {
+        "Tbox_nm": 70
+      },
+      "C_body_F": 2.6270563627552343e-16,
+      "body_capacitive_charge_C": 1.5762322700945118e-16,
+      "excess_charge_C": 1.3000337366105014e-21,
+      "dopant_charge_C": 1.1239688747973148e-16,
+      "I_D_A": 4.101543160987311e-11
+    },
+    {
+      "changed": {
+        "Tbox_nm": 280
+      },
+      "C_body_F": 2.3450156610778413e-16,
+      "body_capacitive_charge_C": 1.4070080152339296e-16,
+      "excess_charge_C": 1.3000337366105014e-21,
+      "dopant_charge_C": 1.1239688747973148e-16,
+      "I_D_A": 4.101543160987311e-11
+    },
+    {
+      "changed": {
+        "EOT_nm": 10
+      },
+      "C_body_F": 3.453133246992001e-16,
+      "body_capacitive_charge_C": 2.0718779140073438e-16,
+      "excess_charge_C": 1.3000673145488879e-21,
+      "dopant_charge_C": 1.1239712279790295e-16,
+      "I_D_A": 1.0758153182112432e-10
+    },
+    {
+      "changed": {
+        "EOT_nm": 20
+      },
+      "C_body_F": 1.7265666234960006e-16,
+      "body_capacitive_charge_C": 1.0359389570036719e-16,
+      "excess_charge_C": 1.3000334980540331e-21,
+      "dopant_charge_C": 1.123968858079935e-16,
+      "I_D_A": 4.054253421143893e-11
+    }
+  ],
+  "backgate_at_VG_minus_0p8_VBG_1": [
+    {
+      "Tbox_nm": 70,
+      "VG_V": -0.8,
+      "VBG_V": 1.0,
+      "delta_front_overdrive_V": 0.1626923076923077,
+      "C_body_F": 2.6270563627552343e-16,
+      "backgate_charge_C": -3.984384515760001e-17,
+      "gate_charge_offset_C": 1.560786085724426e-16,
+      "channel_current_at_u0p6_r2p7_A": 6.059724545189007e-09,
+      "zero_backgate_channel_current_A": 2.054933049140457e-10,
+      "VLU": null,
+      "VLD": null
+    },
+    {
+      "Tbox_nm": 140,
+      "VG_V": -0.8,
+      "VBG_V": 1.0,
+      "delta_front_overdrive_V": 0.09,
+      "C_body_F": 2.4490306716255325e-16,
+      "backgate_charge_C": -2.2041276044629796e-17,
+      "gate_charge_offset_C": 1.738811776854128e-16,
+      "channel_current_at_u0p6_r2p7_A": 1.377545234739139e-09,
+      "zero_backgate_channel_current_A": 2.054933049140457e-10,
+      "VLU": null,
+      "VLD": null
+    },
+    {
+      "Tbox_nm": 280,
+      "VG_V": -0.8,
+      "VBG_V": 1.0,
+      "delta_front_overdrive_V": 0.04752808988764044,
+      "C_body_F": 2.3450156610778413e-16,
+      "backgate_charge_C": -1.1639774989860677e-17,
+      "gate_charge_offset_C": 1.8428267874018193e-16,
+      "channel_current_at_u0p6_r2p7_A": 5.648159525261488e-10,
+      "zero_backgate_channel_current_A": 2.054933049140457e-10,
+      "VLU": null,
+      "VLD": null
+    }
+  ],
+  "domain_errors": [
+    {
+      "geometry": {
+        "Lg_nm": 100
+      },
+      "error": "geometry-domain-unavailable: this L/Nbody combination fully depletes the lateral neutral base assumed by this compact model; increase L or Nbody"
+    },
+    {
+      "geometry": {
+        "Lg_nm": 150
+      },
+      "error": "geometry-domain-unavailable: this L/Nbody combination fully depletes the lateral neutral base assumed by this compact model; increase L or Nbody"
+    },
+    {
+      "geometry": {
+        "Nbody_cm3": 1000000000000000.0
+      },
+      "error": "geometry-domain-unavailable: this L/Nbody combination fully depletes the lateral neutral base assumed by this compact model; increase L or Nbody"
+    },
+    {
+      "geometry": {
+        "Nbody_cm3": 1e+19
+      },
+      "error": "geometry-domain-unavailable: the specified Nbody is outside the finite avalanche-field domain of this compact model"
+    }
+  ]
+}

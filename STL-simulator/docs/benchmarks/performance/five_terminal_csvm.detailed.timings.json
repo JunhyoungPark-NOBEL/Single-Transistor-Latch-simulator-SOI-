@@ -1,0 +1,142 @@
+{
+  "first": {
+    "wall_s": 1.1294210570049472,
+    "cpu_s": 1.129359878999999,
+    "reported_s": 1.1292809849983314,
+    "solver": {
+      "steps": 7144,
+      "rejected": 1199,
+      "newton_iters": 17437,
+      "runtime_s": 0.8309891099925153
+    },
+    "warnings": [
+      "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+      "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+    ],
+    "engine": null,
+    "t_reached_s": [
+      4e-05
+    ],
+    "saved_points": [
+      3294
+    ],
+    "event_count": 1
+  },
+  "warm": [
+    {
+      "wall_s": 0.8441799919964978,
+      "cpu_s": 0.8438373350000035,
+      "reported_s": 0.8440794509951957,
+      "solver": {
+        "steps": 7144,
+        "rejected": 1199,
+        "newton_iters": 17437,
+        "runtime_s": 0.8312620140059153
+      },
+      "warnings": [
+        "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+        "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        3294
+      ],
+      "event_count": 1
+    },
+    {
+      "wall_s": 0.8595579550019465,
+      "cpu_s": 0.8594519429999963,
+      "reported_s": 0.8594568830012577,
+      "solver": {
+        "steps": 7144,
+        "rejected": 1199,
+        "newton_iters": 17437,
+        "runtime_s": 0.8478127599955769
+      },
+      "warnings": [
+        "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+        "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        3294
+      ],
+      "event_count": 1
+    },
+    {
+      "wall_s": 0.9270972480007913,
+      "cpu_s": 0.927042273000005,
+      "reported_s": 0.9269307070062496,
+      "solver": {
+        "steps": 7144,
+        "rejected": 1199,
+        "newton_iters": 17437,
+        "runtime_s": 0.9121934269933263
+      },
+      "warnings": [
+        "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+        "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        3294
+      ],
+      "event_count": 1
+    },
+    {
+      "wall_s": 0.8558558439981425,
+      "cpu_s": 0.8558189839999955,
+      "reported_s": 0.8557567550014937,
+      "solver": {
+        "steps": 7144,
+        "rejected": 1199,
+        "newton_iters": 17437,
+        "runtime_s": 0.8428591490082908
+      },
+      "warnings": [
+        "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+        "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        3294
+      ],
+      "event_count": 1
+    },
+    {
+      "wall_s": 0.8720243990101153,
+      "cpu_s": 0.8719756710000013,
+      "reported_s": 0.8719208730035461,
+      "solver": {
+        "steps": 7144,
+        "rejected": 1199,
+        "newton_iters": 17437,
+        "runtime_s": 0.859057779001887
+      },
+      "warnings": [
+        "X1: B is an ideal hole contact, V(B)-V(S)=u. Free-body fold estimates do not predict a body-loaded circuit's switching voltages.",
+        "no DC operating point was found from the initial body state: the transient starts from discharged capacitors, as if the sources were switched on at t = 0 (tran.initial = 'auto')"
+      ],
+      "engine": null,
+      "t_reached_s": [
+        4e-05
+      ],
+      "saved_points": [
+        3294
+      ],
+      "event_count": 1
+    }
+  ]
+}

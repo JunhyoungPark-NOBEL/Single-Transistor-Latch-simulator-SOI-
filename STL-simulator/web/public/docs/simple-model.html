@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Simple Model · STL simulator</title>
+<link rel="stylesheet" href="../fonts/noto-sans-kr/index.css">
+<style>
+:root{color-scheme:light dark;--bg:#f5f7fa;--panel:#fff;--text:#203144;--muted:#52657a;--line:#d9e2eb;--accent:#245ea7;--tint:#eaf1fa;font-family:"Noto Sans KR Variable",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:17px;line-height:1.7;background:var(--bg);color:var(--text)}
+*{box-sizing:border-box}body{max-width:860px;margin:auto;padding:36px 24px 64px}header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:24px}.eyebrow{font-size:13px;font-weight:650;letter-spacing:.08em;color:var(--accent)}h1{font-size:34px;line-height:1.2;letter-spacing:-.04em;margin:10px 0 12px}h2{font-size:20px;line-height:1.4;margin:24px 0 10px}p{margin:10px 0}a{color:var(--accent);text-underline-offset:3px}.muted{color:var(--muted)}.pill{display:inline-block;border:1px solid var(--line);padding:3px 10px;border-radius:20px;font-size:14px;background:var(--panel);margin:6px 5px 0 0}.intro{font-size:18px;max-width:660px}.note{padding:15px 18px;border-left:3px solid var(--accent);background:var(--tint);border-radius:0 8px 8px 0}.math{font-family:"Times New Roman",Cambria,serif;font-size:20px;line-height:1.9}.math i{font-style:italic}.math sub,.math sup{font-style:normal}.eq{margin:12px 0;padding:14px 18px;background:var(--tint);border-radius:10px;overflow-x:auto}.eq .line{display:block;white-space:nowrap}.steps{padding-left:24px}.steps li{margin:8px 0}details{margin:14px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel)}summary{padding:16px 18px;cursor:pointer;font-weight:650}summary:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:3px;border-radius:4px}.content{padding:0 18px 16px}table{width:100%;border-collapse:collapse;font-size:16px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:650}.scroll{overflow-x:auto}code{font-size:.9em;overflow-wrap:anywhere}footer{margin-top:28px;border-top:1px solid var(--line);padding-top:18px;font-size:15px;color:var(--muted)}
+@media(prefers-color-scheme:dark){:root{--bg:#111a25;--panel:#192534;--text:#e0e9f2;--muted:#a9bacd;--line:#33475d;--accent:#9bc7ff;--tint:#20334b}}
+@media(max-width:560px){body{padding:26px 16px 48px}h1{font-size:30px}.intro{font-size:17px}.content{padding:0 14px 14px}summary{padding:15px 14px}table{font-size:15px}th,td{padding:9px 6px}.eq{padding:12px}.math{font-size:19px}}
+</style>
+</head>
+<body>
+<header>
+<div class="eyebrow">STL SIMULATOR · MODEL GUIDE</div>
+<h1>Simple Model</h1>
+<p class="intro">바디 전하의 1차 감쇠로 CSVM과 회로를 빠르게 계산하는 모델입니다.</p>
+<span class="pill">결정론적 · BE</span><span class="pill">Geometry 반영</span><span class="pill">HRS 보정</span>
+</header>
+<p>분포 SRH 수송 풀이를 생략하고, 재결합을 <span class="math"><i>Q</i>/<i>τ</i><sub>B</sub></span>로 계산합니다. <span class="math"><i>β</i></span>는 바이어스에 대해 일정하며 소자의 길이와 도핑에 따라 달라집니다.</p>
+<p class="note">초기값은 논문을 바탕으로 정한 시작값입니다. Device 1의 측정 보정을 계승하거나 새 모델의 정확도를 독립적으로 검증한 값은 아닙니다.</p>
+
+<h2>시작하기</h2>
+<ol class="steps">
+<li><strong>Simple Model</strong>을 선택합니다. 기본 시작 게이트 전압은 <span class="math"><i>V</i><sub>G</sub> = −3 V</span>입니다.</li>
+<li>Geometry와 바이어스를 맞춘 뒤, HRS의 전압·전류로 <span class="math"><i>I</i><sub>S</sub></span> 또는 <span class="math"><i>τ</i><sub>B</sub></span>를 보정합니다.</li>
+<li>ID–VD를 확인한 다음 CSVM이나 회로에서 동작을 비교합니다. 재결합 근사가 첫 피크와 주파수에도 영향을 줄 수 있습니다.</li>
+</ol>
+
+<details><summary>핵심 수식</summary><div class="content">
+<p>접촉 전압 <span class="math"><i>u</i></span>, 내부 드레인 전압 <span class="math"><i>r</i></span>, 전하 저장 영역의 전위 <span class="math"><i>w</i></span>를 구분합니다.</p>
+<div class="eq math" aria-label="Simple Model 전류와 전하 방정식">
+<span class="line"><i>M</i> = [1 − (<i>r</i>/<i>V</i><sub>BR</sub>)<sup><i>η</i></sup>]<sup>−1</sup></span>
+<span class="line"><i>I</i><sub>seed</sub> = <i>I</i><sub>S</sub> exp(<i>u</i>/<i>V</i><sub>T</sub>)</span>
+<span class="line"><i>I</i><sub>D</sub> = <i>M</i><i>I</i><sub>seed</sub> + <i>I</i><sub>BTBT</sub> + <i>I</i><sub>ph</sub></span>
+<span class="line"><i>V</i><sub>D</sub> = <i>r</i> + <i>I</i><sub>D</sub><i>R</i><sub>LRS</sub></span>
+<span class="line"><i>w</i> = <i>u</i> + <i>I</i><sub>D</sub><i>R</i><sub>LRS</sub></span>
+<span class="line"><i>Q</i> = <i>C</i><sub>B</sub>(<i>w</i> − <i>V</i><sub>bias</sub>)</span>
+<span class="line">d<i>Q</i>/d<i>t</i> = (<i>M</i>−1)<i>I</i><sub>seed</sub> + <i>I</i><sub>BTBT</sub> + <i>I</i><sub>ph</sub></span>
+<span class="line">　　　　− <i>I</i><sub>seed</sub>/<i>β</i> − <i>Q</i>/<i>τ</i><sub>B</sub> + <i>I</i><sub>B,ext</sub></span>
+</div>
+<p><span class="math"><i>I</i><sub>BTBT</sub></span>는 측방향 BTBT와 GIDL의 합입니다. GIDL 전계에는 내부 전압 <span class="math"><i>r</i></span>를 사용하는 근사를 적용합니다. 기존 모델의 비선형 SRH 손실·추가 수송 전하·채널 전류를 중복해서 더하지 않습니다.</p>
+<p><span class="math"><i>Q</i></span>는 바이어스 기준의 부호 있는 전하 좌표입니다. 음수일 때의 <span class="math"><i>Q</i>/<i>τ</i><sub>B</sub></span>는 선형 복원 항이며, 음의 미시적 재결합률을 뜻하지 않습니다.</p>
+</div></details>
+
+<details><summary>Geometry와 β</summary><div class="content">
+<div class="eq math">
+<span class="line"><i>β</i> = <i>β</i><sub>ref</sub> (<i>L</i><sub>ref</sub>/<i>L</i>)(<i>N</i><sub>ref</sub>/<i>N</i><sub>body</sub>)</span>
+<span class="line"><i>I</i><sub>S</sub> = <i>I</i><sub>S,ref</sub> (<i>W</i>/<i>W</i><sub>ref</sub>)(<i>T</i><sub>Si</sub>/<i>T</i><sub>Si,ref</sub>)</span>
+<span class="line">　　　　× (<i>L</i><sub>ref</sub>/<i>L</i>)(<i>N</i><sub>ref</sub>/<i>N</i><sub>body</sub>)</span>
+</div>
+<p>에미터 도핑·확산 계수·홀 확산 길이가 고정된 확산 근사입니다. 두 전류의 접합 면적이 같아 <span class="math"><i>β</i></span>에서 <span class="math"><i>W</i>·<i>T</i><sub>Si</sub></span>가 상쇄됩니다. 베이스 길이는 <span class="math"><i>L</i></span>로 근사합니다.</p>
+<div class="scroll"><table><thead><tr><th>입력</th><th>모델에 연결되는 항</th></tr></thead><tbody>
+<tr><td class="math"><i>L</i>, <i>W</i>, <i>T</i><sub>Si</sub></td><td>확산 전류, LRS 저항, 저장 정전용량</td></tr>
+<tr><td class="math"><i>T</i><sub>ox</sub> / EOT</td><td>전면 결합 정전용량, GIDL 전계</td></tr>
+<tr><td class="math"><i>T</i><sub>box</sub></td><td>Si/BOX 직렬 정전용량을 통한 백게이트 결합</td></tr>
+<tr><td class="math"><i>N</i><sub>body</sub></td><td>확산 전류와 β, 측방향 BTBT 전계</td></tr>
+</tbody></table></div>
+<p><span class="math"><i>τ</i><sub>B</sub> = <i>τ</i><sub>ref</sub>/[(1−<i>f</i><sub>surf</sub>) + <i>f</i><sub>surf</sub><i>T</i><sub>Si,ref</sub>/<i>T</i><sub>Si</sub>]</span>. 표면 기여율 <span class="math"><i>f</i><sub>surf</sub></span>의 기본값 1은 가정이며, 측정으로 분리 추출한 값이 아닙니다.</p>
+</div></details>
+
+<details><summary>HRS 보정은 어디까지 가능한가요?</summary><div class="content">
+<p>한 점에서는 <span class="math"><i>I</i><sub>S</sub></span> 또는 <span class="math"><i>τ</i><sub>B</sub></span> 중 하나를 보정합니다. 두 값을 함께 조정하려면 전압이 구분되는 HRS 데이터가 최소 3점 필요하며, 그 경우에도 두 값의 구분이 가능한지 확인해야 합니다.</p>
+<p>정적 HRS는 주로 <span class="math"><i>τ</i><sub>B</sub>/<i>C</i><sub>B</sub></span>를 결정하므로 보정 중 <span class="math"><i>C</i><sub>B</sub></span>는 고정합니다. <span class="math"><i>I</i><sub>S</sub></span>와 수명이 서로 비슷한 효과를 내면 여러 조합이 동일한 전류를 설명할 수 있습니다.</p>
+<p>보정 후 실제 낮은 전류 HRS 가지를 다시 계산해 로그 전류 오차를 표시합니다. HRS 밖의 점, 구분할 수 없는 데이터, 지나치게 큰 잔차는 적용하지 않습니다.</p>
+<p>입력한 HRS에 잘 맞는다는 것은 fold, CSVM 주파수, 다른 Geometry의 정확도를 보증하지 않습니다. 보정에 쓰지 않은 데이터로 비교하세요.</p>
+</div></details>
+
+<details><summary>Body RC · 게이트 변조</summary><div class="content">
+<p>D·S·G·BG·B의 5단자와 G/BG의 시간 변화 입력을 지원합니다. B에 RC를 연결하면 바디 전하 방정식에 외부 전류가 함께 들어갑니다.</p>
+<p><strong>B 접점 전압은 <span class="math"><i>u</i></span>, 바디 플롯은 저장 영역 전위 <span class="math"><i>w</i></span></strong>입니다. 회로에서 <code>X1.vbody</code>는 전자, <code>X1.vb</code>는 후자입니다. 모두 S 기준 전압입니다.</p>
+<p>B 접점의 위치와 <span class="math"><i>I</i><sub>D</sub><i>R</i><sub>LRS</sub></span>의 전압 관계는 논문의 모델을 회로용으로 확장한 집중소자 근사입니다. 외부 Body RC의 정확도가 별도로 검증된 것은 아닙니다.</p>
+</div></details>
+
+<details><summary>초기값과 지원 범위</summary><div class="content">
+<div class="scroll"><table><thead><tr><th>초기 파라미터</th><th>값</th></tr></thead><tbody>
+<tr><td class="math"><i>β</i><sub>ref</sub> / <i>τ</i><sub>ref</sub></td><td>2.3 / 200 ns</td></tr>
+<tr><td class="math"><i>C</i><sub>B,ref</sub> / <i>R</i><sub>LRS,ref</sub></td><td>0.2646 fF / 143 kΩ</td></tr>
+<tr><td class="math"><i>I</i><sub>S,ref</sub> / <i>V</i><sub>BR</sub></td><td>6.154 × 10<sup>−17</sup> A / 2.35 V</td></tr>
+<tr><td class="math"><i>η</i> / <i>γ</i><sub>G</sub> / <i>γ</i><sub>BG</sub></td><td>4 / 0.2 / 0.0525</td></tr>
+</tbody></table></div>
+<p>논문 Table I의 폭 650 nm를 앱 기준 폭 200 nm로 환산한 시작값입니다. β = 2.3과 표면 기여율은 별도 가정입니다. 게이트 결합은 일정한 유효 정전용량을 사용하며, 축적 영역에서의 결합 차폐를 추가로 모델링하지 않습니다.</p>
+<p><strong>결정론적 BE</strong> 해석만 지원합니다. Simple Model의 확률적 해석과 LTspice·Verilog-A·Sentaurus 내보내기는 현재 제공하지 않습니다.</p>
+<p>Miller 식의 범위는 <span class="math">0 ≤ <i>r</i> &lt; <i>V</i><sub>BR</sub></span>입니다. 시작·작은 링잉을 위해 −50 mV까지 <span class="math"><i>M</i> = 1</span>, BTBT = 0으로 연장하지만, 정확한 영바이어스 평형이나 역방향 트랜지스터 동작 모델은 아닙니다.</p>
+</div></details>
+<footer>근거: 제공된 accepted 원고 <cite>Analytical Model for Single Transistor Latch in MOSFETs</cite>, 식 (1)–(4) 및 Table I. 바이어스 의존 β 식 (8)은 사용하지 않습니다. 전체 구현식과 변경 내용은 배포본 <code>SIMPLE_MODEL_KO.md</code>에서 확인할 수 있습니다.</footer>
+</body>
+</html>

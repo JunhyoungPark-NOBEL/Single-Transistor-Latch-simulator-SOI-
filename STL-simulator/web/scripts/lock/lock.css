@@ -1,0 +1,288 @@
+/* STL Simulator: password card of the locked build (scripts/lock/lock.js). Everything is scoped to #stl-lock,
+   a full-viewport layer above the (still empty) app root; the card is removed once the app has started.
+   Light by default; dark with the system setting unless the host says data-theme="light", or when it says "dark". */
+#stl-lock {
+  --lk-bg: #f4f5f7;
+  --lk-glow-a: rgba(99, 102, 241, 0.08);
+  --lk-glow-b: rgba(13, 148, 136, 0.08);
+  --lk-surface: #ffffff;
+  --lk-field: #f8f9fb;
+  --lk-border: #e2e5eb;
+  --lk-border-strong: #c3c9d3;
+  --lk-text: #0f172a;
+  --lk-text-2: #3b4658;
+  --lk-muted: #5f697a;
+  --lk-accent: #0d9488;
+  --lk-btn: #0f766e;
+  --lk-btn-hover: #115e59;
+  --lk-on-btn: #ffffff;
+  --lk-ring: rgba(13, 148, 136, 0.38);
+  --lk-err: #b91c1c;
+  --lk-err-soft: rgba(220, 38, 38, 0.09);
+  --lk-shadow: 0 18px 50px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
+  color-scheme: light;
+
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 24px 16px;
+  background:
+    radial-gradient(900px 520px at 100% -10%, var(--lk-glow-a), transparent 60%),
+    radial-gradient(760px 460px at -10% 110%, var(--lk-glow-b), transparent 60%),
+    var(--lk-bg);
+  color: var(--lk-text);
+  font: 400 15px/1.5 "Pretendard", "Pretendard Variable", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-align: left;
+  word-break: keep-all; /* Korean wraps between words, not syllables */
+  overflow-wrap: anywhere;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) #stl-lock {
+    --lk-bg: #0e1015;
+    --lk-glow-a: rgba(129, 140, 248, 0.1);
+    --lk-glow-b: rgba(45, 212, 191, 0.07);
+    --lk-surface: #161920;
+    --lk-field: #1b1f27;
+    --lk-border: #2a303b;
+    --lk-border-strong: #414a59;
+    --lk-text: #e7eaf0;
+    --lk-text-2: #b7bfcc;
+    --lk-muted: #939cac;
+    --lk-accent: #2dd4bf;
+    --lk-btn: #0f766e;
+    --lk-btn-hover: #0d9488;
+    --lk-ring: rgba(45, 212, 191, 0.42);
+    --lk-err: #fca5a5;
+    --lk-err-soft: rgba(248, 113, 113, 0.13);
+    --lk-shadow: 0 22px 60px rgba(0, 0, 0, 0.55), 0 4px 14px rgba(0, 0, 0, 0.35);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] #stl-lock {
+  --lk-bg: #0e1015;
+  --lk-glow-a: rgba(129, 140, 248, 0.1);
+  --lk-glow-b: rgba(45, 212, 191, 0.07);
+  --lk-surface: #161920;
+  --lk-field: #1b1f27;
+  --lk-border: #2a303b;
+  --lk-border-strong: #414a59;
+  --lk-text: #e7eaf0;
+  --lk-text-2: #b7bfcc;
+  --lk-muted: #939cac;
+  --lk-accent: #2dd4bf;
+  --lk-btn: #0f766e;
+  --lk-btn-hover: #0d9488;
+  --lk-ring: rgba(45, 212, 191, 0.42);
+  --lk-err: #fca5a5;
+  --lk-err-soft: rgba(248, 113, 113, 0.13);
+  --lk-shadow: 0 22px 60px rgba(0, 0, 0, 0.55), 0 4px 14px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+
+#stl-lock *,
+#stl-lock *::before,
+#stl-lock *::after {
+  box-sizing: border-box;
+}
+#stl-lock [hidden] {
+  display: none !important;
+}
+
+/* margin:auto centres the column and still scrolls from the top on short screens */
+#stl-lock .stl-lock__wrap {
+  margin: auto 0;
+  width: 100%;
+  max-width: 384px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+}
+#stl-lock .stl-lock__card {
+  margin: 0;
+  padding: 28px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--lk-surface);
+  border: 1px solid var(--lk-border);
+  border-radius: 16px;
+  box-shadow: var(--lk-shadow);
+}
+#stl-lock .stl-lock__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+  text-align: center;
+}
+#stl-lock .stl-lock__logo {
+  display: block;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  box-shadow: 0 8px 22px rgba(79, 107, 239, 0.28);
+}
+#stl-lock .stl-lock__title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--lk-text);
+}
+#stl-lock .stl-lock__lead,
+#stl-lock .stl-lock__remember,
+#stl-lock .stl-lock__err {
+  text-wrap: balance;
+}
+#stl-lock .stl-lock__lead {
+  margin: 0;
+  font-size: 14px;
+  color: var(--lk-text-2);
+}
+#stl-lock .stl-lock__lead span {
+  display: block;
+  font-size: 13px;
+  color: var(--lk-muted);
+}
+
+#stl-lock .stl-lock__label {
+  display: block;
+  margin: 0 0 -8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lk-text-2);
+}
+#stl-lock .stl-lock__input {
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 16px; /* no zoom-on-focus on phones */
+  letter-spacing: 0.02em;
+  color: var(--lk-text);
+  background: var(--lk-field);
+  border: 1px solid var(--lk-border-strong);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+#stl-lock .stl-lock__input:focus-visible,
+#stl-lock .stl-lock__input:focus {
+  border-color: var(--lk-accent);
+  box-shadow: 0 0 0 3px var(--lk-ring);
+}
+#stl-lock .stl-lock__input[aria-invalid="true"] {
+  border-color: var(--lk-err);
+}
+#stl-lock .stl-lock__input:disabled {
+  opacity: 0.6;
+}
+
+#stl-lock .stl-lock__remember {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--lk-text-2);
+  cursor: pointer;
+  user-select: none;
+}
+#stl-lock .stl-lock__remember input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--lk-btn);
+  cursor: pointer;
+}
+#stl-lock .stl-lock__remember input:focus-visible {
+  outline: 2px solid var(--lk-accent);
+  outline-offset: 2px;
+}
+
+#stl-lock .stl-lock__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--lk-on-btn);
+  background: var(--lk-btn);
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 0.12s, box-shadow 0.12s;
+}
+#stl-lock .stl-lock__btn:hover:not(:disabled) {
+  background: var(--lk-btn-hover);
+}
+#stl-lock .stl-lock__btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--lk-ring);
+}
+#stl-lock .stl-lock__btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+#stl-lock form[aria-busy="true"] .stl-lock__btn:disabled {
+  opacity: 0.85;
+  cursor: progress;
+}
+#stl-lock .stl-lock__spin {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: stl-lock-spin 0.8s linear infinite;
+}
+#stl-lock form[aria-busy="true"] .stl-lock__spin {
+  display: inline-block;
+}
+@keyframes stl-lock-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #stl-lock .stl-lock__spin {
+    animation-duration: 2.4s;
+  }
+}
+
+#stl-lock .stl-lock__err {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--lk-err);
+  background: var(--lk-err-soft);
+  border-radius: 8px;
+}
+#stl-lock .stl-lock__status {
+  margin: 0;
+  font-size: 13px;
+  text-align: center;
+  color: var(--lk-muted);
+}

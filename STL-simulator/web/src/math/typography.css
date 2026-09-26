@@ -1,0 +1,15 @@
+/* Variables italic; units, numbers, prose and descriptive indices stay upright. */
+.math-label { font-style: normal; }
+.math-label i.math-var,
+.ans-sym,
+.q { font-style: italic; }
+.math-label sub,
+.math-label sup,
+.ans-sym sub,
+.ans-sym sup,
+.q sub,
+.q sup { font-style: normal; }
+/* KaTeX's \mathrm keeps Latin upright but falls back to math italic for some
+   lower-case Greek glyphs. Limit the fallback to explicitly marked subscripts. */
+.katex .math-upright-sub .mathnormal,
+.katex .math-upright-sub .mathit { font-family: KaTeX_Main, "Times New Roman", serif; font-style: normal; }

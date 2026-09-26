@@ -1,0 +1,118 @@
+/* Shared UX building blocks (imported by MoreCard.tsx, which Panel.tsx imports for MoreCardContext):
+   FocusLayout grid, MoreCard tabs + status dots, LayoutToggle, and the Panel additions (embedded mode,
+   ⋯ menu, footnote). Existing :root tokens only — no new colours; light and dark follow the tokens. */
+
+/* ------------------------------------------------------------------ FocusLayout (간단히) */
+.focus-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); align-items: stretch; }
+@media (min-width: 1280px) {
+  .focus-grid.side:not(.no-hero) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ------------------------------------------------------------------ MoreCard */
+.more-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r3); box-shadow: var(--shadow-1); display: flex; flex-direction: column; min-width: 0; }
+.more-head { display: flex; align-items: flex-end; gap: var(--s2); padding: 4px 10px 0; border-bottom: 1px solid var(--border); min-width: 0; min-height: 41px; }
+.more-tabs { display: flex; gap: 2px; min-width: 0; flex: 0 1 auto; overflow-x: auto; scrollbar-width: none; }
+/* right end of the tab row: the embedded panel's status badge, 📖 and ⋯ (portalled by Panel) */
+.more-actions { margin-left: auto; align-self: center; display: flex; align-items: center; flex: none; padding-bottom: 2px; }
+.more-actions:empty { display: none; }
+.panel-slot { display: flex; align-items: center; gap: 4px; }
+.more-tabs::-webkit-scrollbar { display: none; }
+.more-tab {
+  position: relative; flex: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 10px 9px; border: 0; border-radius: 7px 7px 0 0; background: transparent;
+  font-size: 13px; font-weight: 600; color: var(--text-2); white-space: nowrap;
+  transition: color .15s, background .15s;
+}
+.more-tab:hover { color: var(--text); background: var(--surface-2); }
+.more-tab[aria-selected="true"] { color: var(--text); }
+.more-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px; background: var(--accent); }
+.more-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.more-dot.running { background: var(--accent); animation: morePulse 1.2s infinite; }
+.more-dot.error { background: var(--err); }
+.more-dot.stale { background: var(--warn); }
+@keyframes morePulse { 50% { opacity: .3; } }
+.more-select { width: auto; max-width: 100%; margin: 6px 0 8px; font-weight: 600; text-align: left; }
+.more-body { min-width: 0; }
+@media (max-width: 760px) {
+  .more-select { flex: 1 1 auto; width: auto; min-width: 0; }
+  .more-head { align-items: center; padding-bottom: 0; }
+}
+
+/* ------------------------------------------------------------------ LayoutToggle (segmented, .seg look) */
+.layout-toggle { flex: none; }
+
+/* ------------------------------------------------------------------ Panel additions */
+/* title row (≈ 42 px): title + one status badge, the one control, 📖 ⋯. Overrides app.css .panel-head
+   (align-items: flex-start, 12 px top padding). The title and the control share a line while they fit;
+   a wider toolbar (other screens) wraps under the title, and 📖 ⋯ stay top-right. */
+.panel > .panel-head {
+  display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 2px;
+  min-height: 42px; padding: 6px 8px 4px 14px;
+}
+.panel-headmain { flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.panel > .panel-head .panel-title { margin: 0; flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; }
+.panel > .panel-head .panel-title .pt-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.panel > .panel-head .panel-desc { flex-basis: 100%; margin-top: 0; line-height: 1.4; }
+.panel > .panel-head .panel-actions { gap: 2px; align-self: flex-start; min-height: 30px; }
+.panel-tools { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.panel-tools .tb-label { font-size: 11.5px; color: var(--muted); }
+/* 📖 in a panel title row: icon-only ghost (the aria-label and title keep the name) */
+.panel-actions .details-btn, .panel-slot .details-btn {
+  width: 26px; height: 26px; padding: 0; justify-content: center; gap: 0; font-size: 0;
+  border-color: transparent; background: transparent; color: var(--muted); border-radius: 7px;
+}
+.panel-actions .details-btn:hover, .panel-slot .details-btn:hover { border-color: var(--border); background: var(--surface-2); color: var(--text); }
+.panel-actions .details-btn svg, .panel-slot .details-btn svg { width: 14px; height: 14px; }
+
+/* inside a MoreCard tab: the card is the frame; the tab label is the title (the h3 stays for a11y) */
+.panel.embedded { border: 0; border-radius: 0 0 var(--r3) var(--r3); box-shadow: none; background: transparent; }
+.panel.embedded > .panel-toolbar { padding: 8px 14px 2px; min-height: 40px; }
+.panel.embedded > .embedded-desc { padding: 8px 14px 0; }
+/* the tab's "what to look for" caption once data is in: at most two muted lines (full text in the title) */
+.panel.embedded > .embedded-desc.caption { font-size: 12px; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.panel.embedded > .panel-body { padding-top: 6px; }
+
+/* empty states: the hero offers the one big Run button; other panels show a quiet one-line placeholder */
+.empty .empty-desc { max-width: 380px; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.empty .btn.empty-run { height: 38px; padding: 0 18px; font-size: 14px; border-radius: 10px; }
+.empty .empty-hint { font-size: 11.5px; color: var(--faint); }
+.empty.quiet { height: auto; min-height: 120px; padding: 16px; background: transparent; }
+.empty.quiet .empty-inner { flex-direction: row; gap: 8px; }
+/* footnote: one muted line of run metadata under the plot */
+.panel-footnote { padding: 0 14px 10px; font-size: 11.5px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.panel-footnote .mono, .panel-footnote .num { font-size: 11px; }
+
+/* ⋯ menu (checkbox / radio items under 보기, actions under 내보내기) and the tool popover (⚙ 범위) */
+.pmenu-wrap { position: relative; display: inline-flex; }
+.pmenu.up { top: auto; bottom: calc(100% + 4px); }
+.pmenu.left { right: auto; left: 0; }
+.pmenu-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tool-btn { gap: 5px; color: var(--text-2); }
+.tool-btn[aria-expanded="true"] { background: var(--surface-3); color: var(--text); }
+.tool-pop { min-width: 240px; padding: 6px 10px 10px; gap: 8px; }
+.tool-pop .pmenu-title { padding: 2px 0 0; }
+.pmenu-wrap .icon-btn.xs[aria-expanded="true"] { border-color: var(--border); background: var(--surface-2); color: var(--text); }
+.pmenu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 30;
+  min-width: 200px; max-width: min(300px, calc(100vw - 24px));
+  padding: 4px; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r2); box-shadow: var(--shadow-2);
+}
+.pmenu-sec + .pmenu-sec { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
+.pmenu-title, .pmenu-group { padding: 4px 8px 2px; font-size: 11px; font-weight: 700; color: var(--muted); }
+.pmenu-group { font-weight: 600; color: var(--faint); }
+.pmenu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; border: 0; border-radius: 6px; background: transparent;
+  font-size: 12.5px; color: var(--text); text-align: left; white-space: nowrap;
+}
+.pmenu-item:hover:not(:disabled), .pmenu-item:focus-visible { background: var(--surface-3); }
+.pmenu-item:disabled { opacity: .5; cursor: not-allowed; }
+.pmenu-mark { width: 14px; height: 14px; flex: none; display: inline-grid; place-items: center; color: var(--accent-strong); }
+.pmenu-mark.pm-box { border: 1.5px solid var(--border-strong); border-radius: 4px; }
+.pmenu-mark.pm-box.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.pmenu-mark.pm-radio { border: 1.5px solid var(--border-strong); border-radius: 50%; }
+.pmenu-mark.pm-radio.is-on { border-color: var(--accent); }
+.pmenu-mark.pm-radio.is-on::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.pmenu-mark.pm-icon { color: var(--muted); }

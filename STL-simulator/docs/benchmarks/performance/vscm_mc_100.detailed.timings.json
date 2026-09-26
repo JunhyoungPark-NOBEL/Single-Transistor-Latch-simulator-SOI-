@@ -1,0 +1,70 @@
+{
+  "first": {
+    "wall_s": 0.5291693769977428,
+    "cpu_s": 0.5291267679999976,
+    "reported_s": 0.529157408993342,
+    "solver": null,
+    "warnings": [
+      "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous",
+      "0.01 % of state samples lie outside the lookup table (linear extrapolation)"
+    ],
+    "engine": "calibrated_lookup"
+  },
+  "warm": [
+    {
+      "wall_s": 0.19089318100304808,
+      "cpu_s": 0.1908916579999982,
+      "reported_s": 0.19088369599194266,
+      "solver": null,
+      "warnings": [
+        "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous",
+        "0.01 % of state samples lie outside the lookup table (linear extrapolation)"
+      ],
+      "engine": "calibrated_lookup"
+    },
+    {
+      "wall_s": 0.18101517000468448,
+      "cpu_s": 0.1810071219999969,
+      "reported_s": 0.18100749800214544,
+      "solver": null,
+      "warnings": [
+        "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous",
+        "0.01 % of state samples lie outside the lookup table (linear extrapolation)"
+      ],
+      "engine": "calibrated_lookup"
+    },
+    {
+      "wall_s": 0.18174099099996965,
+      "cpu_s": 0.1817401529999998,
+      "reported_s": 0.18173390999436378,
+      "solver": null,
+      "warnings": [
+        "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous",
+        "0.01 % of state samples lie outside the lookup table (linear extrapolation)"
+      ],
+      "engine": "calibrated_lookup"
+    },
+    {
+      "wall_s": 0.17556622299889568,
+      "cpu_s": 0.1755658180000026,
+      "reported_s": 0.17555836100655142,
+      "solver": null,
+      "warnings": [
+        "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous",
+        "0.01 % of state samples lie outside the lookup table (linear extrapolation)"
+      ],
+      "engine": "calibrated_lookup"
+    },
+    {
+      "wall_s": 0.17632105699158274,
+      "cpu_s": 0.17631227899999402,
+      "reported_s": 0.17631235400040168,
+      "solver": null,
+      "warnings": [
+        "calibrated_lookup: V_LU/V_LD are 10 mV read-out midpoints (as the measurement); continuous values in V_LU_continuous/V_LD_continuous",
+        "0.01 % of state samples lie outside the lookup table (linear extrapolation)"
+      ],
+      "engine": "calibrated_lookup"
+    }
+  ]
+}
