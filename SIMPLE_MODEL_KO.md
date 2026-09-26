@@ -1,8 +1,15 @@
 # Simple Model
 
-Simple Model은 제공된 accepted 원고 **Analytical Model for Single Transistor Latch in MOSFETs**의 1차 바디 전하 감쇠를 기반으로 한 빠른 결정론적 모델이다. 공간적으로 분포된 SRH 수송 문제를 풀지 않고, 바디 전하와 전류를 직접 계산한다. 이 문서는 `server/simple_model.py`와 `server/simple_config.py`의 구현을 설명한다.
+Simple Model은 게재 확정된 논문 **J.-H. Park, H.-B. Noh, S.-W. Lee, S.-Y. Yun, and Y.-K. Choi, "Analytical Model for Single Transistor Latch in MOSFETs," *IEEE Electron Device Letters*, 2026, doi: 10.1109/LED.2026.3737574**의 해석 모델(식 (1)–(4), (7), Table I)을 그대로 구현한 빠른 결정론적 모델이다. 공간적으로 분포된 SRH 수송 문제를 풀지 않고, 바디 전하와 전류를 직접 계산한다. 이 문서는 `server/simple_model.py`와 `server/simple_config.py`의 구현을 설명한다.
 
-기존 Detailed Model과 선택하여 사용한다. Simple Model의 기본값은 논문의 시작값을 앱의 기준 Geometry에 맞춰 환산한 값이며, Device 1의 측정 보정을 그대로 옮긴 값이 아니다. 새로운 모델의 측정 정확도를 독립적으로 검증했다는 의미도 아니다.
+시뮬레이터 전체의 틀(바디 전하 균형, 증배, BTBT, 재결합·확산, 래치 조건)은 이 논문을 따른다. 두 모델의 관계는 다음과 같다.
+
+| 모델 | 내용 | 표기 |
+|---|---|---|
+| **Simple Model** | 논문의 수식 (1)–(4), (7)과 Table I. 확산 β만 상수(식 (8) 미사용). | 논문 모델 |
+| **Detailed Model** | 같은 틀을 분포 SRH 수송·전계 테이블·측정 보정으로 확장한 모델. | Updated accuracy 모델 |
+
+기존 Detailed Model과 선택하여 사용한다. Simple Model의 기본값은 논문 Table I의 값을 앱의 기준 Geometry에 맞춰 환산한 값이며, Device 1의 측정 보정을 그대로 옮긴 값이 아니다. 새로운 모델의 측정 정확도를 독립적으로 검증했다는 의미도 아니다.
 
 ## 사용 방법
 
@@ -134,29 +141,75 @@ $$
 
 여기서 $T_{\mathrm{Si}}/3$은 Si와 SiO₂ 유전율 비를 사용한 직렬 정전용량 표현이다. $\gamma_{\mathrm G}+\gamma_{\mathrm{BG}}\le1$을 유지하여 $C_{\mathrm S}\ge0$이 되도록 한다. 이 분할은 논문의 결합 계수에 맞춰 구성한 유효 집중소자 근사로, 새로운 Poisson 해나 별도 백채널 모델이 아니다.
 
+논문 식 (2)의 $V_{\mathrm{BS,bias}}=\gamma_1(V_{\mathrm{FG}}-\varphi_{\mathrm{FB}})+\gamma_2(V_{\mathrm{BG}}-\varphi_{\mathrm{FB}})$를 정전용량 비로 쓰면 다음과 같다. 논문은 **축적(accumulation) 상태에서는 축적된 정공층이 게이트–바디 결합을 차폐하므로 결합 계수를 0으로 둔다**. 구현에서는 각 게이트 전압을 평탄대 전압에서 잘라 이를 연속적으로 적용한다.
+
+$$
+V_{\mathrm G}^{\mathrm{eff}}=\max(V_{\mathrm G},V_{\mathrm{FB}}),\qquad
+V_{\mathrm{BG}}^{\mathrm{eff}}=\max(V_{\mathrm{BG}},V_{\mathrm{FB}}),
+$$
+
 $$
 V_{\mathrm{bias}}=
-\frac{C_{\mathrm G}(V_{\mathrm G}-V_{\mathrm{FB}})+C_{\mathrm{BG}}(V_{\mathrm{BG}}-V_{\mathrm{FB}})}{C_{\mathrm B}}.
+\frac{C_{\mathrm G}(V_{\mathrm G}^{\mathrm{eff}}-V_{\mathrm{FB}})+C_{\mathrm{BG}}(V_{\mathrm{BG}}^{\mathrm{eff}}-V_{\mathrm{FB}})}{C_{\mathrm B}}.
 $$
 
-단자 변위 전류는 같은 저장 영역 전위를 사용하는 전하로 계산한다.
+즉 $V_{\mathrm G}$가 $V_{\mathrm{FB}}$ 아래로 내려가도 $V_{\mathrm{bias}}$는 더 이상 내려가지 않는다(전면 게이트 항이 0). 반면 GIDL 전계는 계속 커지므로 $I_{\mathrm{BTBT}}$가 급증하고, 그 결과 $V_{\mathrm{LU}}(V_{\mathrm G})$는 $V_{\mathrm{FB}}$ 부근에서 최대가 된 뒤 다시 내려가는 종 모양(bell shape, 논문 Fig. 5(a))이 된다. 이전 구현은 이 차폐가 없어 $V_{\mathrm G}\le V_{\mathrm{FB}}$에서 $V_{\mathrm{LU}}$가 $V_{\mathrm{BR}}$에 붙어 버렸다. 백게이트 항은 논문 스크립트처럼 유지하되, 백게이트가 자체 평탄대 아래로 내려가면 같은 방식으로 잘라 연속성을 유지한다(논문 본문은 "두 계수 모두 0"이라 적었으나 전면 게이트 축적에서 백게이트 항까지 한꺼번에 0으로 두면 $V_{\mathrm{FB}}$에서 $V_{\mathrm{bias}}$가 불연속으로 뛰고 Fig. 5(a)의 매끄러운 곡선이 나오지 않는다).
+
+단자 변위 전류는 같은 저장 영역 전위와 같은 유효 게이트 전압을 사용하는 전하로 계산한다.
 
 $$
-Q_{\mathrm G}=C_{\mathrm G}(V_{\mathrm G}-w),\qquad
-Q_{\mathrm{BG}}=C_{\mathrm{BG}}(V_{\mathrm{BG}}-w).
+Q_{\mathrm G}=C_{\mathrm G}(V_{\mathrm G}^{\mathrm{eff}}-w),\qquad
+Q_{\mathrm{BG}}=C_{\mathrm{BG}}(V_{\mathrm{BG}}^{\mathrm{eff}}-w).
 $$
 
-G/BG 전압 변화와 $I_{\mathrm D}R_{\mathrm{LRS}}$에 따른 $w$의 변화가 전하 도함수에 함께 들어간다. 논문에 서술된 축적 상태의 결합 차폐를 별도 구간 전환으로 구현하지 않았으며, 일정한 유효 결합 계수를 사용한다. 큰 게이트 바이어스 범위에 대한 일반적 정확도를 의미하지 않는다.
+G/BG 전압 변화와 $I_{\mathrm D}R_{\mathrm{LRS}}$에 따른 $w$의 변화가 전하 도함수에 함께 들어간다. 축적 상태에서 게이트 전압 변화로 생기는 추가 변위 전하는 차폐 정공층에 놓이며, 집중 저장 영역 밖이므로 $Q$, $Q_{\mathrm G}$, $Q_{\mathrm{BG}}$, $C_{\mathrm S}w$의 증분 보존은 그대로 성립한다. 큰 게이트 바이어스 범위에 대한 일반적 정확도를 의미하지 않는다.
 
 ## 5. BTBT 및 유효 범위
 
-- 측방향 BTBT는 급격 접합 공핍 전계의 적분을 16점 Gauss 구적으로 평가한다. 기존 SRH/avalanche 테이블을 생성하지 않는다.
-- GIDL의 전계 길이는 $3\,\mathrm{EOT}$이고 중첩 길이는 5 nm이다. 터널링 깊이는 사용한 드레인 공핍 근사와 실제 $T_{\mathrm{Si}}$ 중 작은 값이다.
-- GIDL 전압에는 외부 $V_{\mathrm D}$ 대신 내부 $r$을 사용한다. 이는 전류에 의존하는 암시적 BTBT 풀이를 피하기 위한 명시적 근사이다.
-- BTBT에는 $1-\exp(-r/V_{\mathrm T})$를 곱하며, $r\le0$에서는 BTBT를 0으로 둔다.
+논문 Table I의 $I_{\mathrm{BTBT}}=q\int_V A\,E^{2.5}\exp(-B/E)\,dv$ ($A=4\times10^{14}\ \mathrm{cm^{-0.5}V^{-2.5}s^{-1}}$, $B=19\ \mathrm{MV/cm}$)를 논문 참고 스크립트와 같이 "한 전계에서의 Kane 생성률 × 생성 체적"으로 평가한다. 두 항 모두 $1-\exp(-r/V_{\mathrm T})$를 곱하고 $r\le0$에서는 0이며, 전체에 배율 $s_{\mathrm{BTBT}}$가 곱해진다.
+
+**접합(측방향) BTBT** — 급격 n⁺ 드레인 접합의 최대 전계와 공핍 체적을 사용한다.
+
+$$
+V_{\mathrm{bi}}=V_{\mathrm T}\ln\frac{10^{20}N_{\mathrm{body}}}{n_i^2}-\gamma_{\mathrm G}\,(V_{\mathrm G}^{\mathrm{eff}}-V_{\mathrm{FB}}),\qquad
+W_{\mathrm d}=\sqrt{\frac{2\varepsilon_{\mathrm{Si}}(V_{\mathrm{bi}}+r)}{qN_{\mathrm{body}}}},\qquad
+E_{\mathrm j}=\frac{2(V_{\mathrm{bi}}+r)}{W_{\mathrm d}},
+$$
+
+$$
+I_{\mathrm{BTBT,j}}=q\,A\,E_{\mathrm j}^{2.5}\exp(-B/E_{\mathrm j})\;W\,T_{\mathrm{Si}}\,W_{\mathrm d}.
+$$
+
+게이트가 평탄대 위에 있을 때 접합 내장 전위를 $\gamma_{\mathrm G}(V_{\mathrm G}-V_{\mathrm{FB}})$만큼 낮추는 것은 논문 스크립트의 정의이며, 축적 상태에서는 변하지 않는다.
+
+**GIDL** — 게이트–드레인 가장자리의 수직 전계와 고정 체적을 사용한다.
+
+$$
+E_{\mathrm g}=\frac{r-V_{\mathrm G}-V_{\mathrm{FB0}}-E_{\mathrm g}^{\mathrm{Si}}}{3\,\mathrm{EOT}}
+=\frac{r-V_{\mathrm G}+1.2-1.12}{3\,\mathrm{EOT}},\qquad
+W_{\mathrm t}=\min\!\left(\sqrt{\frac{2\varepsilon_{\mathrm{Si}}\cdot1.12}{q\cdot7\times10^{19}}},\,T_{\mathrm{Si}}\right)\approx4.55\ \mathrm{nm},
+$$
+
+$$
+I_{\mathrm{GIDL}}=q\,A\,E_{\mathrm g}^{2.5}\exp(-B/E_{\mathrm g})\;s_{\mathrm{GIDL}}\,W\,L_{\mathrm{ov}}\,W_{\mathrm t},\qquad L_{\mathrm{ov}}=5\ \mathrm{nm}.
+$$
+
+- $V_{\mathrm{FB0}}=-1.2\ \mathrm V$는 게이트–n⁺ 드레인 사이의 평탄대 전압으로 논문 스크립트의 값이며, 바디의 $V_{\mathrm{FB}}=-3.35\ \mathrm V$와 다르다. $E_{\mathrm g}\le0$이면 GIDL은 0이다.
+- $s_{\mathrm{GIDL}}$(GIDL 체적 배율, 기본 100)은 논문 스크립트의 GIDL 생성 체적을 재현하기 위한 값이다. 스크립트는 $W\,L_{\mathrm{ov}}$의 단위 환산에 $10^6$을 곱해 물리 체적의 100배를 사용하며, Fig. 5의 결과는 이 체적으로 얻어진 것이다. 1로 두면 물리 체적만 사용하고, 그 경우 GIDL이 너무 작아 $V_{\mathrm{LU}}$가 $V_{\mathrm{BR}}$에 붙는다(이전 구현의 증상).
+- GIDL 전압에는 외부 $V_{\mathrm D}$ 대신 내부 $r$을 사용한다. HRS에서는 $I_{\mathrm D}R_{\mathrm{LRS}}$가 무시할 만해 차이가 없고, LRS에서는 전류에 의존하는 암시적 BTBT 풀이를 피하는 명시적 근사이다.
 - Miller 식은 $0\le r<V_{\mathrm{BR}}$에서 사용한다. $r\ge V_{\mathrm{BR}}$에서는 유효하지 않은 평가로 처리하며, 증배 계수를 임의의 최대값으로 대체하지 않는다.
 - 시작점과 작은 링잉의 수치 연장을 위해 $-50\ \mathrm{mV}\le r\le0$에서는 $M=1$, BTBT = 0을 사용한다. 그보다 작은 $r$은 지원하지 않는다.
 - 논문의 $\exp(u/V_{\mathrm T})$를 그대로 유지한다. 정확한 영바이어스 평형을 만족하는 완전한 Ebers–Moll 소자나 역방향 트랜지스터 모델이 아니다. 역방향 구동에 활용하면 안 된다.
+
+**확인한 결과** (논문 소자 $W=650$ nm, $T_{\mathrm{ox}}=13$ nm, $N_{\mathrm{body}}=3\times10^{17}$, $C_{\mathrm B}$·$R_{\mathrm{LRS}}$·$I_{\mathrm S}$를 Table I 값으로 맞춤, 상수 $\beta=2.3$):
+
+| $V_{\mathrm G}$ (V) | −2.2 | −2.6 | −3.0 | −3.2 | −3.4 | −3.8 | −4.0 |
+|---|---|---|---|---|---|---|---|
+| $V_{\mathrm{LU}}$ (V) | 1.76 | 1.95 | 2.21 | 2.23 | 2.19 | 1.92 | 1.80 |
+| $V_{\mathrm{LD}}$ (V) | 1.75 | 1.76 | 1.76 | 1.76 | 1.76 | 1.76 | 1.76 |
+| $I_{\mathrm{BTBT}}/I_{\mathrm{gen}}$ at $V_{\mathrm{LU}}$ | 0.00 | 0.07 | 0.58 | 0.73 | 0.80 | 0.75 | 0.57 |
+
+논문 Fig. 5(a)(최대 ≈2.22 V at −3.2 V, 1.75 V at −2.2 V, ≈1.85 V at −4.0 V)와 Fig. 5(b)의 경향을 재현한다. $V_{\mathrm G}=-3$ V에서 $V_{\mathrm{BG}}$를 0→2 V로 올리면 $V_{\mathrm{LU}}$는 2.21→1.84 V로 내려간다(Fig. 5(c)). 상수 β를 쓰므로 $V_{\mathrm{LD}}$는 논문과 달리 $V_{\mathrm G}$·$V_{\mathrm{BG}}$에 거의 무관하고, 그 결과 $V_{\mathrm{BG}}\gtrsim3.3$ V에서는 래치 창이 닫힌다(논문은 식 (8)의 β 증가로 $V_{\mathrm{LD}}$가 함께 내려가 4 V까지 창이 유지된다).
 
 ## 6. HRS 보정
 
@@ -235,7 +288,7 @@ D·S·G·BG·B를 지원한다. G/BG는 회로 전압원으로 변조할 수 있
 | $L,W,T_{\mathrm{Si}}$ | 500, 200, 50 nm | 앱 기준 치수 |
 | EOT, $T_{\mathrm{box}}$ | 14.1, 140 nm | 앱 기준; BOX는 명시적 기준 가정 |
 | $N_{\mathrm{body}}$ | $2.295773162796593\times10^{17}\ \mathrm{cm}^{-3}$ | 기존 앱 기준 도핑; 논문의 $3\times10^{17}$과 구분 |
-| $\beta_{\mathrm{ref}}$ | 2.3 | 바이어스 일정 확산 β의 시작 가정; 논문 식 (8) 대체 |
+| $\beta_{\mathrm{ref}}$ | 2.3 | 바이어스 일정 확산 β의 시작 가정; 논문 식 (8) 대체(사용자 결정) |
 | $\tau_{\mathrm{ref}}$ | 200 ns | 논문 Table I |
 | $C_{\mathrm{B,ref}}$ | $0.86\times200/650=0.264615$ fF | 논문 Table I의 폭 환산 |
 | $R_{\mathrm{LRS,ref}}$ | $44\times650/200=143$ kΩ | 논문 Table I의 폭 환산 |
@@ -243,13 +296,23 @@ D·S·G·BG·B를 지원한다. G/BG는 회로 전압원으로 변조할 수 있
 | $V_{\mathrm{BR}},\eta$ | 2.35 V, 4 | 논문 Table I |
 | $\gamma_{\mathrm G},\gamma_{\mathrm{BG}}$ | 0.2, 0.0525 | 논문 Table I에서 시작한 유효 결합 |
 | $V_{\mathrm{FB}}$ | −3.35 V | 논문 Table I |
-| BTBT 배율 | 1 | 기본값 |
+| BTBT 배율 $s_{\mathrm{BTBT}}$ | 1 | 기본값 |
 | $f_{\mathrm{surf}}$ | 1 | 표면 우세 가정; 미추출 |
+| GIDL 체적 배율 $s_{\mathrm{GIDL}}$ | 100 | 논문 참고 스크립트의 GIDL 생성 체적(§5) |
 | $V_{\mathrm G},V_{\mathrm{BG}}$ | −3 V, 0 V | UI의 초기 사용 조건 |
 
 논문 수치의 폭 환산이 앱의 다른 EOT·도핑까지 동일한 측정 소자로 만들어 주는 것은 아니다. 모든 Geometry·바이어스에서 논문의 정확도가 자동으로 유지되지 않는다.
 
 ## 9. 이번 변경 내용
+
+2026-09-26 (논문 정합):
+
+- 축적 상태의 결합 차폐를 구현했다: 각 게이트 전압을 $V_{\mathrm{FB}}$에서 잘라 $V_{\mathrm{bias}}$에 넣는다(§4). 이로써 $V_{\mathrm{LU}}(V_{\mathrm G})$의 종 모양이 재현된다.
+- 접합 BTBT와 GIDL을 논문 참고 스크립트의 정의(최대 전계 × 체적, 게이트 변조 내장 전위, $V_{\mathrm{FB0}}=-1.2$ V, 체적 배율 100)로 바꿨다(§5). 이전의 16점 Gauss 적분과 GIDL 상수(−0.3 V)는 제거했다.
+- 새 파라미터 `gidl_volume_scale`(기본 100)을 추가하고 모델 버전을 `simple-edl2026-paper-v2`로 올렸다. `/api/meta`의 `simple_model.reference`에 논문 서지 정보를 넣었다.
+- 논문 소자에 대한 회귀 테스트(`server/tests/test_simple_model.py`)로 종 모양·BTBT 비율·백게이트 경향을 고정했다.
+
+이전 변경:
 
 - Detailed / Simple Model 선택과 모델별 파라미터를 추가했다.
 - Simple Model은 SRH 수송 풀이와 그 전계 테이블 준비를 거치지 않는 직접 평가 경로를 사용한다.
@@ -262,4 +325,4 @@ D·S·G·BG·B를 지원한다. G/BG는 회로 전압원으로 변조할 수 있
 
 ## 근거
 
-사용자가 제공한 accepted 원고 **Analytical Model for Single Transistor Latch in MOSFETs**의 식 (1)–(4), Table I 및 바디 전하·LRS 저항에 대한 설명을 사용했다. β 식 (8)은 사용자의 지시에 따라 적용하지 않았다. Geometry의 확산 스케일링, 수명의 표면 기여율, 유효 정전용량 분할, 내부 전압을 사용하는 GIDL, 외부 B 접점은 위에서 각각 구분한 구현 가정 또는 확장이다.
+J.-H. Park, H.-B. Noh, S.-W. Lee, S.-Y. Yun, and Y.-K. Choi, "Analytical Model for Single Transistor Latch in MOSFETs," *IEEE Electron Device Letters*, 2026, doi: 10.1109/LED.2026.3737574의 식 (1)–(4), (7), Table I, 축적 상태의 결합 차폐 설명, Fig. 4–5의 수치와 저자가 제공한 참고 스크립트(snap-back 계산)를 사용했다. β 식 (8)은 저자의 지시에 따라 적용하지 않고 상수 β를 확산 손실에만 사용한다. Geometry의 확산 스케일링, 수명의 표면 기여율, 유효 정전용량 분할, 내부 전압을 사용하는 GIDL, 외부 B 접점은 위에서 각각 구분한 구현 가정 또는 확장이다.

@@ -29,6 +29,7 @@ const FIELDS: (FieldDef & { parameter: keyof SimpleModelBlock })[] = [
   { parameter: "vfb_V", sym: "V_{FB}", label: L("평탄대 전압", "Flat-band voltage"), help: L("게이트 결합의 전압 기준입니다.", "Voltage reference for front-gate coupling."), min: -10, max: 10, unit: "V" },
   { parameter: "btbt_scale", sym: "s_{BTBT}", label: L("BTBT 배율", "BTBT scale"), help: L("터널링 정공 생성 전류의 배율입니다.", "Scale of tunneling-generated hole current."), min: 0, max: 1e6, unit: "" },
   { parameter: "surface_fraction", sym: "f_{surf}", label: L("표면 손실 비율", "Surface loss fraction"), help: L("기준 재결합 중 표면 손실의 가정 비율입니다. 독립적으로 추출된 물성은 아닙니다.", "Assumed surface contribution to reference recombination; not an independently extracted material property."), min: 0, max: 1, step: 0.01, unit: "" },
+  { parameter: "gidl_volume_scale", sym: "s_{GIDL}", label: L("GIDL 체적 배율", "GIDL volume factor"), help: L("GIDL 생성 체적 W·L_ov(5 nm)·W_t에 곱하는 배율입니다. 논문 참고 스크립트의 값 100이 기본이며, 1이면 물리적 체적만 사용합니다.", "Multiplies the GIDL generation volume W·L_ov(5 nm)·W_t. The paper's reference script uses 100 (default); 1 keeps only the physical volume."), min: 0, max: 1e6, unit: "" },
 ].map((f) => ({ ...f, parameter: f.parameter as keyof SimpleModelBlock, key: `simple-${f.parameter}`, path: ["device", "simple", f.parameter], documentationPath: DOC }));
 
 function CalibrationDialog({ onClose }: { onClose: () => void }) {

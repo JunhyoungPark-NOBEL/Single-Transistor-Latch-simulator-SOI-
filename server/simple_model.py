@@ -1,8 +1,15 @@
-"""Fast, paper-inspired first-order body-charge STL model.
+"""Fast, first-order body-charge STL model of the published analytical framework.
 
-This evaluator deliberately never imports/calls the distributed SRH solver.  It
-implements the accepted manuscript's forward STL closure with bias-constant,
-geometry-dependent diffusion beta.  The default numbers are starting values, not
+Reference (the "Simple Model" implements its equations (1)-(4), (7) and
+Table I): J.-H. Park, H.-B. Noh, S.-W. Lee, S.-Y. Yun, and Y.-K. Choi,
+"Analytical Model for Single Transistor Latch in MOSFETs," IEEE Electron
+Device Lett., 2026, doi: 10.1109/LED.2026.3737574.  The Detailed Model is the
+calibrated "updated accuracy" model that extends this framework.
+
+This evaluator deliberately never imports/calls the distributed SRH solver.
+It implements the paper's forward STL closure with a bias-constant,
+geometry-dependent diffusion beta (the paper's bias-dependent beta, eq. (8),
+is not used - owner decision).  The default numbers are starting values, not
 an independently calibrated replacement for the distributed model.
 
 Coordinates: u is the effective source-side BJT/contact voltage, r the internal
@@ -10,15 +17,26 @@ collector voltage, w=u+ID*RLRS the lumped charge reservoir potential.  The decay
 charge is Q=CB*(w-bias), not CB*u.  Attaching an external B terminal at u is a
 separate lumped extension; the paper does not specify external-contact transport.
 
+Accumulation (paper, eq. (2)): a gate below the flat-band voltage V_FB no longer
+couples to the body because the accumulated hole layer screens it, so each
+gate's coupling term uses max(V - V_FB, 0).  Making V_G more negative than V_FB
+therefore stops lowering V_bias while it keeps raising the GIDL field; this is
+what turns V_LU(V_G) over into the bell shape of the paper's Fig. 5(a).
+
+BTBT follows the paper's reference script: junction (lateral) BTBT evaluates
+Kane's generation rate at the peak field of the abrupt drain junction over the
+depletion volume W*Tsi*Wd, with the junction built-in voltage lowered by
+gamma_G*(V_G-V_FB) above flat band; GIDL uses the vertical field
+(r - V_G + 1.2 - Eg)/(3*EOT) over the volume gidl_volume_scale*W*5nm*Wt.  The
+effective collector voltage r replaces the external V_D in GIDL, which avoids an
+implicit ID-dependent tunnelling solve.
+
 The Miller expression has a strict r<VBR domain.  For -50 mV <= r <= 0 we use
 M=1 and zero BTBT only as a startup/small-ringing numerical continuation of the
 forward model.  IS*exp(u/VT) is retained exactly: this continuation is NOT a
 zero-bias-equilibrium-valid or reverse-operation transistor model.
 
-BTBT uses the existing abrupt drain depletion field integral (16-point Gauss
-quadrature) and gate-edge volume, with effective collector voltage r in GIDL.
-This last approximation avoids an implicit ID-dependent tunnelling solve.  The
-first-order lifetime/surface split and passive gate-capacitance partition are
+The first-order lifetime/surface split and passive gate-capacitance partition are
 explicit, uncalibrated geometry closures.  No channel, distributed SRH, or extra
 stored ambipolar charge is silently inherited from the full model.
 """
@@ -31,20 +49,31 @@ QE = 1.602176634e-19
 VT = 1.380649e-23 * 300.0 / QE
 EPS_SI = 11.7 * 8.8541878128e-12 / 100.0  # F/cm
 NI_CM3 = 1e10
-BB_A = 4e14
-BB_B = 19e6
+BB_A = 4e14          # Kane prefactor, cm^-0.5 V^-2.5 s^-1 (paper Table I)
+BB_B = 19e6          # Kane exponent, V/cm (19 MV/cm, paper Table I)
+EG = 1.12            # Si band gap, eV
+VFB_GIDL = -1.2      # gate/n+ drain flat-band voltage of the GIDL field (reference script)
+LOV_CM = 5e-7        # gate-drain overlap, 5 nm
+ND_CM3 = 7e19        # n+ drain doping bounding the GIDL tunnelling depth
 # Existing reference calibration doping (server.params.NA_CM3). Kept local so
 # this numerical module does not form an import cycle with parameter packing.
 NREF = 2.295773162796593e17
 LREF, WREF, TREF, EOTREF, BOXREF = 500.0, 200.0, 50.0, 14.1, 140.0
-_x, _w = np.polynomial.legendre.leggauss(16)
-GAUSS_X = np.ascontiguousarray(0.5 * (_x + 1.0))
-GAUSS_W = np.ascontiguousarray(0.5 * _w)
 
 
 @njit(cache=True)
 def is_simple(p):
-    return len(p) >= 48 and p[34] == -1.0
+    return len(p) >= 49 and p[34] == -1.0
+
+
+@njit(cache=True)
+def gate_voltages(p):
+    """(V_G,eff, V_BG,eff): each gate clamped at V_FB once it is in accumulation.
+
+    Below flat band the accumulated hole layer screens the gate-to-body
+    coupling (paper, eq. (2) discussion), so the body sees max(V, V_FB).
+    """
+    return max(p[11], p[45]), max(p[32], p[45])
 
 
 @njit(cache=True)
@@ -53,6 +82,8 @@ def effective_parameters(p):
 
     Diffusion beta~1/(Nbody*L); IS~W*Tsi/(Nbody*L), so IS/beta
     has the expected emitter-area scaling with no artificial L or Nbody factor.
+    bias is the paper's V_BS,bias = gamma_G*(V_G-V_FB) + gamma_BG*(V_BG-V_FB) with
+    the accumulation clamp of gate_voltages.
     """
     lr, wr, tr = p[26] / LREF, p[27] / WREF, p[28] / TREF
     nr = NREF / p[31]
@@ -65,35 +96,50 @@ def effective_parameters(p):
     cb = cg + cbg + cs
     resistance = p[39] * lr / (wr * tr)
     saturation = p[40] * wr * tr * nr / lr
-    bias = (cg * (p[11] - p[45]) + cbg * (p[32] - p[45])) / cb
+    vg, vbg = gate_voltages(p)
+    bias = (cg * (vg - p[45]) + cbg * (vbg - p[45])) / cb
     return beta, tau, cb, resistance, saturation, p[41], p[42], cg, cbg, cs, bias
 
 
 @njit(cache=True)
-def btbt_currents(r, p):
-    """(lateral BTBT, GIDL) in A; no field-table or SRH construction.
+def junction_vbi(p):
+    """Built-in voltage of the abrupt n+ drain junction seen by lateral BTBT.
 
-    The lateral integrand and abrupt field match the full model's Field.btbt.
-    Gate field length is 3*EOT and overlap is 5 nm; the same n+ drain tunnelling
-    depth as the full model is used, capped by physical Tsi.
+    The paper's script lowers it by gamma_G*(V_G-V_FB) while the gate is above
+    flat band (depletion/inversion) and leaves it unchanged in accumulation.
+    """
+    vg, _ = gate_voltages(p)
+    return VT * np.log(1e20 * p[31] / NI_CM3**2) - p[43] * (vg - p[45])
+
+
+@njit(cache=True)
+def btbt_currents(r, p):
+    """(lateral junction BTBT, GIDL) in A; no field-table or SRH construction.
+
+    Both use Kane's rate G(E)=A*E^2.5*exp(-B/E) evaluated at one field, times a
+    generation volume, as in the paper's reference script (Table I integral
+    collapsed to peak field x volume):
+      lateral: E = 2(Vbi+r)/Wd of the abrupt junction, volume W*Tsi*Wd;
+      GIDL:    E = (r - V_G + 1.2 - Eg)/(3*EOT), volume gidl_volume_scale*W*5nm*Wt,
+               Wt = min(n+ tunnelling depth, Tsi).
+    The factor 1-exp(-r/VT) keeps both continuous at r -> 0.
     """
     if r <= 0.0 or p[46] == 0.0:
         return 0.0, 0.0
-    na = p[31]
-    vbi = VT * np.log(1e20 * na / NI_CM3**2)
-    wd = np.sqrt(2.0 * EPS_SI * (vbi + r) / (QE * na))
-    peak = 2.0 * (vbi + r) / wd
-    integral = 0.0
-    for i in range(len(GAUSS_X)):
-        field = peak * GAUSS_X[i]
-        integral += GAUSS_W[i] * BB_A * field**2.5 * np.exp(-BB_B / field)
     balance = -np.expm1(-r / VT)
-    lateral = QE * (p[27] * p[28] * 1e-14) * wd * integral * balance
-    field = max((r - p[11] - 0.3 - 1.12 + p[9]) / (3.0 * p[29] * 1e-7), 0.0)
-    depth = min(np.sqrt(2.0 * EPS_SI * 1.12 / (QE * 7e19)), p[28] * 1e-7)
-    volume = p[27] * 1e-7 * 5e-7 * depth
-    gidl = QE * volume * BB_A * field**2.5 * np.exp(-BB_B / max(field, 1.0)) * balance
-    return p[46] * lateral, p[46] * gidl
+    lateral = 0.0
+    vj = junction_vbi(p) + r
+    if vj > 0.0:
+        wd = np.sqrt(2.0 * EPS_SI * vj / (QE * p[31]))
+        peak = 2.0 * vj / wd
+        lateral = QE * BB_A * peak**2.5 * np.exp(-BB_B / peak) * (p[27] * p[28] * 1e-14) * wd
+    gidl = 0.0
+    field = (r - p[11] - VFB_GIDL - EG) / (3.0 * p[29] * 1e-7)
+    if field > 0.0 and p[48] > 0.0:
+        depth = min(np.sqrt(2.0 * EPS_SI * EG / (QE * ND_CM3)), p[28] * 1e-7)
+        volume = p[48] * p[27] * 1e-7 * LOV_CM * depth
+        gidl = QE * volume * BB_A * field**2.5 * np.exp(-BB_B / field)
+    return p[46] * lateral * balance, p[46] * gidl * balance
 
 
 @njit(cache=True)
@@ -150,6 +196,7 @@ def evaluate(u, r, p, out):
         return False
     beta, tau, cb, resistance, saturation, vbr, eta, cg, cbg, cs, bias = effective_parameters(p)
     w = u + z[17]
+    vg, vbg = gate_voltages(p)
     out[0] = z[0]
     out[1] = z[1]
     out[2] = z[2]
@@ -159,8 +206,12 @@ def evaluate(u, r, p, out):
     out[6] = z[5] + z[6]
     out[7] = 2.0 if r < 0.0 else 0.0
     out[8] = w
-    out[9] = cg * (p[11] - w)
-    out[10] = cbg * (p[32] - w)
+    # Gate charges use the same clamped voltages as bias, so the reservoir
+    # charge, Q_G, Q_BG and C_S*w stay conserved; in accumulation the gate's
+    # extra displacement charge sits on the screening hole layer, outside the
+    # lumped reservoir.
+    out[9] = cg * (vg - w)
+    out[10] = cbg * (vbg - w)
     for i in range(len(out)):
         if not np.isfinite(out[i]):
             return False

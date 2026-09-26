@@ -21,7 +21,7 @@ HTTP surface, the backend-core result details and the data endpoints.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/health` | `{ok, version, app_version, engine_version, workers, jobs:{queued,running,done,error,cancelled}}` — `version` = first 12 hex digits of `engine_version` |
-| GET | `/api/meta` | `params.meta()` (`presets`, `constants`, `channel_seed_options`, `measured_photo_conditions`) + `kinds` (contract kinds), `extra_kinds` (`["folds"]`), `kinds_available` (module present?), `caps`, `engine_version`, `app_version`, `workers` |
+| GET | `/api/meta` | `params.meta()` (`presets`, `constants`, `channel_seed_options`, `measured_photo_conditions`, `simple_model` = `{version, defaults, reference_geometry, reference, validated}` where `reference` is the published paper the Simple Model implements: authors, title, journal, year, doi, citation) + `kinds` (contract kinds), `extra_kinds` (`["folds"]`), `kinds_available` (module present?), `caps`, `engine_version`, `app_version`, `workers` |
 | POST | `/api/compute/{kind}?wait=2.0` | body = payload (JSON object). Validates/clamps, submits, waits up to `wait` s (0–60). Returns `JobStatus`. |
 | GET | `/api/jobs/{job_id}?wait=0` | `JobStatus`; optional long-poll `wait` (s, ≤ 60) |
 | DELETE | `/api/jobs/{job_id}` | cancel → `JobStatus` with `status: "cancelled"` |

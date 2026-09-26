@@ -28,7 +28,15 @@ export const BRAND_STRINGS = {
   "brand.about.device.value": { ko: "FDSOI · L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm", en: "FDSOI · L_g 500 nm · W 200 nm · T_Si 50 nm · EOT 14.1 nm" },
   "brand.about.glyph": { ko: "Biristor 심볼", en: "Biristor symbol" },
   "brand.about.device.soon": { ko: "PDSOI · Bulk 모델은 준비 중입니다.", en: "PDSOI and bulk models are coming later." },
-  "brand.about.scope": { ko: "미발표 모델 — 연구용으로만 사용하세요.", en: "Unpublished model — for research use only." },
+  "brand.about.scope": {
+    ko: "Simple Model은 아래 논문의 해석 모델(식 (1)–(4), (7))이고, Detailed Model은 이를 확장한 updated accuracy 모델입니다. 연구용으로만 사용하세요.",
+    en: "The Simple Model is the analytical model of the paper below (eqs. (1)–(4), (7)); the Detailed Model is the updated-accuracy model that extends it. For research use only.",
+  },
+  "brand.about.reference": { ko: "논문", en: "Reference" },
+  "brand.about.reference.value": {
+    ko: "J.-H. Park, H.-B. Noh, S.-W. Lee, S.-Y. Yun, and Y.-K. Choi, “Analytical Model for Single Transistor Latch in MOSFETs,” IEEE Electron Device Lett., 2026, doi: 10.1109/LED.2026.3737574",
+    en: "J.-H. Park, H.-B. Noh, S.-W. Lee, S.-Y. Yun, and Y.-K. Choi, “Analytical Model for Single Transistor Latch in MOSFETs,” IEEE Electron Device Lett., 2026, doi: 10.1109/LED.2026.3737574",
+  },
   "brand.about.lab": { ko: "연구실", en: "Lab" },
   "brand.about.lab.value": { ko: "NOBEL 연구실", en: "NOBEL Lab" },
   "brand.about.advisor": { ko: "지도교수", en: "Advisor" },

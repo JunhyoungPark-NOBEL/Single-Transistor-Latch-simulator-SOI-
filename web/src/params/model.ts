@@ -5,7 +5,7 @@ export const SIMPLE_DEFAULTS: SimpleModelBlock = {
   beta_ref: 2.3, tau_body_s: 2e-7, cb_ref_F: 0.86e-15 * 200 / 650,
   r_lrs_ref_ohm: 44000 * 650 / 200, is_ref_A: 2e-16 * 200 / 650,
   vbr_ref_V: 2.35, avalanche_eta: 4, gamma_fg: 0.2, gamma_bg: 0.0525,
-  vfb_V: -3.35, btbt_scale: 1, surface_fraction: 1,
+  vfb_V: -3.35, btbt_scale: 1, surface_fraction: 1, gidl_volume_scale: 100,
 };
 export const modelOf = (device: Pick<DeviceBlock, "model">): DeviceModel => device.model === "simple" ? "simple" : "detailed";
 export const modelLabel = (device: Pick<DeviceBlock, "model">) => modelOf(device) === "simple" ? "Simple" : "Detailed";

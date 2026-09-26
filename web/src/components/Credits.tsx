@@ -83,6 +83,7 @@ function About({ anchor, onClose }: { anchor: HTMLElement | null; onClose: (refo
   const rows: [string, ReactNode][] = [
     [t("brand.about.lab"), t("brand.about.lab.value")],
     [t("brand.about.institution"), t("brand.about.institution.value")],
+    [t("brand.about.reference"), t("brand.about.reference.value")],
     [t("brand.about.version"), <VersionLine key="v" />],
   ];
 

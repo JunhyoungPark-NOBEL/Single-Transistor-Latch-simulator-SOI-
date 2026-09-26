@@ -231,6 +231,23 @@ When generation exceeds loss, $u$ rises, the seed current grows exponentially an
       ],
     },
     {
+      heading: { ko: "모델 계보: Simple(논문)과 Detailed(updated accuracy)", en: "Model lineage: Simple (paper) and Detailed (updated accuracy)" },
+      body: {
+        ko: String.raw`시뮬레이터의 틀은 게재 확정 논문 J.-H. Park, H.-B. Noh, S.-W. Lee, S.-Y. Yun, and Y.-K. Choi, "Analytical Model for Single Transistor Latch in MOSFETs," IEEE Electron Device Lett., 2026, doi: 10.1109/LED.2026.3737574 를 따른다.
+
+- **Simple Model** — 논문의 식 (1)–(4), (7)과 Table I을 그대로 구현한 논문 모델이다. 바디를 한 노드로 보고 $V_{\mathrm{BS}}=V_{\mathrm{BS,curr}}+V_{\mathrm{BS,bias}}-I_{\mathrm D}R_{\mathrm{LRS}}$, $I_{\mathrm D}=M I_{\mathrm S}\exp(V_{\mathrm{BS}}/V_{\mathrm T})+I_{\mathrm{BTBT}}$로 정상상태를 푼다. 축적 상태($V_{\mathrm{FG}}<\varphi_{\mathrm{FB}}$)에서는 게이트 결합이 차폐되어 $V_{\mathrm{BS,bias}}$가 더 내려가지 않고 GIDL만 커지므로 $V_{\mathrm{LU}}(V_{\mathrm{FG}})$가 종 모양이 된다(논문 Fig. 5(a)). 확산 β는 상수로 두며 논문 식 (8)은 쓰지 않는다.
+- **Detailed Model** — 같은 틀을 분포 SRH 수송, 전계 테이블, 채널 전류와 측정 보정으로 확장한 updated accuracy 모델이다. 이 물리 안내의 나머지 주제는 Detailed Model의 식을 설명한다.
+
+Simple Model의 수식과 기본값은 \`SIMPLE_MODEL_KO.md\`에 있다.`,
+        en: String.raw`The simulator's framework follows the published paper J.-H. Park, H.-B. Noh, S.-W. Lee, S.-Y. Yun, and Y.-K. Choi, "Analytical Model for Single Transistor Latch in MOSFETs," IEEE Electron Device Lett., 2026, doi: 10.1109/LED.2026.3737574.
+
+- **Simple Model** — the paper's model as published: equations (1)–(4), (7) and Table I. The body is one node, $V_{\mathrm{BS}}=V_{\mathrm{BS,curr}}+V_{\mathrm{BS,bias}}-I_{\mathrm D}R_{\mathrm{LRS}}$, and the steady state solves $I_{\mathrm D}=M I_{\mathrm S}\exp(V_{\mathrm{BS}}/V_{\mathrm T})+I_{\mathrm{BTBT}}$. In accumulation ($V_{\mathrm{FG}}<\varphi_{\mathrm{FB}}$) the gate coupling is screened, so $V_{\mathrm{BS,bias}}$ stops falling while GIDL keeps growing, which gives the bell-shaped $V_{\mathrm{LU}}(V_{\mathrm{FG}})$ of the paper's Fig. 5(a). The diffusion β is kept constant; equation (8) is not used.
+- **Detailed Model** — the updated-accuracy model that extends the same framework with distributed SRH transport, field tables, channel current and the measurement calibration. The remaining topics of this guide describe the Detailed Model's equations.
+
+The Simple Model's equations and defaults are in \`SIMPLE_MODEL_KO.md\`.`,
+      },
+    },
+    {
       heading: { ko: "주제 안내", en: "Topic map" },
       body: {
         ko: "- `electrostatics` — $V_T$, $V_{\\mathrm{bi}}$, 주입 수준 $\\delta(u)$, 공핍폭, 중성 길이 $L_n$, $C_{\\mathrm{ox}}$\n- `impact-ionization` — van Overstraeten–de Man 계수, 국소 전계 증배 $M(r)$, II 전류\n- `btbt-gidl` — 접합 BTBT, GIDL, $\\varphi_{\\mathrm{GIDL}}$\n- `channel` — 고정된 저 $V_D$ 채널 fit과 확장 항\n- `bjt-transport` — 전류가 흐르는 준중성 베이스의 수송, SRH, 손실, 접근 저항, $V_D$\n- `charge-balance` — Eq. 1, 정상상태, fold, 전하 지형\n- `photo` — 광생성과 광세기 변환\n- `parameters` — p[0]…p[25] 표\n- `numerics` — 격자, 이분법, 가드, FPT 창\n- 확률 모델과 회로: `stochastic-events`, `first-passage`, `local-states`, `sweep-mc`, `circuit-element`, `design-map`, `open-problems`, `validation`",

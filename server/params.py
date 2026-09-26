@@ -30,7 +30,7 @@ import copy
 import json
 from pathlib import Path
 from typing import Any
-from server.simple_config import SIMPLE_DEFAULTS, SIMPLE_KEYS, SIMPLE_PACK_SIZE, SIMPLE_VERSION, is_simple_device
+from server.simple_config import SIMPLE_DEFAULTS, SIMPLE_KEYS, SIMPLE_PACK_SIZE, SIMPLE_REFERENCE, SIMPLE_VERSION, is_simple_device
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE = ROOT / "engine"
@@ -211,7 +211,7 @@ def build_p(device: dict, dg: float = 0.0, de: float = 0.0, **ext_over: float) -
         p[13] = iph_A(d)
         p[26:33] = [float(g[k]) for k in GEOMETRY_KEYS] + [float(d.get("vbg", 0.0))]
         p[34] = -1.0
-        p[36:48] = [float(sm[k]) for k in SIMPLE_KEYS]
+        p[36:36 + len(SIMPLE_KEYS)] = [float(sm[k]) for k in SIMPLE_KEYS]
         return p
     c, e, s = d["calib"], dict(d["ext"], **ext_over), d["state"]
     if float(e["aloc"]) > 0.0 and float(e["loc_carriers"]) == 2.0:
@@ -324,7 +324,7 @@ def meta() -> dict:
     return dict(
         presets=PRESETS,
         models=[dict(id="detailed", label="Detailed Model"), dict(id="simple", label="Simple Model", stochastic=False)],
-        simple_model=dict(version=SIMPLE_VERSION, defaults=dict(SIMPLE_DEFAULTS), reference_geometry=dict(GEOMETRY), validated=False),
+        simple_model=dict(version=SIMPLE_VERSION, defaults=dict(SIMPLE_DEFAULTS), reference_geometry=dict(GEOMETRY), reference=dict(SIMPLE_REFERENCE), validated=False),
         constants=dict(NA_cm3=NA_CM3, sigma_phi_G_V=SIGMA_PHI_G_V, sigma_phi_E_V=SIGMA_PHI_E_V,
                        tau_E_s=TAU_E_S, tau_G_up_s=TAU_G_UP_S, photo_delta_phi_G0_V=PHOTO_DELTA_PHI_G0_V,
                        photo_sigma_phi_V=PHOTO_SIGMA_PHI_V, photo_gamma=PHOTO_GAMMA,

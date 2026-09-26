@@ -11,6 +11,7 @@ export interface SimpleModelBlock {
   beta_ref: number; tau_body_s: number; cb_ref_F: number; r_lrs_ref_ohm: number;
   is_ref_A: number; vbr_ref_V: number; avalanche_eta: number;
   gamma_fg: number; gamma_bg: number; vfb_V: number; btbt_scale: number; surface_fraction: number;
+  gidl_volume_scale: number;
 }
 export interface HrsPoint { vd_V: number; id_A: number }
 export type SimpleFit = "is" | "tau" | "is_tau";

@@ -53,7 +53,7 @@ python launch.py --no-browser           # 브라우저를 자동으로 열지 �
 
 ## Simple Model
 
-Geometry 아래 **Model → Simple Model**을 선택합니다. 바디 정공 손실을 1차 decay로 근사하고, β는 같은 Geometry에서 바이어스에 대해 상수로 둡니다. 기준 β는 L·Nbody에 따라, 주입 전류는 W·Tsi를 포함하여 함께 환산합니다.
+Geometry 아래 **Model → Simple Model**을 선택합니다. Simple Model은 게재 확정 논문 J.-H. Park et al., "Analytical Model for Single Transistor Latch in MOSFETs," IEEE Electron Device Lett., 2026 (doi: 10.1109/LED.2026.3737574)의 수식 (1)–(4), (7)을 그대로 구현한 논문 모델이고, Detailed Model은 이를 확장한 updated accuracy 모델입니다. 바디 정공 손실을 1차 decay로 근사하고, β는 같은 Geometry에서 바이어스에 대해 상수로 둡니다. 기준 β는 L·Nbody에 따라, 주입 전류는 W·Tsi를 포함하여 함께 환산합니다.
 
 처음 선택할 때 기존 기본 VG=−2 V를 사용 중이면 시작 바이어스를 −3 V로 바꿉니다. 초기값은 논문 수치를 기준 폭으로 환산한 출발값이며, Device 1의 새 보정 결과가 아닙니다. **HRS 보정**에서 현재 Geometry·바이어스의 래치 이전 데이터 VD(V), ID(A)를 붙여넣고 IS 또는 수명을 맞출 수 있습니다. 두 값을 함께 맞추려면 구분 가능한 전압의 HRS 점이 3개 이상 필요합니다. 계산 결과를 확인한 뒤 **적용**하면 됩니다.
 

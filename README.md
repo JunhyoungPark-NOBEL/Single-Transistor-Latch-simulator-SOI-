@@ -23,7 +23,7 @@ Windows에서는 Python을 따로 설치할 필요가 없습니다. 최초 실�
 현재 FDSOI만 지원합니다. PDSOI·Bulk는 미지원으로 표시하며 기존 기록을 임의로 FDSOI로 변환하지 않습니다. Geometry 그림의 치수를 누르면 해당 입력으로 이동하고, 변수는 이탤릭·아래첨자는 정자로 표시합니다. 주요 입력·탭·버튼 글씨는 14px 이상이며 결정론적·확률적 모드는 화면 상단에서 전환합니다.
 
 - 모델·종류별 성능 표, 계산 환경 측정, 실행 전 예상 시간
-- Detailed / Simple Model 선택 · Simple의 1차 바디 재결합 및 HRS 보정
+- Detailed / Simple Model 선택 · Simple은 IEEE EDL 2026 논문 모델, Detailed는 이를 확장한 updated accuracy 모델 · Simple의 HRS 보정
 - VSCM의 ID–VD, CSVM의 VD(t)·Vtop·Vbottom·주파수
 - L·W·Tsi·EOT·Tbox·Nbody 및 VG·VBG 설정
 - 사용자 소자 5개 저장, 자유로운 회로 배치와 배선, 기본 MOSFET·diode·BJT
@@ -33,7 +33,7 @@ Windows에서는 Python을 따로 설치할 필요가 없습니다. 최초 실�
 - 고정 조건의 LTspice·Verilog-A 준정적 모델 내보내기
 - 로컬 계산과 연구실 서버 연결 전환
 
-Simple Model의 β는 바이어스에 대해서만 상수이며, 동일 emitter 공정 가정에서 L·Nbody에 따라 변합니다. 초기값은 기존 Device 1 측정에 맞춘 값이 아닙니다. 수식·기하 가정·사용 범위는 [SIMPLE_MODEL_KO.md](SIMPLE_MODEL_KO.md)에 있습니다. Simple은 현재 결정론적 BE를 지원합니다.
+시뮬레이터의 틀은 게재 확정 논문 J.-H. Park, H.-B. Noh, S.-W. Lee, S.-Y. Yun, and Y.-K. Choi, "Analytical Model for Single Transistor Latch in MOSFETs," *IEEE Electron Device Letters*, 2026, doi: 10.1109/LED.2026.3737574을 따릅니다. **Simple Model**은 이 논문의 수식 (1)–(4), (7)과 Table I을 그대로 구현한 논문 모델이고(확산 β만 상수, 식 (8) 미사용), **Detailed Model**은 같은 틀을 분포 SRH 수송·전계 테이블·측정 보정으로 확장한 updated accuracy 모델입니다. Simple Model의 β는 바이어스에 대해서만 상수이며, 동일 emitter 공정 가정에서 L·Nbody에 따라 변합니다. 초기값은 기존 Device 1 측정에 맞춘 값이 아닙니다. 수식·기하 가정·사용 범위는 [SIMPLE_MODEL_KO.md](SIMPLE_MODEL_KO.md)에 있습니다. Simple은 현재 결정론적 BE를 지원합니다.
 
 Detailed Model의 VBG는 BJT source injection의 바디 바이어스 근사로 적용합니다. 결합 계수는 정전용량 divider이며 VBG sweep으로 새로 보정한 값은 아닙니다. 내부 정전기 전위와 외부 B 접점 전압을 구분합니다. Geometry 확장은 기준 보정을 벗어나는 모델 가정을 포함합니다. 지원 범위와 확인된 조건을 화면 및 문서에서 구분하며, 없는 물리 현상이나 측정하지 않은 정확도를 주장하지 않습니다. 실제 계산 서버 연결이 끊기면 계산을 안내 없이 데모 곡선으로 바꾸지 않습니다.
 
